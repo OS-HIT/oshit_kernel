@@ -68,6 +68,7 @@ pub fn get_base(app_id: usize) -> usize {
 }
 
 pub fn load_apps() {
+    verbose!("Loading apps from asm...");
     extern "C" {fn _num_app();};
     let num_app_p = _num_app as usize as *const usize;
     let num_app = get_app_count();

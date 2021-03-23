@@ -1,7 +1,8 @@
 #![allow(unused)]
 
-use super::{get_byte, put_byte};
+use super::{get_byte, put_byte, get_time};
 use core::fmt::{self, Write};
+use crate::config::CLOCK_FREQ;
 
 // ======================== color constants ========================
 
@@ -186,7 +187,7 @@ pub fn reset_color() {
 pub fn log(log_level: LogLevel, args: fmt::Arguments, file: &'static str, line: u32) {
     if log_level >= min_log_level() {
         set_log_color(log_level);
-        print!("{} @ {:20}\t: {} \t", log_level, file, line);
+        print!("[{:#11.5}]{} @ {:>#30} line {:<#5} : ", get_time() as f64 / CLOCK_FREQ as f64 , log_level, file, line);
         print(args);
         reset_color();
         println!();

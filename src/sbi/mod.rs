@@ -1,11 +1,13 @@
-mod sbi_funcs;
 #[macro_use]
 mod primitive_io;
+mod sbi_funcs;
+mod timer;
 
 pub use sbi_funcs::{
-    shutdown,
+    set_timer,
     get_byte,
     put_byte,
+    shutdown,
     sbi_call,
 };
 
@@ -19,4 +21,11 @@ pub use primitive_io::{
     reset_color,
     log,
     LogLevel,
+};
+
+pub use timer::{
+    TICKS_PER_SECOND,
+    get_time,
+    get_time_ms,
+    reset_timer_trigger,
 };

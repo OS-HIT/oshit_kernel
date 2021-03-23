@@ -19,13 +19,13 @@ mod trap;
 mod process;
 pub mod config;
 
-// Damn how to add err suppress to vs code this is driving me nuts
+// Damn how suppress err from vs code this is driving me nuts
 #[cfg(not(any(feature="board_qemu", feature="board_k210")))]
 compile_error!("At least one of the board_* feature should be active!");
 
 #[no_mangle]
 pub extern "C" fn rust_main() -> !{
-    println!("Hello, world!");
+    info!("Kernel hello world!");
     trap::init();
     process::load_apps();
     process::run_first_app();
