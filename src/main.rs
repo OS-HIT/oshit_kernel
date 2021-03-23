@@ -20,7 +20,7 @@ mod process;
 pub mod config;
 
 // Damn how to add err suppress to vs code this is driving me nuts
-#[cfg(all(not(board_k210), not(board_qemu)))]
+#[cfg(not(any(feature="board_qemu", feature="board_k210")))]
 compile_error!("At least one of the board_* feature should be active!");
 
 #[no_mangle]
