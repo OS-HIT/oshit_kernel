@@ -9,7 +9,7 @@ OBJDUMP 		:= rust-objdump --arch-name=riscv64
 OBJCOPY 		:= rust-objcopy --binary-architecture=riscv64
 DISASM 			?= -x
 BOARD			?= qemu
-LOG_LEVEL		?= min_log_level_verbose
+FEATURES		?= min_log_level_verbose board_qemu
 
 build: env $(KERNEL_BIN)
 
@@ -24,7 +24,7 @@ $(KERNEL_BIN): kernel
 
 kernel:
 	@cp src/linker_$(BOARD).ld src/linker.ld
-	@cargo build --release
+	@cargo build --release --features $(FEATURES)
 	@rm src/linker.ld
 
 clean:

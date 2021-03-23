@@ -26,6 +26,10 @@ pub fn sbi_call(which: usize, mut arg0: usize, arg1: usize, arg2: usize) -> usiz
     arg0
 }
 
+pub fn set_timer(timer: usize) {
+    sbi_call(SBI_SET_TIMER, timer, 0, 0);
+}
+
 pub fn put_byte(ch: u8) {
     sbi_call(SBI_CONSOLE_PUTCHAR, ch as usize, 0, 0);
 }

@@ -7,6 +7,8 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+riscv = { git = "https://github.com/rcore-os/riscv", features = ["inline-asm"] }
+lazy_static = { version = "1.4.0", features = ["spin_no_std"] }
 
 [features]
 min_log_level_verbose = []
@@ -14,3 +16,5 @@ min_log_level_info = []
 min_log_level_warning = []
 min_log_level_error = []
 min_log_level_fatal = []
+board_qemu = []
+board_k210 = []
