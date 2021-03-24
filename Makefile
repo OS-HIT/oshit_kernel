@@ -4,12 +4,22 @@ MODE 			:= release
 KERNEL_ELF 		:= target/$(TARGET)/$(MODE)/oshit_kernel
 KERNEL_BIN 		:= $(KERNEL_ELF).bin
 DISASM_TMP 		:= target/$(TARGET)/$(MODE)/asm
-KERNEL_ENTRY_PA := 0x80200000
 OBJDUMP 		:= rust-objdump --arch-name=riscv64
 OBJCOPY 		:= rust-objcopy --binary-architecture=riscv64
 DISASM 			?= -x
 BOARD			?= qemu
 FEATURES		?= board_qemu min_log_level_verbose
+K210-SERIALPORT	= COM3
+K210-BURNER 	= ../kflash.py/kflash.py
+BOOTLOADER 		:= ../bootloader/rustsbi-k210.bin
+K210_BOOTLOADER_SIZE := 131072
+
+# KERNEL ENTRY
+ifeq ($(BOARD), qemu)
+	KERNEL_ENTRY_PA := 0x80200000
+else ifeq ($(BOARD), k210)
+	KERNEL_ENTRY_PA := 0x80020000
+endif
 
 build: env $(KERNEL_BIN)
 
@@ -34,10 +44,19 @@ disasm: kernel
 	@$(OBJDUMP) $(DISASM) $(KERNEL_ELF) | less
 
 run: build
+ifeq ($(BOARD),qemu)
 	@qemu-system-riscv64 \
-			-machine virt \
-			-nographic \
-			-bios default \
-			-device loader,file=$(KERNEL_BIN),addr=$(KERNEL_ENTRY_PA)
+		-machine virt \
+		-nographic \
+		-bios default \
+		-device loader,file=$(KERNEL_BIN),addr=$(KERNEL_ENTRY_PA)
+else
+	@cp $(BOOTLOADER) $(BOOTLOADER).copy
+	@dd if=$(KERNEL_BIN) of=$(BOOTLOADER).copy bs=$(K210_BOOTLOADER_SIZE) seek=1
+	@mv $(BOOTLOADER).copy $(KERNEL_BIN)
+	# @sudo chmod 777 $(K210-SERIALPORT)
+	python.exe $(K210-BURNER) -p $(K210-SERIALPORT) -b 1500000 $(KERNEL_BIN)
+	python.exe -m serial.tools.miniterm --eol LF --dtr 0 --rts 0 --filter direct $(K210-SERIALPORT) 115200
+endif
 			
 .PHONY: build env kernel clean disasm run
