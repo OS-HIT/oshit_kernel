@@ -17,9 +17,9 @@ mod fs;
 mod syscall;
 mod trap;
 mod process;
+mod memory;
 pub mod config;
 
-// Damn how suppress err from vs code this is driving me nuts
 #[cfg(not(any(feature="board_qemu", feature="board_k210")))]
 compile_error!("At least one of the board_* feature should be active!");
 
