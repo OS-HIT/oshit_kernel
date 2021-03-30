@@ -50,24 +50,23 @@
 /// ===== 0x7F FFFF ===== 
 /// 4 KiB trampoline, liner maped, rx
 /// ===== 0x7F FFFE =====   <- Frame alloccator manage end
-/// Trap context, rw    // TODO really? 4KiB of trap context?
+/// Trap context, argv, environ etc, rw
 /// ===== 0x7F FFFD =====
-/// AVAILABLE
+/// user stack, grow down
 /// =====================
-/// user stack, urw
-/// =====================
+/// UNALLOCATED MEM
+/// =====================   <- program break, change by sbrk()
+/// user heap
+/// =====================   <- end
 /// .bss
-/// =====================
-/// .data
-/// =====================
-/// .rodata
-/// =====================
+/// =====================   <- edata
+/// initialized data(.data, .rodata)
+/// =====================   <- etext
 /// .text
 /// ===== 0x00 0000 =====   <- Frame allocator manage start
 
-
-
 mod addresses;
+mod pagetable;
 
 pub use addresses::{
     VirtAddr,
@@ -75,3 +74,13 @@ pub use addresses::{
     VirtPageNum,
     PhysPageNum,
 };
+
+pub use pagetable::{};
+
+use riscv::register::satp;
+
+pub fn init() {
+    verbose!("Initilizing memory managment unit...");
+    // satp::set(mode: Mode, asid: usize, ppn: usize)
+    info!("Memory managment initialized.");
+}
