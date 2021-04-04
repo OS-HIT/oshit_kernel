@@ -67,6 +67,8 @@
 
 mod addresses;
 mod pagetable;
+mod kernel_heap;
+mod frame_alloc;
 
 pub use addresses::{
     VirtAddr,
@@ -75,12 +77,21 @@ pub use addresses::{
     PhysPageNum,
 };
 
-pub use pagetable::{};
+pub use pagetable::{
+    PageTable,
+    PageTableEntry
+};
+
+pub use frame_alloc::{
+    FrameTracker,
+    alloc_frame,
+};
 
 use riscv::register::satp;
 
 pub fn init() {
     verbose!("Initilizing memory managment unit...");
+    kernel_heap::init_kernel_heap();
     // satp::set(mode: Mode, asid: usize, ppn: usize)
     info!("Memory managment initialized.");
 }

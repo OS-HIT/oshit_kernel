@@ -1,4 +1,4 @@
-pub const SYSCALL_WRITE: usize = 64;
+pub const SYSCALL_WRITE: usize = 64;    // these doesn't match with data i found online, for example https://github.com/westerndigitalcorporation/RISC-V-Linux/blob/master/linux/arch/s390/kernel/syscalls/syscall.tbl
 pub const SYSCALL_EXIT: usize = 93;
 pub const SYSCALL_YIELD: usize = 124;
 
