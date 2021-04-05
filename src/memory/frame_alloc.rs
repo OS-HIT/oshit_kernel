@@ -19,6 +19,7 @@ trait FrameAllocator {
 // TODO: change to CLOCK algorithm
 lazy_static! {
     pub static ref FRAME_ALLOCATOR: Mutex<StackFrameAllocator> = {
+        verbose!("Initializing page frame allocator...");
         extern "C" {
             fn ekernel();
         }
@@ -85,10 +86,10 @@ impl FrameAllocator for StackFrameAllocator {
 
     fn free(&mut self, to_free: PhysPageNum) {
         // check if it as been allocated
-        if to_free < self.current && !self.freed.iter().any(|&i| i==to_free) {
-            self.freed.push(to_free);
-        } else {
+        if to_free >= self.current || self.freed.iter().any(|&i| i==to_free) {
             error!("Trying to free a PPN that has not been allocated: {:?}", to_free);
+        } else {
+            self.freed.push(to_free);
         }
     }
 }

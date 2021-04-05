@@ -7,7 +7,8 @@ pub const APP_SIZE_LIMIT    : usize = 0x20000;
 pub const PAGE_OFFSET       : usize = 12;
 pub const PAGE_SIZE         : usize = 1 << PAGE_OFFSET;
 pub const MEM_END           : usize = 0x80800000;   // ref: https://github.com/laanwj/k210-sdk-stuff/blob/master/doc/memory_map.md
-
+pub const TRAMPOLINE        : usize = usize::MAX - PAGE_SIZE + 1;
+pub const TRAP_CONTEXT      : usize = TRAMPOLINE - PAGE_SIZE;
 
 #[cfg(feature = "board_k210")]
 pub const CLOCK_FREQ: usize = 403000000 / 62;

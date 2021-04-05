@@ -13,6 +13,7 @@ global_asm!(include_str!("link_app.asm"));
 
 #[macro_use]    // so that we get vec![] macro
 extern crate alloc;
+extern crate xmas_elf;
 
 #[macro_use]
 mod sbi;
@@ -23,6 +24,7 @@ mod trap;
 mod process;
 mod memory;
 pub mod config;
+mod utils;
 
 #[cfg(not(any(feature="board_qemu", feature="board_k210")))]
 compile_error!("At least one of the board_* feature should be active!");
@@ -32,7 +34,7 @@ pub extern "C" fn rust_main() -> !{
     info!("Kernel hello world!");
     memory::init();
     trap::init();
-    process::load_apps();
+    // process::load_apps();
     process::run_first_app();
     panic!("drop off from bottom!");
 }

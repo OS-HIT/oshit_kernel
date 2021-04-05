@@ -11,13 +11,15 @@ _num_app:
     .section .data
     .global app_0_start
     .global app_0_end
+    .align 3
 app_0_start:
-    .incbin "../user_bins/usr_hello_world_a.bin"
+    .incbin "../user_bins/usr_hello_world_a"
 app_0_end:
 
     .section .data
     .global app_1_start
     .global app_1_end
+    .align 3
 app_1_start:
-    .incbin "../user_bins/usr_hello_world_b.bin"
+    .incbin "../user_bins/usr_hello_world_b"
 app_1_end:

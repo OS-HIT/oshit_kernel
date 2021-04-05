@@ -5,6 +5,10 @@ use core::ops;
 use crate::config::{PAGE_SIZE, PAGE_OFFSET};
 use super::PageTableEntry;
 use core::mem::size_of;
+use crate::utils::{
+    StepByOne,
+    SimpleRange
+};
 
 /// 63                                                            12 11           0
 /// |                           PPN                                | |   offset   |
@@ -106,13 +110,13 @@ impl ops::AddAssign<usize> for VirtAddr {
 impl ops::Sub<usize> for VirtAddr {
     type Output = VirtAddr;
     fn sub(self, rhs: usize) -> VirtAddr {
-        return VirtAddr(self.0 + rhs);
+        return VirtAddr(self.0 - rhs);
     }
 }
 
 impl ops::SubAssign<usize> for VirtAddr {
     fn sub_assign(&mut self, rhs: usize) { 
-        self.0 += rhs;
+        self.0 -= rhs;
     }
 }
 
@@ -154,13 +158,13 @@ impl ops::AddAssign<usize> for PhysAddr {
 impl ops::Sub<usize> for PhysAddr {
     type Output = PhysAddr;
     fn sub(self, rhs: usize) -> PhysAddr {
-        return PhysAddr(self.0 + rhs);
+        return PhysAddr(self.0 - rhs);
     }
 }
 
 impl ops::SubAssign<usize> for PhysAddr {
     fn sub_assign(&mut self, rhs: usize) { 
-        self.0 += rhs;
+        self.0 -= rhs;
     }
 }
 
@@ -187,13 +191,13 @@ impl ops::AddAssign<usize> for PhysPageNum {
 impl ops::Sub<usize> for PhysPageNum {
     type Output = PhysPageNum;
     fn sub(self, rhs: usize) -> PhysPageNum {
-        return PhysPageNum(self.0 + rhs);
+        return PhysPageNum(self.0 - rhs);
     }
 }
 
 impl ops::SubAssign<usize> for PhysPageNum {
     fn sub_assign(&mut self, rhs: usize) { 
-        self.0 += rhs;
+        self.0 -= rhs;
     }
 }
 
@@ -238,13 +242,20 @@ impl ops::AddAssign<usize> for VirtPageNum {
 impl ops::Sub<usize> for VirtPageNum {
     type Output = VirtPageNum;
     fn sub(self, rhs: usize) -> VirtPageNum {
-        return VirtPageNum(self.0 + rhs);
+        return VirtPageNum(self.0 - rhs);
+    }
+}
+
+impl ops::Sub<VirtPageNum> for VirtPageNum {
+    type Output = usize;
+    fn sub(self, rhs: VirtPageNum) -> usize {
+        return self.0 - rhs.0;
     }
 }
 
 impl ops::SubAssign<usize> for VirtPageNum {
     fn sub_assign(&mut self, rhs: usize) { 
-        self.0 += rhs;
+        self.0 -= rhs;
     }
 }
 
@@ -264,3 +275,24 @@ impl VirtPageNum {
         ];
     }
 }
+
+impl StepByOne for VirtAddr {
+    fn step(&mut self) { self.0 += 1; }
+}
+
+impl StepByOne for PhysAddr {
+    fn step(&mut self) { self.0 += 1; }
+}
+
+impl StepByOne for VirtPageNum {
+    fn step(&mut self) { self.0 += 1; }
+}
+
+impl StepByOne for PhysPageNum {
+    fn step(&mut self) { self.0 += 1; }
+}
+
+pub type VARange    = SimpleRange<VirtAddr>;
+pub type PARange    = SimpleRange<PhysAddr>;
+pub type VPNRange   = SimpleRange<VirtPageNum>;
+pub type PPNRange   = SimpleRange<PhysPageNum>;

@@ -5,10 +5,13 @@ use bitflags::*;
 use super::{
     PhysPageNum,
     VirtPageNum,
+    VirtAddr,
     FrameTracker,
     alloc_frame,
 };
 use alloc::vec::Vec;
+use core::cmp::min;
+use crate::utils::StepByOne;
 
 bitflags! {
     pub struct PTEFlags: u8 {
@@ -56,6 +59,18 @@ impl PageTableEntry {
     pub fn valid(&self) -> bool {
         (self.flags() & PTEFlags::V) != PTEFlags::empty()
     }
+
+    pub fn executable(&self) -> bool {
+        (self.flags() & PTEFlags::X) != PTEFlags::empty()
+    }
+
+    pub fn writable(&self) -> bool {
+        (self.flags() & PTEFlags::W) != PTEFlags::empty()
+    }
+
+    pub fn readable(&self) -> bool {
+        (self.flags() & PTEFlags::R) != PTEFlags::empty()
+    }
 }
 
 pub struct PageTable {
@@ -70,6 +85,10 @@ impl PageTable {
             root_ppn: root.ppn,
             frames: vec![root]
         }
+    }
+
+    pub fn get_satp(&self) -> usize {
+        return 8usize << 60 | self.root_ppn.0;
     }
 
     // similar to xv6, get pte representing vpn from pagetable, and create parent pte if not present.
@@ -93,7 +112,7 @@ impl PageTable {
     }
 
     // don't create parent node, just Some or None
-    fn walk(&mut self, vpn: VirtPageNum) -> Option<&PageTableEntry> {
+    fn walk(&self, vpn: VirtPageNum) -> Option<&PageTableEntry> {
         let indexes = vpn.indexes();
         let mut ppn = self.root_ppn;
         for i in 0..3 {
@@ -128,7 +147,27 @@ impl PageTable {
         }
     }
 
-    pub fn translate(&mut self, vpn: VirtPageNum) -> Option<PageTableEntry> {
+    pub fn translate(&self, vpn: VirtPageNum) -> Option<PageTableEntry> {
         self.walk(vpn).map(|pte| pte.clone())
     }
+}
+
+pub fn get_user_data(satp: usize,mut start: VirtAddr, len: usize) -> Vec<&'static [u8]> {
+    let pagetable = PageTable::from_satp(satp);
+    let end = start + len;
+    let mut pages = Vec::new();
+    while start < end {
+        let mut vpn = start.to_vpn();
+        let ppn = pagetable.translate(vpn).unwrap().ppn();
+        vpn.step();
+        let copy_end = min(vpn.into(), end);    // page end or buf end
+        pages.push(&ppn.page_ptr()[
+            start.page_offset()
+            ..
+            copy_end.page_offset()
+        ]);
+        start = copy_end;
+    }
+
+    return pages;
 }

@@ -11,7 +11,7 @@ BOARD			?= qemu
 FEATURES		?= board_qemu min_log_level_verbose
 K210-SERIALPORT	= COM3
 K210-BURNER 	= ../kflash.py/kflash.py
-BOOTLOADER 		:= ../bootloader/rustsbi-k210.bin
+BOOTLOADER 		:= ../bootloader/rustsbi-$(BOARD).bin
 K210_BOOTLOADER_SIZE := 131072
 
 # KERNEL ENTRY
@@ -48,7 +48,7 @@ ifeq ($(BOARD),qemu)
 	@qemu-system-riscv64 \
 		-machine virt \
 		-nographic \
-		-bios default \
+		-bios default\
 		-device loader,file=$(KERNEL_BIN),addr=$(KERNEL_ENTRY_PA)
 else
 	@cp $(BOOTLOADER) $(BOOTLOADER).copy
