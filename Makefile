@@ -1,6 +1,6 @@
 # Building args
 TARGET 			:= riscv64gc-unknown-none-elf
-MODE 			:= release
+MODE 			:= debug
 KERNEL_ELF 		:= target/$(TARGET)/$(MODE)/oshit_kernel
 KERNEL_BIN 		:= $(KERNEL_ELF).bin
 DISASM_TMP 		:= target/$(TARGET)/$(MODE)/asm
@@ -9,8 +9,8 @@ OBJCOPY 		:= rust-objcopy --binary-architecture=riscv64
 DISASM 			?= -x
 BOARD			?= qemu
 FEATURES		?= board_qemu min_log_level_verbose
-K210-SERIALPORT	= COM3
-K210-BURNER 	= ../kflash.py/kflash.py
+K210-SERIALPORT	:= COM3
+K210-BURNER 	:= ../kflash.py/kflash.py
 BOOTLOADER 		:= ../bootloader/rustsbi-$(BOARD).bin
 K210_BOOTLOADER_SIZE := 131072
 
@@ -34,7 +34,11 @@ $(KERNEL_BIN): kernel
 
 kernel:
 	@cp src/linker_$(BOARD).ld src/linker.ld
-	@cargo build --release --features "$(FEATURES)"
+ifeq ($(MODE), debug)
+	cargo build --features "$(FEATURES)"
+else
+	cargo build --release --features "$(FEATURES)"
+endif
 	@rm src/linker.ld
 
 clean:
@@ -45,10 +49,10 @@ disasm: kernel
 
 run: build
 ifeq ($(BOARD),qemu)
-	@qemu-system-riscv64 \
+	qemu-system-riscv64 \
 		-machine virt \
 		-nographic \
-		-bios default\
+		-bios $(BOOTLOADER)\
 		-device loader,file=$(KERNEL_BIN),addr=$(KERNEL_ENTRY_PA)
 else
 	@cp $(BOOTLOADER) $(BOOTLOADER).copy
@@ -58,5 +62,14 @@ else
 	python.exe $(K210-BURNER) -p $(K210-SERIALPORT) -b 1500000 $(KERNEL_BIN)
 	python.exe -m serial.tools.miniterm --eol LF --dtr 0 --rts 0 --filter direct $(K210-SERIALPORT) 115200
 endif
+
+debug: build
+	@qemu-system-riscv64 \
+			-s -S \
+			-machine virt \
+			-nographic \
+			-bios $(BOOTLOADER)\
+			-device loader,file=$(KERNEL_BIN),addr=$(KERNEL_ENTRY_PA)
+
 			
-.PHONY: build env kernel clean disasm run
+.PHONY: build env kernel clean disasm run debug

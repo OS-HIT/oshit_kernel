@@ -117,12 +117,12 @@ pub fn init() {
 fn frame_allocator_test() {
     verbose!("Testing frame allocator...");
     let mut v: Vec<FrameTracker> = Vec::new();
-    for i in 0..5 {
+    for _i in 0..5 {
         let frame = alloc_frame().unwrap();
         v.push(frame);
     }
     v.clear();
-    for i in 0..5 {
+    for _i in 0..5 {
         let frame = alloc_frame().unwrap();
         v.push(frame);
     }

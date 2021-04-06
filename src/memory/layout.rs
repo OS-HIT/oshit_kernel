@@ -77,6 +77,7 @@ impl Segment {
         pagetable.map(vpn, ppn, PTEFlags::from_bits(self.flags.bits).unwrap());
     }
 
+    #[allow(dead_code)]
     pub fn unmap_page(&mut self, pagetable: &mut PageTable, vpn: VirtPageNum) {
         if self.map_type == MapType::Framed {
             self.frames.remove(&vpn);
@@ -90,6 +91,7 @@ impl Segment {
         }
     }
 
+    #[allow(dead_code)]
     pub fn unmap_pages(&mut self, pagetable: &mut PageTable) {
         for vpn in self.range {
             self.unmap_page(pagetable, vpn);
@@ -104,7 +106,7 @@ impl Segment {
         let len = data.len();
         while data_i < len {
             let src = &data[data_i..min(data_i + PAGE_SIZE, len)];
-            let mut dst: &mut [u8];
+            let dst: &mut [u8];
             if let Some(ppn) = pagetable.translate(vpn_i) {
                 dst = &mut ppn.ppn().page_ptr()[..src.len()];
             } else {
@@ -131,11 +133,16 @@ impl MemLayout {
     }
     
     pub fn activate(&self) {
+        info!("Current satp: {:0X}", satp::read().bits());
         verbose!("Kernel switching to virtual memory space...");
         let satp = self.pagetable.get_satp();
         unsafe {
             satp::write(satp);
             llvm_asm!("sfence.vma" :::: "volatile");
+        }
+        info!("New satp: {:0X}", satp::read().bits());
+        if satp::read().mode() != satp::Mode::Sv39 {
+            panic!("Error: failed switch to SV39");
         }
         info!("Kernel virtual memory layout has been activated.");
     }
@@ -250,7 +257,7 @@ impl MemLayout {
                 if program_header.flags().is_execute() {
                     segment_flags |= SegmentFlags::X;
                 }
-                let mut segment = Segment::new(start, stop, MapType::Framed, segment_flags);
+                let segment = Segment::new(start, stop, MapType::Framed, segment_flags);
                 end_vpn = segment.range.get_end();
                 layout.add_segment_with_source(
                     segment, 
@@ -262,7 +269,7 @@ impl MemLayout {
             }
         }
         // map user stacks
-        let mut stack_bottom = VirtAddr::from(end_vpn) + PAGE_SIZE;
+        let stack_bottom = VirtAddr::from(end_vpn) + PAGE_SIZE;
         layout.add_segment(
             Segment::new(
                 stack_bottom, 
@@ -317,7 +324,7 @@ pub fn remap_test() {
     }
 
     verbose!("Testing kernel memory layout...");
-    let mut kernel_space = KERNEL_MEM_LAYOUT.lock();
+    let kernel_space = KERNEL_MEM_LAYOUT.lock();
     let mid_text: VirtAddr = ((stext as usize + etext as usize) / 2).into();
     let mid_rodata: VirtAddr = ((srodata as usize + erodata as usize) / 2).into();
     let mid_data: VirtAddr = ((sdata as usize + edata as usize) / 2).into();

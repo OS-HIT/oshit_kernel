@@ -34,6 +34,7 @@ impl ProcessContext {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Copy, Clone, PartialEq)]
 pub enum ProcessStatus {
     New,

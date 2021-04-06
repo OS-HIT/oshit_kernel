@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 /// Virtual address, Physical address, Physical Page Number, Virtual Page Number
 
 use core::fmt::{self, Debug, Formatter};

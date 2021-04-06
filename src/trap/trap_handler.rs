@@ -56,7 +56,7 @@ pub fn kernel_trap() -> ! {
 // no mangle so that call user_trap in asm won't break
 // return cx for syscall res and new sepc.
 #[no_mangle]
-pub fn user_trap(cx: &mut TrapContext) -> ! {
+pub fn user_trap(_cx: &mut TrapContext) -> ! {
     set_kernel_trap_entry();
     let cx = get_current_trap_context();
     let scause = scause::read();
