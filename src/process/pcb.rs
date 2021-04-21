@@ -14,6 +14,7 @@ use crate::trap::{
     user_trap,
     trap_return
 };
+use crate::sbi::get_time;
 
 // saved on top of the kernel stack of corresponding process.
 #[repr(C)]
@@ -48,7 +49,10 @@ pub struct ProcessControlBlock {
     pub status: ProcessStatus,
     pub layout: MemLayout,
     pub trap_context_ppn: PhysPageNum,
-    pub size: usize
+    pub size: usize,
+    pub up_since: usize,
+    pub last_start: usize,
+    pub utime: usize,
 }
 
 impl ProcessControlBlock {
@@ -73,7 +77,10 @@ impl ProcessControlBlock {
             status,
             layout,
             trap_context_ppn,
-            size: user_stack_top
+            size: user_stack_top,
+            up_since: get_time(),
+            last_start: 0,
+            utime: 0,
         };
         let trap_context = pcb.get_trap_context();
         *trap_context = TrapContext::init(

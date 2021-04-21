@@ -88,7 +88,9 @@ pub use pagetable::{
     PageTable,
     PageTableEntry,
     PTEFlags,
-    get_user_data
+    get_user_data,
+    write_user_data,
+    translate_user_va,
 };
 
 pub use frame_alloc::{

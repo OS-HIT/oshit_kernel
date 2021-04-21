@@ -50,6 +50,7 @@ fn set_user_trap_entry() {
 
 #[no_mangle]
 pub fn kernel_trap() -> ! {
+    fatal!("Fatal error: unhandled trap {:?}.", scause::read().cause());
     panic!("Kernel trap not supported yet!");
 }
 

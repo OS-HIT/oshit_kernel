@@ -1,5 +1,5 @@
-pub const USER_STACK_SIZE   : usize = 4096 * 2;
 pub const KERNEL_STACK_SIZE : usize = 4096 * 2;
+pub const USER_STACK_SIZE   : usize = 4096 * 2;
 pub const KERNEL_HEAP_SIZE  : usize = 0x200000; // 2MB
 pub const MAX_APP_NUM       : usize = 4;
 pub const APP_BASE_ADDRESS  : usize = 0x80400000;
@@ -15,3 +15,19 @@ pub const CLOCK_FREQ: usize = 403000000 / 62;
 
 #[cfg(feature = "board_qemu")]
 pub const CLOCK_FREQ: usize = 12500000;
+
+pub const SYSNAME       : &[u8] = b"OSHIT Kernel (Pre-Alpha)\0";
+pub const NODENAME      : &[u8] = b"Network currently unsupported\0";
+pub const RELEASE       : &[u8] = b"0.0.1-alpha\0";   // Semantic Versioning
+// NOTE: following line will be found and modified by build.rs.
+// DONT CHANGE THIS LINE MANUALLY!!!!
+pub const VERSION : &[u8] = b"Wed, 21 Apr 2021 07:45:49 +0000\0";
+pub const MACHINE       : &[u8] = b"UNKNOWN MACHINE\0";
+pub const DOMAINNAME    : &[u8] = b"UNKNOWN DOMAIN NAME\0";
+
+
+
+
+
+
+

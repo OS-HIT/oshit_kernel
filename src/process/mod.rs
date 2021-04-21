@@ -14,5 +14,7 @@ pub use manager::{
     exit_switch,
     get_current_satp,
     get_current_trap_context,
+    get_current_up_since,
+    get_current_utime,
 };
 // pub use temp_app_loader::init_app_context;

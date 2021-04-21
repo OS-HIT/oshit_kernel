@@ -152,7 +152,7 @@ impl PageTable {
     }
 }
 
-pub fn get_user_data(satp: usize,mut start: VirtAddr, len: usize) -> Vec<&'static [u8]> {
+pub fn get_user_data(satp: usize, mut start: VirtAddr, len: usize) -> Vec<&'static [u8]> {
     let pagetable = PageTable::from_satp(satp);
     let end = start + len;
     let mut pages = Vec::new();
@@ -170,4 +170,30 @@ pub fn get_user_data(satp: usize,mut start: VirtAddr, len: usize) -> Vec<&'stati
     }
 
     return pages;
+}
+
+pub fn write_user_data(satp: usize, data: &[u8], mut start: VirtAddr, len: usize) {
+    let pagetable = PageTable::from_satp(satp);
+    let origin = start.0;
+    let end = start + len;
+    while start < end {
+        let mut vpn = start.to_vpn();
+        let ppn = pagetable.translate(vpn).unwrap().ppn();
+        vpn.step();
+        let copy_end = min(vpn.into(), end);    // page end or buf end
+        &ppn.page_ptr()[
+            start.page_offset()
+            ..
+            copy_end.page_offset()
+        ].copy_from_slice(&data[(start - origin).0..(copy_end - origin).0]);
+        start = copy_end;
+    }
+}
+
+pub fn translate_user_va<T>(satp: usize, va: VirtAddr) -> *mut T {
+    let pagetable = PageTable::from_satp(satp);
+    let vpn = va.to_vpn();
+    let ppn = pagetable.translate(vpn).unwrap().ppn();
+    // FUCK ME that is evil
+    return (&mut ppn.page_ptr()[va.page_offset()]) as *mut u8 as usize as *mut T;
 }

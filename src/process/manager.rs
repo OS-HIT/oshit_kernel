@@ -8,6 +8,7 @@ use core::cell::RefCell;
 use lazy_static::*;
 use super::temp_app_loader::{get_app_count, get_app_data};
 use alloc::vec::Vec;
+use crate::sbi::get_time;
 
 global_asm!(include_str!("switch.asm"));
 
@@ -102,6 +103,8 @@ impl ProcessManager {
             let mut inner = self.inner.borrow_mut();
             let current = inner.current_process;
             inner.current_process = nxt;
+            inner.processes[current].utime += get_time() - &inner.processes[current].last_start;
+            inner.processes[nxt].last_start = get_time();
             let current_context : *const usize = &inner.processes[current].context_ptr;
             let nxt_context : *const usize = &inner.processes[nxt].context_ptr;
             core::mem::drop(inner);
@@ -127,6 +130,18 @@ impl ProcessManager {
         let current = inner.current_process;
         return inner.processes[current].get_trap_context();
     }
+
+    fn get_current_up_since(&self) -> usize {
+        let inner = self.inner.borrow();
+        let current = inner.current_process;
+        return inner.processes[current].up_since;
+    }
+
+    fn get_current_utime(&self) -> usize {
+        let inner = self.inner.borrow();
+        let current = inner.current_process;
+        return inner.processes[current].utime;
+    }
 }
 
 pub fn run_first_app() {
@@ -151,6 +166,14 @@ pub fn get_current_satp() -> usize {
 
 pub fn get_current_trap_context() -> &'static mut TrapContext {
     PROCESS_MANAGER.get_current_trap_context()
+}
+
+pub fn get_current_up_since() -> usize {
+    PROCESS_MANAGER.get_current_up_since()
+}
+
+pub fn get_current_utime() -> usize {
+    PROCESS_MANAGER.get_current_utime()
 }
 
 pub fn suspend_switch() {
