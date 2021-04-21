@@ -70,6 +70,5 @@ debug: build
 			-nographic \
 			-bios $(BOOTLOADER)\
 			-device loader,file=$(KERNEL_BIN),addr=$(KERNEL_ENTRY_PA)
-
 			
 .PHONY: build env kernel clean disasm run debug
