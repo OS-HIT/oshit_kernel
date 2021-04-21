@@ -15,6 +15,8 @@ use crate::sbi::{
     reset_timer_trigger,
 };
 use crate::process::suspend_switch;
+use crate::config::*;
+use crate::process::{get_current_trap_context, get_current_satp};
 
 global_asm!(include_str!("./trap.asm"));
 
@@ -34,10 +36,30 @@ pub fn init() {
     info!("Traps initialized.");
 }
 
-// no mangle so that call trap_handler in asm won't break
+fn set_kernel_trap_entry() {
+    unsafe {
+        stvec::write(kernel_trap as usize, stvec::TrapMode::Direct);
+    }
+}
+
+fn set_user_trap_entry() {
+    unsafe {
+        stvec::write(TRAMPOLINE as usize, stvec::TrapMode::Direct);
+    }
+}
+
+#[no_mangle]
+pub fn kernel_trap() -> ! {
+    fatal!("Fatal error: unhandled trap {:?}.", scause::read().cause());
+    panic!("Kernel trap not supported yet!");
+}
+
+// no mangle so that call user_trap in asm won't break
 // return cx for syscall res and new sepc.
 #[no_mangle]
-pub fn trap_handler(cx: &mut TrapContext) -> &mut TrapContext {
+pub fn user_trap(_cx: &mut TrapContext) -> ! {
+    set_kernel_trap_entry();
+    let cx = get_current_trap_context();
     let scause = scause::read();
     let stval = stval::read();
     match scause.cause() {
@@ -56,5 +78,22 @@ pub fn trap_handler(cx: &mut TrapContext) -> &mut TrapContext {
             panic!("Irrecoverable error, kernel panic.");
         }
     }
-    return cx;
+    trap_return();
+}
+
+#[no_mangle]
+pub fn trap_return() -> ! {
+    set_user_trap_entry();
+    let trap_cx_ptr = TRAP_CONTEXT;
+    let user_satp = get_current_satp();
+    extern "C" {
+        fn __alltraps();
+        fn __restore();
+    }
+    let restore_va = __restore as usize - __alltraps as usize + TRAMPOLINE;
+    unsafe {
+        llvm_asm!("fence.i" :::: "volatile");
+        llvm_asm!("jr $0" :: "r"(restore_va), "{a0}"(trap_cx_ptr), "{a1}"(user_satp) :: "volatile");
+    }
+    unreachable!("Unreachable in trap_return!");
 }

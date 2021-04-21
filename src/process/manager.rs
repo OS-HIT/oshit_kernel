@@ -1,12 +1,14 @@
-use super::ProcessContext;
+// use super::ProcessContext;
 use super::ProcessControlBlock;
 use super::ProcessStatus;
+use crate::trap::TrapContext;
 
-use crate::config::*;
+// use crate::config::*;
 use core::cell::RefCell;
 use lazy_static::*;
-use super::temp_app_loader::get_app_count;
-use super::temp_app_loader::init_app_context;
+use super::temp_app_loader::{get_app_count, get_app_data};
+use alloc::vec::Vec;
+use crate::sbi::get_time;
 
 global_asm!(include_str!("switch.asm"));
 
@@ -23,7 +25,7 @@ pub struct ProcessManager {
 }
 
 struct ProcessManagerInner {
-    processes: [ProcessControlBlock; MAX_APP_NUM],
+    processes: Vec<ProcessControlBlock>,
     current_process: usize,
 }
 
@@ -32,19 +34,15 @@ unsafe impl Sync for ProcessManager {}
 // we need to initialize pcbs
 lazy_static! {
     pub static ref PROCESS_MANAGER: ProcessManager = {
+        verbose!("Initializing process manager...");
         let num_app = get_app_count();
-        let mut processes = [
-            ProcessControlBlock {
-                context_ptr: 0,
-                status: ProcessStatus::New,
-            }; 
-            MAX_APP_NUM
-            // num_app
-        ];
+        let mut processes = Vec::new();
         for i in 0..num_app {
-            processes[i].context_ptr = init_app_context(i) as usize;
-            processes[i].status = ProcessStatus::Ready;
+            processes.push(
+                ProcessControlBlock::new(get_app_data(i), i)
+            );
         }
+
         ProcessManager {
             num_app,
             inner: RefCell::new(
@@ -105,6 +103,8 @@ impl ProcessManager {
             let mut inner = self.inner.borrow_mut();
             let current = inner.current_process;
             inner.current_process = nxt;
+            inner.processes[current].utime += get_time() - &inner.processes[current].last_start;
+            inner.processes[nxt].last_start = get_time();
             let current_context : *const usize = &inner.processes[current].context_ptr;
             let nxt_context : *const usize = &inner.processes[nxt].context_ptr;
             core::mem::drop(inner);
@@ -117,6 +117,30 @@ impl ProcessManager {
         } else {
             panic!("All proc fin.")
         }
+    }
+
+    fn get_current_satp(&self) -> usize {
+        let inner = self.inner.borrow();
+        let current = inner.current_process;
+        return inner.processes[current].get_satp();
+    }
+
+    fn get_current_trap_context(&self) -> &'static mut TrapContext {
+        let inner = self.inner.borrow();
+        let current = inner.current_process;
+        return inner.processes[current].get_trap_context();
+    }
+
+    fn get_current_up_since(&self) -> usize {
+        let inner = self.inner.borrow();
+        let current = inner.current_process;
+        return inner.processes[current].up_since;
+    }
+
+    fn get_current_utime(&self) -> usize {
+        let inner = self.inner.borrow();
+        let current = inner.current_process;
+        return inner.processes[current].utime;
     }
 }
 
@@ -134,6 +158,22 @@ pub fn yield_current() {
 
 pub fn exit_current() {
     PROCESS_MANAGER.exit_current();
+}
+
+pub fn get_current_satp() -> usize {
+    PROCESS_MANAGER.get_current_satp()
+}
+
+pub fn get_current_trap_context() -> &'static mut TrapContext {
+    PROCESS_MANAGER.get_current_trap_context()
+}
+
+pub fn get_current_up_since() -> usize {
+    PROCESS_MANAGER.get_current_up_since()
+}
+
+pub fn get_current_utime() -> usize {
+    PROCESS_MANAGER.get_current_utime()
 }
 
 pub fn suspend_switch() {

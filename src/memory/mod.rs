@@ -67,20 +67,69 @@
 
 mod addresses;
 mod pagetable;
+mod kernel_heap;
+mod frame_alloc;
+mod layout;
+
+use alloc::vec::Vec;
 
 pub use addresses::{
     VirtAddr,
     PhysAddr,
     VirtPageNum,
     PhysPageNum,
+    VPNRange,
+    PPNRange,
+    VARange,
+    PARange
 };
 
-pub use pagetable::{};
+pub use pagetable::{
+    PageTable,
+    PageTableEntry,
+    PTEFlags,
+    get_user_data,
+    write_user_data,
+    translate_user_va,
+};
 
-use riscv::register::satp;
+pub use frame_alloc::{
+    FrameTracker,
+    alloc_frame,
+};
+
+pub use layout::{
+    KERNEL_MEM_LAYOUT,
+    MemLayout,
+    Segment,
+    MapType,
+    SegmentFlags
+};
 
 pub fn init() {
     verbose!("Initilizing memory managment unit...");
+    kernel_heap::init_kernel_heap();
+    frame_allocator_test();
+    KERNEL_MEM_LAYOUT.lock().activate();
+    layout::remap_test();
     // satp::set(mode: Mode, asid: usize, ppn: usize)
     info!("Memory managment initialized.");
 }
+
+fn frame_allocator_test() {
+    verbose!("Testing frame allocator...");
+    let mut v: Vec<FrameTracker> = Vec::new();
+    for _i in 0..5 {
+        let frame = alloc_frame().unwrap();
+        v.push(frame);
+    }
+    v.clear();
+    for _i in 0..5 {
+        let frame = alloc_frame().unwrap();
+        v.push(frame);
+    }
+    drop(v);
+    verbose!("frame_allocator_test passed!");
+    info!("Page frame allocator initilized.");
+}
+

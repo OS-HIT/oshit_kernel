@@ -9,6 +9,7 @@ pub fn sys_yield() -> isize {
 }
 
 pub fn sys_exit(code: i32) -> ! {
+    info!("Application exited with code {:}", code);
     exit_switch();
     unreachable!("This part should be unreachable. Go check __switch.")
 }
