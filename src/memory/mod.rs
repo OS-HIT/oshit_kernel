@@ -108,6 +108,16 @@ pub use layout::{
 
 pub fn init() {
     verbose!("Initilizing memory managment unit...");
+    verbose!("Clearing BSS...");
+    extern "C" {
+        fn sbss();
+        fn ebss();
+    }
+    for i in (sbss as usize)..(ebss as usize) {
+        unsafe{
+            (i as *mut u8).write_volatile(0);
+        }
+    }
     kernel_heap::init_kernel_heap();
     frame_allocator_test();
     KERNEL_MEM_LAYOUT.lock().activate();

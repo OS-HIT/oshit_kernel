@@ -32,9 +32,9 @@ pub struct PageTableEntry {
     pub bits: usize
 }
 
-/// 63         5352                                                  1098 
-/// | reserved  ||                        PPN                         ||| DAGU XWRV
-/// XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX
+///  63         5352                                                  1098 
+///  | reserved  ||                        PPN                         ||| DAGU XWRV
+/// [XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX
 impl PageTableEntry {
     pub fn new(ppn: PhysPageNum, flags: PTEFlags) -> Self {
         PageTableEntry {
@@ -190,10 +190,12 @@ pub fn write_user_data(satp: usize, data: &[u8], mut start: VirtAddr, len: usize
     }
 }
 
+
+// FIXME: Might go wrong if object happened to be on two (or even more) pages.
 pub fn translate_user_va<T>(satp: usize, va: VirtAddr) -> *mut T {
     let pagetable = PageTable::from_satp(satp);
     let vpn = va.to_vpn();
     let ppn = pagetable.translate(vpn).unwrap().ppn();
-    // FUCK ME that is evil
+    // HACK: FUCK ME that is evil
     return (&mut ppn.page_ptr()[va.page_offset()]) as *mut u8 as usize as *mut T;
 }

@@ -8,7 +8,7 @@ pub fn sys_write(fd: usize, buf: VirtAddr, len: usize) -> isize {
         FD_STDOUT => {
             let buffers = get_user_data(get_current_satp(), buf, len);
             for buffer in buffers {
-                print!("{}", core::str::from_utf8(buffer).unwrap());    // TODO: FIXME, there are chances that codepoint not aligned and break into different pages. find a way to concentrate then out put it.
+                print!("{}", core::str::from_utf8(buffer).unwrap());    // FIXME: there are chances that codepoint not aligned and break into different pages. find a way to concentrate then out put it.
             }
             len as isize
         },
@@ -16,7 +16,7 @@ pub fn sys_write(fd: usize, buf: VirtAddr, len: usize) -> isize {
             set_log_color(LogLevel::Error);
             let buffers = get_user_data(get_current_satp(), buf, len);
             for buffer in buffers {
-                print!("{}", core::str::from_utf8(buffer).unwrap());    // TODO: FIXME (same as above)
+                print!("{}", core::str::from_utf8(buffer).unwrap());    // FIXME: (same as above)
             }
             reset_color();
             len as isize

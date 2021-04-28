@@ -142,7 +142,7 @@ impl MemLayout {
         }
         info!("New satp: {:0X}", satp::read().bits());
         if satp::read().mode() != satp::Mode::Sv39 {
-            panic!("Error: failed switch to SV39");
+            // panic!("Error: failed switch to SV39");
         }
         info!("Kernel virtual memory layout has been activated.");
     }

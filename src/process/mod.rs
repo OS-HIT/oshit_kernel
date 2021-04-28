@@ -1,6 +1,8 @@
 mod pcb;
 mod manager;
 mod temp_app_loader;
+mod pid;
+mod kernel_stack;
 
 pub use pcb::ProcessContext;
 pub use pcb::ProcessControlBlock;
@@ -16,5 +18,9 @@ pub use manager::{
     get_current_trap_context,
     get_current_up_since,
     get_current_utime,
+};
+pub use pid::{
+    Pid,
+    alloc_pid,
 };
 // pub use temp_app_loader::init_app_context;

@@ -11,15 +11,15 @@ use crate::utils::{
     SimpleRange
 };
 
-/// 63                                                            12 11           0
-/// |                           PPN                                | |   offset   |
-/// XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX
+///  63                                                            12 11           0
+///  |                           PPN                                | |   offset   |
+/// [XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub struct PhysAddr(pub usize);
 
-/// 63                           3938       3029       2120       12 11           0
-/// |            EXT              ||   L2    ||   L1    ||    L0   | |   offset   |
-/// XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX
+///  63                           3938       3029       2120       12 11           0
+///  |            EXT              ||   L2    ||   L1    ||    L0   | |   offset   |
+/// [XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub struct VirtAddr(pub usize);
 
