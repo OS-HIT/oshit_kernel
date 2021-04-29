@@ -14,6 +14,8 @@ fn min_log_level() -> LogLevel {
         return LogLevel::Warning;
     } else if cfg!(feature = "min_log_level_info") {
         return LogLevel::Info;
+    } else if cfg!(feature = "min_log_level_debug") {
+        return LogLevel::Debug;
     } else {
         return LogLevel::Verbose;
     }
@@ -186,7 +188,7 @@ pub fn reset_color() {
 pub fn log(log_level: LogLevel, args: fmt::Arguments, file: &'static str, line: u32) {
     if log_level >= min_log_level() {
         set_log_color(log_level);
-        print!("[{:#11.5}]{} @ {:>#30} line {:<#5} : ", get_time_ms(), log_level, file, line);
+        print!("[{:#11.5}]{} {:>#30} @ {:<#5} : ", get_time_ms(), log_level, file, line);
         print(args);
         reset_color();
         println!();

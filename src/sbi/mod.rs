@@ -9,6 +9,8 @@ pub use sbi_funcs::{
     put_byte,
     shutdown,
     sbi_call,
+    sbi_call_all,
+    get_vendor_id
 };
 
 pub use primitive_io::{

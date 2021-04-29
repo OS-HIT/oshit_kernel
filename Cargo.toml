@@ -19,6 +19,7 @@ chrono = "0.4"
 
 [features]
 min_log_level_verbose = []
+min_log_level_debug = []
 min_log_level_info = []
 min_log_level_warning = []
 min_log_level_error = []

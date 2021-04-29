@@ -42,6 +42,7 @@ pub struct UTSName {
 pub fn sys_uname(uts_va: VirtAddr) -> isize {
     let uts_ptr: *mut UTSName = translate_user_va(get_current_satp(), uts_va);
     if let Some(uts) = unsafe{ uts_ptr.as_mut() } {
+
         strcpy(SYSNAME.as_ptr(),    translate_user_va(get_current_satp(), VirtAddr(uts.sysname   )));
         strcpy(NODENAME.as_ptr(),   translate_user_va(get_current_satp(), VirtAddr(uts.nodename  )));
         strcpy(RELEASE.as_ptr(),    translate_user_va(get_current_satp(), VirtAddr(uts.release   )));

@@ -133,18 +133,18 @@ impl MemLayout {
     }
     
     pub fn activate(&self) {
-        info!("Current satp: {:0X}", satp::read().bits());
         verbose!("Kernel switching to virtual memory space...");
         let satp = self.pagetable.get_satp();
         unsafe {
             satp::write(satp);
             llvm_asm!("sfence.vma" :::: "volatile");
         }
-        info!("New satp: {:0X}", satp::read().bits());
         if satp::read().mode() != satp::Mode::Sv39 {
-            // panic!("Error: failed switch to SV39");
+            error!("Bit flags indicates that we failed switch to SV39.");
+            error!("Current SATP: {:0X}", satp::read().bits());
+        } else {
+            info!("Kernel virtual memory layout has been activated.");
         }
-        info!("Kernel virtual memory layout has been activated.");
     }
 
     pub fn add_segment(&mut self, mut segment: Segment) {

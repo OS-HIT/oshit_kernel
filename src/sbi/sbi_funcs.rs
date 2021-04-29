@@ -26,6 +26,21 @@ pub fn sbi_call(which: usize, mut arg0: usize, arg1: usize, arg2: usize) -> usiz
     arg0
 }
 
+#[inline(always)]
+pub fn sbi_call_all(eid: i32, fid: i32, mut arg0: usize, mut arg1: usize, arg2: usize) -> (usize, usize){
+    unsafe {
+        asm!(
+            "ecall",
+            inout("a0") arg0,
+            inout("a1") arg1,
+            in("a2") arg2,
+            in("a6") fid,
+            in("a7") eid
+        )
+    }
+    (arg0, arg1)
+}
+
 pub fn set_timer(timer: usize) {
     sbi_call(SBI_SET_TIMER, timer, 0, 0);
 }
@@ -46,4 +61,8 @@ pub fn get_byte() -> u8 {
 pub fn shutdown() -> ! {
     sbi_call(SBI_SHUTDOWN, 0, 0, 0);
     unreachable!()
+}
+
+pub fn get_vendor_id() -> i32 {
+    sbi_call_all(0x10, 0x4, 0, 0, 0).1 as i32
 }

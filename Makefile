@@ -8,7 +8,8 @@ OBJDUMP 		:= rust-objdump --arch-name=riscv64
 OBJCOPY 		:= rust-objcopy --binary-architecture=riscv64
 DISASM 			?= -x
 BOARD			?= qemu
-FEATURES		?= board_qemu min_log_level_verbose
+OUTPUT_LVL		?= verbose
+FEATURES		?= board_qemu min_log_level_$(OUTPUT_LVL)
 K210-SERIALPORT	:= COM3
 K210-BURNER 	:= ../kflash.py/kflash.py
 BOOTLOADER 		:= ../bootloader/rustsbi-$(BOARD).bin
