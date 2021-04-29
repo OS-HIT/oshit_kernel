@@ -29,14 +29,12 @@ mod utils;
 #[cfg(not(any(feature="board_qemu", feature="board_k210")))]
 compile_error!("At least one of the board_* feature should be active!");
 
-
 #[no_mangle]
 pub extern "C" fn rust_main() -> !{
     info!("Kernel hello world!");
     info!("Vendor id = {}", sbi::get_vendor_id());
     memory::init();
     trap::init();
-    // process::load_apps();
     process::run_first_app();
     panic!("drop off from bottom!");
 }
