@@ -29,38 +29,11 @@ mod utils;
 #[cfg(not(any(feature="board_qemu", feature="board_k210")))]
 compile_error!("At least one of the board_* feature should be active!");
 
-use lazy_static::*;
-use core::cell::RefCell;
-pub struct test_struct {
-    inner: RefCell<test_struct_inner>,
-}
-struct test_struct_inner {
-    val: usize
-}
-
-unsafe impl Sync for test_struct {}
-
-lazy_static! {
-    pub static ref test_var : test_struct = test_struct{
-        inner: RefCell::new(
-            test_struct_inner{
-                val: 0,
-            }
-        ),
-    };
-}
-
 #[no_mangle]
 pub extern "C" fn rust_main() -> !{
-    for _i in 0..50000000 {unsafe{asm!("nop");}}
-    info!("test value = {:?}", test_var.inner.borrow().val);
-    test_var.inner.borrow_mut().val = 1;
-    info!("test value = {:?}", test_var.inner.borrow().val);
-
     info!("Kernel hello world!");
     memory::init();
     trap::init();
-    // process::load_apps();
     process::run_first_app();
     panic!("drop off from bottom!");
 }

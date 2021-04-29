@@ -21,9 +21,12 @@ pub const NODENAME      : &[u8] = b"Network currently unsupported\0";
 pub const RELEASE       : &[u8] = b"0.0.1-alpha\0";   // Semantic Versioning
 // NOTE: following line will be found and modified by build.rs.
 // DONT CHANGE THIS LINE MANUALLY!!!!
-pub const VERSION : &[u8] = b"Wed, 28 Apr 2021 15:48:11 +0000\0";
+pub const VERSION : &[u8] = b"Thu, 29 Apr 2021 06:01:19 +0000\0";
 pub const MACHINE       : &[u8] = b"UNKNOWN MACHINE\0";
 pub const DOMAINNAME    : &[u8] = b"UNKNOWN DOMAIN NAME\0";
+
+
+
 
 
 

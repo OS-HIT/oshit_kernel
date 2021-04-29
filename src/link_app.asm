@@ -23,4 +23,4 @@ app_0_end:
 app_1_start:
     .incbin "../user_bins/usr_hello_world_b"
 app_1_end:
-# Try to make cargo happy: last compiled @ Wed, 28 Apr 2021 15:48:11 +0000
+# Try to make cargo happy: last compiled @ Thu, 29 Apr 2021 06:01:19 +0000

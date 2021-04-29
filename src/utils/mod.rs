@@ -7,5 +7,6 @@ pub use range::{
 };
 
 pub use mem_op::{
-    strcpy
+    strcpy,
+    strlen
 };

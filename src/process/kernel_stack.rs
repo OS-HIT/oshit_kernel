@@ -34,4 +34,17 @@ impl KernelStack {
             pid: pid.0
         };
     }
+
+    pub fn save_to_top<T>(&self, value: T) -> *mut T where T: Sized {
+        let top = kernel_stack_pos(self.pid).1;
+        let obj_ptr = (top - core::mem::size_of::<T>()) as *mut T;
+        unsafe {*obj_ptr = value;}
+        return obj_ptr;
+    }
+}
+
+impl Drop for KernelStack {
+    fn drop(&mut self) {
+        KERNEL_MEM_LAYOUT.lock().drop_segment(kernel_stack_pos(self.pid).0.into());
+    }
 }
