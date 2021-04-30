@@ -117,6 +117,18 @@ impl Segment {
             data_i += PAGE_SIZE;
         }
     }
+
+    pub fn clone_from(src: &Segment) -> Self {
+        Self {
+            range: VPNRange::new(
+                src.range.get_start(),
+                src.range.get_end()
+            ),
+            frames: BTreeMap::new(),
+            map_type: src.map_type,
+            flags: src.flags,
+        }
+    }
 }
 
 pub struct MemLayout {
@@ -130,6 +142,21 @@ impl MemLayout {
             pagetable   : PageTable::new(),
             segments    : Vec::new(),
         }
+    }
+
+    pub fn fork_from_user(src: &MemLayout) -> Self {
+        let mut layout = Self::new();
+        layout.map_trampoline();
+        for segment in src.segments.iter() {
+            let new_segment = Segment::clone_from(segment);
+            layout.add_segment(new_segment);
+            for vpn in segment.range {
+                let src_ppn = src.translate(vpn).unwrap().ppn();
+                let dst_ppn = layout.translate(vpn).unwrap().ppn();
+                dst_ppn.page_ptr().copy_from_slice(src_ppn.page_ptr());
+            }
+        }
+        return layout;
     }
     
     pub fn activate(&self) {
@@ -159,7 +186,7 @@ impl MemLayout {
     }
 
     pub fn new_kernel() -> Self {
-        verbose!("Building kernel memory layout...");
+        debug!("Building kernel memory layout...");
         extern "C" {
             fn stext();
             fn etext();
@@ -349,5 +376,5 @@ pub fn remap_test() {
         kernel_space.pagetable.translate(mid_data.to_vpn()).unwrap().executable(),
         false,
     );
-    info!("remap_test passed!");
+    debug!("remap_test passed!");
 }

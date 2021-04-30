@@ -8,9 +8,9 @@ use crate::memory::{
 use crate::config::*;
 use super::Pid;
 
-pub fn kernel_stack_pos(pid: usize) -> (usize, usize) {
+pub fn kernel_stack_pos(pid: usize) -> (VirtAddr, VirtAddr) {
     let top = TRAMPOLINE - pid * (KERNEL_STACK_SIZE + PAGE_SIZE);
-    return (top - KERNEL_STACK_SIZE, top);
+    return ((top - KERNEL_STACK_SIZE).into(), top.into());
 }
 
 pub struct KernelStack {
@@ -24,8 +24,8 @@ impl KernelStack {
             .lock()
             .add_segment(
                 Segment::new(
-                    VirtAddr::from(kernel_stack_bottom), 
-                    VirtAddr::from(kernel_stack_top),
+                    kernel_stack_bottom, 
+                    kernel_stack_top,
                     MapType::Framed,
                     SegmentFlags::R | SegmentFlags::X
                 )
@@ -37,9 +37,13 @@ impl KernelStack {
 
     pub fn save_to_top<T>(&self, value: T) -> *mut T where T: Sized {
         let top = kernel_stack_pos(self.pid).1;
-        let obj_ptr = (top - core::mem::size_of::<T>()) as *mut T;
+        let obj_ptr = (top.0 - core::mem::size_of::<T>()) as *mut T;
         unsafe {*obj_ptr = value;}
         return obj_ptr;
+    }
+
+    pub fn top(&self) -> VirtAddr {
+        return kernel_stack_pos(self.pid).1;
     }
 }
 

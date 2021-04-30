@@ -107,7 +107,7 @@ pub use layout::{
 };
 
 pub fn init() {
-    verbose!("Initilizing memory managment unit...");
+    debug!("Initilizing memory managment unit...");
     extern "C" {
         fn sbss();
         fn ebss();

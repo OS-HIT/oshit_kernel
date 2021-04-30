@@ -21,7 +21,7 @@ fn updata_version_number() -> Result<()> {
         .write(true)
         .read(true)
         // .truncate(true)
-        .open("src/config.rs")
+        .open("src/version.rs")
         .unwrap();
     let mut data = String::new();
     fo.read_to_string(&mut data)?;

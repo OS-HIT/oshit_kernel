@@ -19,7 +19,7 @@ trait FrameAllocator {
 // TODO: change to CLOCK algorithm
 lazy_static! {
     pub static ref FRAME_ALLOCATOR: Mutex<StackFrameAllocator> = {
-        verbose!("Initializing page frame allocator...");
+        debug!("Initializing page frame allocator...");
         extern "C" {
             fn ekernel();
         }

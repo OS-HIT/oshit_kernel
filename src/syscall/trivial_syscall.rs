@@ -3,6 +3,7 @@ use crate::process::{get_current_up_since, get_current_utime, get_current_satp};
 use crate::memory::{VirtAddr, translate_user_va};
 use crate::config::*;
 use crate::utils::strcpy;
+use crate::version::*;
 use core::convert::TryInto;
 
 #[repr(C)]

@@ -19,7 +19,7 @@ pub fn strlen(src: *const u8) -> usize {
 
     unsafe {
         while *p != b'\0' {
-            p.add(1);
+            p = p.add(1);
         }
     }
 

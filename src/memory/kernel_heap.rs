@@ -32,7 +32,7 @@ fn heap_test() {
 }
 
 pub fn init_kernel_heap() {
-    verbose!("Initializing kernel heap space...");
+    debug!("Initializing kernel heap space...");
     verbose!("Kernel heap start @ 0x{:0X}, length 0x{:0X}", unsafe{HEAP_SPACE.as_ptr()} as usize, KERNEL_HEAP_SIZE);
     unsafe {
         KERNEL_HEAP_ALLOCATOR.lock().init(HEAP_SPACE.as_ptr() as usize, KERNEL_HEAP_SIZE);

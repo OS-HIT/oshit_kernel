@@ -44,3 +44,13 @@ pub fn get_app_data(app_id: usize) -> &'static [u8] {
         )
     }
 }
+
+pub fn get_app(name: &str) -> Option<&'static [u8]> {
+    for i in 0..get_app_count() {
+        if APP_NAMES[i] == name {
+            return Some(get_app_data(i));
+        }
+    }
+    error!("Application {} not found!", name);
+    return None;
+}

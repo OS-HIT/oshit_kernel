@@ -24,6 +24,7 @@ mod trap;
 mod process;
 mod memory;
 pub mod config;
+pub mod version;
 mod utils;
 
 #[cfg(not(any(feature="board_qemu", feature="board_k210")))]

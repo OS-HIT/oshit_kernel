@@ -22,7 +22,7 @@ global_asm!(include_str!("./trap.asm"));
 
 // enable traps
 pub fn init() {
-    verbose!("Initilizing traps...");
+    debug!("Initilizing traps...");
     unsafe {
         extern "C" { fn __alltraps(); }
         verbose!("Enabling interrupts...");
