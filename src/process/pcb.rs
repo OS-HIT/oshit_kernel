@@ -15,6 +15,18 @@ use crate::trap::{
     trap_return
 };
 use crate::sbi::get_time;
+use super::{
+    Pid,
+    KernelStack,
+    alloc_pid,
+    kernel_stack_pos
+};
+use spin::{
+    Mutex,
+    MutexGuard
+};
+use alloc::sync::{Arc, Weak};
+use alloc::vec::Vec;
 
 // saved on top of the kernel stack of corresponding process.
 #[repr(C)]
@@ -41,10 +53,16 @@ pub enum ProcessStatus {
     New,
     Ready,
     Running,
-    Dead
+    Zombie
 }
 
 pub struct ProcessControlBlock {
+    pub pid:            Pid,
+    pub kernel_stack:   KernelStack,
+    inner:              Mutex<ProcessControlBlockInner>,
+}
+
+pub struct ProcessControlBlockInner {
     pub context_ptr: usize,
     pub status: ProcessStatus,
     pub layout: MemLayout,
@@ -53,47 +71,12 @@ pub struct ProcessControlBlock {
     pub up_since: usize,
     pub last_start: usize,
     pub utime: usize,
+    pub parent: Option<Weak<ProcessControlBlock>>,
+    pub children: Vec<Arc<ProcessControlBlock>>,
+    pub exit_code: i32,
 }
 
-impl ProcessControlBlock {
-    pub fn new(elf_data: &[u8], app_id: usize) -> Self {
-        let (layout, user_stack_top, entry) = MemLayout::new_elf(elf_data);
-        let trap_context_ppn = layout.translate(VirtAddr::from(TRAP_CONTEXT).into()).unwrap().ppn();
-        let status = ProcessStatus::Ready;
-        let kernel_stack_top = TRAMPOLINE - app_id * (KERNEL_STACK_SIZE + PAGE_SIZE);
-        KERNEL_MEM_LAYOUT.lock().add_segment(
-            Segment::new(
-                (kernel_stack_top - KERNEL_STACK_SIZE).into(), 
-                kernel_stack_top.into(), 
-                MapType::Framed,
-                SegmentFlags::R | SegmentFlags::W
-            )
-        );
-        let context_ptr = (kernel_stack_top - core::mem::size_of::<ProcessContext>()) as *mut ProcessContext;
-        unsafe {*context_ptr = ProcessContext::init();}
-        let context_ptr = context_ptr as usize;
-        let pcb = Self {
-            context_ptr,
-            status,
-            layout,
-            trap_context_ppn,
-            size: user_stack_top,
-            up_since: get_time(),
-            last_start: 0,
-            utime: 0,
-        };
-        let trap_context = pcb.get_trap_context();
-        *trap_context = TrapContext::init(
-            entry, 
-            user_stack_top, 
-            KERNEL_MEM_LAYOUT.lock().get_satp(), 
-            kernel_stack_top,
-            user_trap as usize
-        );
-
-        return pcb;
-    }
-
+impl ProcessControlBlockInner {
     pub fn get_trap_context(&self) -> &'static mut TrapContext {
         unsafe {
             (PhysAddr::from(self.trap_context_ppn.clone()).0 as *mut TrapContext).as_mut().unwrap()
@@ -102,5 +85,81 @@ impl ProcessControlBlock {
 
     pub fn get_satp(&self) -> usize {
         return self.layout.get_satp();
+    }
+}
+
+impl ProcessControlBlock {
+    pub fn new(elf_data: &[u8]) -> Self {
+        let (layout, user_stack_top, entry) = MemLayout::new_elf(elf_data);
+        let trap_context_ppn = layout.translate(VirtAddr::from(TRAP_CONTEXT).into()).unwrap().ppn();
+        let pid = alloc_pid();
+        let kernel_stack = KernelStack::new(&pid);
+        let kernel_stack_top = kernel_stack.top();
+        let context_ptr = kernel_stack.save_to_top(ProcessContext::init()) as usize;
+        let status = ProcessStatus::Ready;
+        let pcb = Self {
+            pid,
+            kernel_stack,
+            inner: Mutex::new(ProcessControlBlockInner {
+                context_ptr,
+                status,
+                layout,
+                trap_context_ppn,
+                size: user_stack_top,
+                up_since: get_time(),
+                last_start: 0,
+                utime: 0,
+                parent: None,       // FIXME: Isn't it PROC0?
+                children: Vec::new(),
+                exit_code: 0
+            }),
+        };
+        let trap_context = pcb.get_inner_locked().get_trap_context();
+        *trap_context = TrapContext::init(
+            entry, 
+            user_stack_top, 
+            KERNEL_MEM_LAYOUT.lock().get_satp(), 
+            kernel_stack_top.0,
+            user_trap as usize
+        );
+
+        return pcb;
+    }
+
+    pub fn fork(self: &Arc<ProcessControlBlock>) -> Arc<ProcessControlBlock> {
+        let mut parent_arcpcb = self.get_inner_locked();
+        let layout = MemLayout::fork_from_user(&parent_arcpcb.layout);
+        let trap_context_ppn = layout.translate(TRAP_CONTEXT.into()).unwrap().ppn();
+        let pid = alloc_pid();
+        let kernel_stack = KernelStack::new(&pid);
+        let kernel_stack_top = kernel_stack.top();
+        let context_ptr = kernel_stack.save_to_top(ProcessContext::init()) as usize;
+        let status = ProcessStatus::Ready;
+        
+        let pcb = Arc::new(ProcessControlBlock {
+            pid,
+            kernel_stack,
+            inner: Mutex::new(ProcessControlBlockInner {
+                context_ptr,
+                status,
+                layout,
+                trap_context_ppn,
+                size: parent_arcpcb.size,
+                up_since: get_time(),
+                last_start: 0,
+                utime: parent_arcpcb.utime,
+                parent: Some(Arc::downgrade(self)),
+                children: Vec::new(),
+                exit_code: 0
+            }),
+        });
+
+        parent_arcpcb.children.push(pcb.clone());
+        pcb.get_inner_locked().trap_context_ppn.;
+        return pcb;
+    }
+
+    pub fn get_inner_locked(&self) -> MutexGuard<ProcessControlBlockInner> {
+        return self.inner.lock();
     }
 }
