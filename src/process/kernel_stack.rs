@@ -27,7 +27,7 @@ impl KernelStack {
                     kernel_stack_bottom, 
                     kernel_stack_top,
                     MapType::Framed,
-                    SegmentFlags::R | SegmentFlags::X
+                    SegmentFlags::R | SegmentFlags::W
                 )
             );
         return KernelStack {
@@ -35,8 +35,8 @@ impl KernelStack {
         };
     }
 
-    pub fn save_to_top<T>(&self, value: T) -> *mut T where T: Sized {
-        let top = kernel_stack_pos(self.pid).1;
+    pub fn save_to_top<T>(&self, value: T) -> *mut T where T: Sized, {
+        let top = self.top();
         let obj_ptr = (top.0 - core::mem::size_of::<T>()) as *mut T;
         unsafe {*obj_ptr = value;}
         return obj_ptr;

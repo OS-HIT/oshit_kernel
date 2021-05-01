@@ -89,6 +89,7 @@ pub use pagetable::{
     PageTableEntry,
     PTEFlags,
     get_user_data,
+    get_user_cstr,
     write_user_data,
     translate_user_va,
 };

@@ -11,5 +11,6 @@ lazy_static! {
 }
 
 pub fn init_proc0() {
+    verbose!("init_proc0");
     enqueue(PROC0.clone());
 }

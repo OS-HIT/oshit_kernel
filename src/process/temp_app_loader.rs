@@ -8,9 +8,9 @@ lazy_static! {
         extern "C" { fn _app_names(); }
         let mut start = _app_names as usize as *const u8;
         let mut v = Vec::new();
-        let len = strlen(start);
         unsafe {
             for i in 0..count {
+                let len = strlen(start);
                 let slice = core::slice::from_raw_parts(start, len);
                 if let Ok(name) = core::str::from_utf8(slice) {
                     v.push(name);
@@ -20,6 +20,7 @@ lazy_static! {
                 } 
             }
         }
+        debug!("Loading apps: {:?}", v);
         v
     };
 }

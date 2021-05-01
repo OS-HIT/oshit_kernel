@@ -14,9 +14,9 @@ use riscv::register::{
 use crate::sbi::{
     reset_timer_trigger,
 };
-use crate::process::suspend_switch;
+use crate::process::{suspend_switch, exit_switch};
 use crate::config::*;
-use crate::process::{get_current_trap_context, get_current_satp};
+use crate::process::{current_trap_context, current_satp};
 
 global_asm!(include_str!("./trap.asm"));
 
@@ -59,23 +59,45 @@ pub fn kernel_trap() -> ! {
 #[no_mangle]
 pub fn user_trap(_cx: &mut TrapContext) -> ! {
     set_kernel_trap_entry();
-    let cx = get_current_trap_context();
     let scause = scause::read();
     let stval = stval::read();
     match scause.cause() {
         Trap::Exception(Exception::UserEnvCall) => {
+            let mut cx = current_trap_context();
             cx.sepc += 4;   // so that we don't stuck at one instruction
-            cx.regs[10] = syscall(cx.regs[17], [cx.regs[10], cx.regs[11], cx.regs[12]]) as usize;   // exec syscall in s-mode
+            let result = syscall(cx.regs[17], [cx.regs[10], cx.regs[11], cx.regs[12]]) as usize;   // exec syscall in s-mode
+            cx =  current_trap_context();
+            cx.regs[10] = result as usize;
         },
         Trap::Interrupt(Interrupt::SupervisorTimer) => {
             reset_timer_trigger();
             suspend_switch();
         },
         // TODO: Core dump and/or terminate user program and continue
+        
+        Trap::Exception(Exception::StoreFault) |
+        Trap::Exception(Exception::StorePageFault) |
+        Trap::Exception(Exception::InstructionFault) |
+        Trap::Exception(Exception::InstructionPageFault) |
+        Trap::Exception(Exception::LoadFault) |
+        Trap::Exception(Exception::LoadPageFault) => {
+            println!(
+                "[kernel] {:?} in application, bad addr = {:#x}, bad instruction = {:#x}, core dumped.",
+                scause.cause(),
+                stval,
+                current_trap_context().sepc,
+            );
+            exit_switch(-2);
+        }
+        Trap::Exception(Exception::IllegalInstruction) => {
+            error!("IllegalInstruction in application, core dumped.");
+            exit_switch(-3);
+        }
         _ => {
-            fatal!("Fatal error: unhandled trap {:?}.", scause.cause());
-            fatal!("Bad addr @ 0x{:#X}, Bad Inst @ 0x{:#X}", stval, cx.sepc);
-            panic!("Irrecoverable error, kernel panic.");
+            let cx = current_trap_context();
+            error!("Unhandled trap {:?}.", scause.cause());
+            error!("Bad addr @ 0x{:#X}, Bad Inst @ 0x{:#X}", stval, cx.sepc);
+            exit_switch(-1);
         }
     }
     trap_return();
@@ -85,7 +107,7 @@ pub fn user_trap(_cx: &mut TrapContext) -> ! {
 pub fn trap_return() -> ! {
     set_user_trap_entry();
     let trap_cx_ptr = TRAP_CONTEXT;
-    let user_satp = get_current_satp();
+    let user_satp = current_satp();
     extern "C" {
         fn __alltraps();
         fn __restore();

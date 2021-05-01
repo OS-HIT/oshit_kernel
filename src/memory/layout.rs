@@ -20,12 +20,13 @@ use lazy_static::*;
 use alloc::sync::Arc;
 use spin::Mutex;
 use riscv::register::satp;
+use core::fmt::{self, Debug, Formatter};
 
 lazy_static! {
     pub static ref KERNEL_MEM_LAYOUT: Arc<Mutex<MemLayout>> = Arc::new(Mutex::new(MemLayout::new_kernel()));
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Copy, Clone)]
 pub enum MapType {
     Identity,   // identity mapping
     Framed,     // new frame
@@ -46,6 +47,12 @@ pub struct Segment {
     frames  : BTreeMap<VirtPageNum, FrameTracker>,
     map_type: MapType,
     flags   : SegmentFlags,
+}
+
+impl Debug for Segment {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_fmt(format_args!("Segment: 0x{:x}..0x{:x}", self.range.get_start().0 << 12, self.range.get_end().0 << 12))
+    }
 }
 
 impl Segment {
@@ -133,7 +140,7 @@ impl Segment {
 
 pub struct MemLayout {
     pagetable   : PageTable,
-    segments    : Vec<Segment>,
+    pub segments    : Vec<Segment>,
 }
 
 impl MemLayout {
@@ -167,7 +174,7 @@ impl MemLayout {
             asm!("sfence.vma");
         }
         if satp::read().mode() != satp::Mode::Sv39 {
-            error!("Failed switch to SV39!");
+            fatal!("Failed switch to SV39!");
             warning!("This seems to be a known issue with k210 + rustsbi.");
         } else {
             info!("Kernel virtual memory layout has been activated.");
@@ -346,6 +353,10 @@ impl MemLayout {
             segment.unmap_pages(&mut self.pagetable);
             self.segments.remove(idx);
         }
+    }
+
+    pub fn drop_all(&mut self) {
+        self.segments.clear();
     }
 }
 

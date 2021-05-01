@@ -78,7 +78,7 @@ impl FrameAllocator for StackFrameAllocator {
             self.current += 1;
             return Some(self.current - 1);
         } else {
-            warning!("Out Of Memory! Cannot alloc any more physical frame.");
+            fatal!("Out Of Memory! Cannot alloc any more physical frame.");
             // TODO: support swap out when OOM.
             return None;
         }

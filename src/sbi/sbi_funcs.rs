@@ -41,8 +41,8 @@ pub fn sbi_call_all(eid: i32, fid: i32, mut arg0: usize, mut arg1: usize, arg2: 
     (arg0, arg1)
 }
 
-pub fn set_timer(timer: usize) {
-    sbi_call(SBI_SET_TIMER, timer, 0, 0);
+pub fn set_timer(timer: u64) {
+    sbi_call(SBI_SET_TIMER, timer as usize, 0, 0);
 }
 
 pub fn put_byte(ch: u8) {

@@ -141,6 +141,12 @@ impl PhysAddr {
     pub fn page_offset(&self) -> usize {
         return self.0 % PAGE_SIZE;
     }
+
+    pub fn get_mut<T>(&self) -> &'static mut T {
+        unsafe {
+            return (self.0 as *mut T).as_mut().unwrap();
+        }
+    }
 }
 
 impl ops::Add<usize> for PhysAddr {

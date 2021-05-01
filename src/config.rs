@@ -11,10 +11,10 @@ pub const TRAMPOLINE        : usize = usize::MAX - PAGE_SIZE + 1;
 pub const TRAP_CONTEXT      : usize = TRAMPOLINE - PAGE_SIZE;
 
 #[cfg(feature = "board_k210")]
-pub const CLOCK_FREQ: usize = 403000000 / 62;
+pub const CLOCK_FREQ: u64 = 403000000 / 62;
 
 #[cfg(feature = "board_qemu")]
-pub const CLOCK_FREQ: usize = 12500000;
+pub const CLOCK_FREQ: u64 = 12500000;
 
 pub const SYSNAME       : &[u8] = b"OSHIT Kernel (Pre-Alpha)\0";
 pub const NODENAME      : &[u8] = b"Network currently unsupported\0";

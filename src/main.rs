@@ -36,6 +36,7 @@ pub extern "C" fn rust_main() -> !{
     info!("Vendor id = {}", sbi::get_vendor_id());
     memory::init();
     trap::init();
-    process::run_first_app();
+    // process::run_first_app();
+    process::init();
     panic!("drop off from bottom!");
 }

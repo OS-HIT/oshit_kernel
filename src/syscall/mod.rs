@@ -25,18 +25,30 @@ pub const SYSCALL_GETPID        : usize = 172;
 pub const SYSCALL_GETPPID       : usize = 173;
 pub const SYSCALL_BRK           : usize = 214;
 pub const SYSCALL_MUNMAP        : usize = 215;
-pub const SYSCALL_CLONE         : usize = 220;
-pub const SYSCALL_EXECVE        : usize = 221;
+pub const SYSCALL_CLONE         : usize = 220;  // is this sys_fork?
+pub const SYSCALL_FORK          : usize = 220;
+pub const SYSCALL_EXECVE        : usize = 221;  // is this sys_exec?
+pub const SYSCALL_EXEC          : usize = 221;
 pub const SYSCALL_MMAP          : usize = 222;
-pub const SYSCALL_WAIT4         : usize = 260;
+pub const SYSCALL_WAIT4         : usize = 260;  // is this sys_waitpid?
+pub const SYSCALL_WAITPID       : usize = 260;
 
 mod fs_syscall;
 mod process_syscall;
 mod trivial_syscall;
 
 pub use fs_syscall::{sys_write};
-pub use process_syscall::{sys_exit, sys_yield};
-pub use trivial_syscall::{sys_time, sys_uname};
+pub use process_syscall::{
+    sys_exit, 
+    sys_yield,
+    sys_fork,
+    sys_exec,
+    sys_waitpid
+};
+pub use trivial_syscall::{
+    sys_time, 
+    sys_uname
+};
 
 use crate::memory::VirtAddr;
 
@@ -45,6 +57,9 @@ pub fn syscall(syscall_id: usize, args: [usize; 3]) -> isize {
         SYSCALL_WRITE       => sys_write(args[0], VirtAddr(args[1]), args[2]),
         SYSCALL_EXIT        => sys_exit(args[0] as i32),
         SYSCALL_SCHED_YIELD => sys_yield(),
+        SYSCALL_FORK        => sys_fork(),
+        SYSCALL_EXEC        => sys_exec(args[0].into()),
+        SYSCALL_WAITPID     => sys_waitpid(args[0] as isize, args[1].into()),
         SYSCALL_TIMES       => sys_time(VirtAddr(args[0])),
         SYSCALL_UNAME       => sys_uname(VirtAddr(args[0])),
 

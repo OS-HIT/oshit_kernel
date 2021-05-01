@@ -12,6 +12,7 @@ use super::{
 use alloc::vec::Vec;
 use core::cmp::min;
 use crate::utils::StepByOne;
+use alloc::string::String;
 
 bitflags! {
     pub struct PTEFlags: u8 {
@@ -198,4 +199,17 @@ pub fn translate_user_va<T>(satp: usize, va: VirtAddr) -> *mut T {
     let ppn = pagetable.translate(vpn).unwrap().ppn();
     // HACK: FUCK ME that is evil
     return (&mut ppn.page_ptr()[va.page_offset()]) as *mut u8 as usize as *mut T;
+}
+
+// TODO: can optimize this. copy_from_slice until page boundry will be much faster
+pub fn get_user_cstr(satp: usize, mut va: VirtAddr) -> String {
+    let mut bytes: Vec<u8> = Vec::new();
+    loop {
+        let byte: u8 = unsafe{*translate_user_va(satp, va)};
+        if byte == 0 {break;}
+        bytes.push(byte);
+        va = va + 1;
+    }
+    let string = alloc::string::String::from_utf8_lossy(&bytes);
+    return string.into_owned();
 }

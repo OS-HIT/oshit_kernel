@@ -1,5 +1,5 @@
 use crate::sbi::get_time;
-use crate::process::{get_current_up_since, get_current_utime, get_current_satp};
+use crate::process::{current_up_since, current_utime, current_satp};
 use crate::memory::{VirtAddr, translate_user_va};
 use crate::config::*;
 use crate::utils::strcpy;
@@ -16,11 +16,11 @@ pub struct TMS {
 }
 
 pub fn sys_time(tms_va: VirtAddr) -> isize {
-    let tms_ptr: *mut TMS = translate_user_va(get_current_satp(), tms_va);
+    let tms_ptr: *mut TMS = translate_user_va(current_satp(), tms_va);
     unsafe {
         if let Some(tms) = tms_ptr.as_mut() {
-            tms.tms_stime = (get_time() - get_current_up_since()) as u64;
-            tms.tms_utime = get_current_utime() as u64;
+            tms.tms_stime = (get_time() - current_up_since()) as u64;
+            tms.tms_utime = current_utime();
             tms.tms_cstime = 0; // TODO: add these after we implemented fork
             tms.tms_cutime = 0;
         }
@@ -41,15 +41,15 @@ pub struct UTSName {
 }
 
 pub fn sys_uname(uts_va: VirtAddr) -> isize {
-    let uts_ptr: *mut UTSName = translate_user_va(get_current_satp(), uts_va);
+    let uts_ptr: *mut UTSName = translate_user_va(current_satp(), uts_va);
     if let Some(uts) = unsafe{ uts_ptr.as_mut() } {
 
-        strcpy(SYSNAME.as_ptr(),    translate_user_va(get_current_satp(), VirtAddr(uts.sysname   )));
-        strcpy(NODENAME.as_ptr(),   translate_user_va(get_current_satp(), VirtAddr(uts.nodename  )));
-        strcpy(RELEASE.as_ptr(),    translate_user_va(get_current_satp(), VirtAddr(uts.release   )));
-        strcpy(VERSION.as_ptr(),    translate_user_va(get_current_satp(), VirtAddr(uts.version   )));
-        strcpy(MACHINE.as_ptr(),    translate_user_va(get_current_satp(), VirtAddr(uts.machine   )));
-        strcpy(DOMAINNAME.as_ptr(), translate_user_va(get_current_satp(), VirtAddr(uts.domainname)));
+        strcpy(SYSNAME.as_ptr(),    translate_user_va(current_satp(), VirtAddr(uts.sysname   )));
+        strcpy(NODENAME.as_ptr(),   translate_user_va(current_satp(), VirtAddr(uts.nodename  )));
+        strcpy(RELEASE.as_ptr(),    translate_user_va(current_satp(), VirtAddr(uts.release   )));
+        strcpy(VERSION.as_ptr(),    translate_user_va(current_satp(), VirtAddr(uts.version   )));
+        strcpy(MACHINE.as_ptr(),    translate_user_va(current_satp(), VirtAddr(uts.machine   )));
+        strcpy(DOMAINNAME.as_ptr(), translate_user_va(current_satp(), VirtAddr(uts.domainname)));
         return 0;
     } else {
         return -1;

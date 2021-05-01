@@ -68,9 +68,9 @@ pub struct ProcessControlBlockInner {
     pub layout: MemLayout,
     pub trap_context_ppn: PhysPageNum,
     pub size: usize,
-    pub up_since: usize,
-    pub last_start: usize,
-    pub utime: usize,
+    pub up_since: u64,
+    pub last_start: u64,
+    pub utime: u64,
     pub parent: Option<Weak<ProcessControlBlock>>,
     pub children: Vec<Arc<ProcessControlBlock>>,
     pub exit_code: i32,
@@ -122,14 +122,13 @@ impl ProcessControlBlock {
             kernel_stack_top.0,
             user_trap as usize
         );
-
         return pcb;
     }
 
     pub fn fork(self: &Arc<ProcessControlBlock>) -> Arc<ProcessControlBlock> {
         let mut parent_arcpcb = self.get_inner_locked();
         let layout = MemLayout::fork_from_user(&parent_arcpcb.layout);
-        let trap_context_ppn = layout.translate(TRAP_CONTEXT.into()).unwrap().ppn();
+        let trap_context_ppn = layout.translate(VirtAddr(TRAP_CONTEXT).into()).unwrap().ppn();
         let pid = alloc_pid();
         let kernel_stack = KernelStack::new(&pid);
         let kernel_stack_top = kernel_stack.top();
@@ -155,11 +154,36 @@ impl ProcessControlBlock {
         });
 
         parent_arcpcb.children.push(pcb.clone());
-        pcb.get_inner_locked().trap_context_ppn.;
+        let mut trap_context: &mut TrapContext = PhysAddr::from(pcb.get_inner_locked().trap_context_ppn).get_mut();
+        trap_context.kernel_sp = kernel_stack_top.0;
         return pcb;
+    }
+
+    pub fn exec(&self, elf_data: &[u8]) {
+        let (layout, user_stack_top, entry) = MemLayout::new_elf(elf_data);
+        let trap_context_ppn = layout.translate(VirtAddr::from(TRAP_CONTEXT).into()).unwrap().ppn();
+        let mut arcpcb = self.get_inner_locked();
+        arcpcb.layout = layout;     // original layout dropped, thus freed.
+        arcpcb.trap_context_ppn = trap_context_ppn;
+        let trap_context = arcpcb.get_trap_context();
+        *trap_context = TrapContext::init(
+            entry, 
+            user_stack_top, 
+            KERNEL_MEM_LAYOUT.lock().get_satp(), 
+            self.kernel_stack.top().0, 
+            user_trap as usize
+        );
     }
 
     pub fn get_inner_locked(&self) -> MutexGuard<ProcessControlBlockInner> {
         return self.inner.lock();
+    }
+
+    pub fn get_trap_context(&self) -> &'static mut TrapContext {
+        PhysAddr::from(self.get_inner_locked().trap_context_ppn).get_mut()
+    }
+
+    pub fn get_pid(&self) -> usize {
+        self.pid.0
     }
 }

@@ -21,7 +21,7 @@ pub fn strlen(src: *const u8) -> usize {
         while *p != b'\0' {
             p = p.add(1);
         }
-    }
+}
 
     return p as usize - src as usize;
 }

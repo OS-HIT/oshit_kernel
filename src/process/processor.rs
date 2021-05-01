@@ -110,13 +110,14 @@ impl Processor {
                 initproc_inner.children.push(child.clone());
             }
         }
-
+        arcpcb.children.clear();
+        arcpcb.layout.drop_all();
+        drop(arcpcb);
         enqueue(process);
         let _unused: usize = 0;
-        let context_ptr2 = &_unused as *const usize;
         let idle_context_ptr2 = self.get_idle_context_ptr2();
         unsafe {
-            __switch(context_ptr2, idle_context_ptr2);
+            __switch(&_unused as *const usize, idle_context_ptr2);
         }
     }
 
@@ -134,5 +135,27 @@ impl Processor {
                 }
             }
         }
+    }
+
+    pub fn current_up_since(&self) -> u64 {
+        let inner = self.inner.borrow();
+        if let Some(current) = &inner.current {
+            return current.get_inner_locked().up_since;
+        } else {
+            return 0;
+        }
+    }
+
+    pub fn current_utime(&self) -> u64 {
+        let inner = self.inner.borrow();
+        if let Some(current) = &inner.current {
+            return current.get_inner_locked().utime;
+        } else {
+            return 0;
+        }
+    }
+
+    pub fn current_trap_context(&self) -> &'static mut TrapContext {
+        self.current().unwrap().get_inner_locked().get_trap_context()
     }
 }
