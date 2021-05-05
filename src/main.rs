@@ -29,9 +29,12 @@ mod memory;
 pub mod config;
 pub mod version;
 mod utils;
+mod drivers;
 
 #[cfg(not(any(feature="board_qemu", feature="board_k210")))]
 compile_error!("At least one of the board_* feature should be active!");
+
+use fs::file::FILE;
 
 #[no_mangle]
 pub extern "C" fn rust_main() -> !{
@@ -39,6 +42,34 @@ pub extern "C" fn rust_main() -> !{
     info!("Vendor id = {}", sbi::get_vendor_id());
     memory::init();
     trap::init();
+    // drivers::sdcard_test();
+    let mut file = FILE::open_file("/test.txt", FILE::FMOD_READ).unwrap();
+    let mut buf = [0u8; 512];
+    let len = file.read_file(&mut buf).unwrap();
+    let buf = &buf[0..len as usize];
+    println!("{}", core::str::from_utf8(buf).unwrap());
+    if let Err((_, msg)) = file.close_file() {
+        error!("{}", msg);
+    }
+
+    let mut file = FILE::open_file("/test.txt", FILE::FMOD_WRITE).unwrap();
+    let mut buf = [0u8; 512];
+    match file.read_file(&mut buf) {
+        Ok(len) => {
+            error!("我们太弱小了，没有力量（哭腔");
+            debug!("len: {}", len);
+        },
+        Err(msg) => {
+            info!("{}", msg);
+        }
+    };
+
+    let buf = "Goodbye".as_bytes();
+    assert!(file.write_file(buf).unwrap() == buf.len() as u32);
+    if let Err((_, msg)) = file.close_file() {
+        error!("{}", msg);
+    }
+    
     // process::run_first_app();
     process::init();
     panic!("drop off from bottom!");

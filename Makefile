@@ -10,7 +10,7 @@ DISASM 			?= -x
 BOARD			?= qemu
 LOG_LVL			?= debug
 FEATURES		?= board_$(BOARD) min_log_level_$(LOG_LVL)
-K210-SERIALPORT	:= COM3
+K210-SERIALPORT	:= /dev/ttyUSB0
 K210-BURNER 	:= ../kflash.py/kflash.py
 BOOTLOADER 		:= ../bootloader/rustsbi-$(BOARD).bin
 K210_BOOTLOADER_SIZE := 131072
@@ -60,8 +60,8 @@ else
 	@dd if=$(KERNEL_BIN) of=$(BOOTLOADER).copy bs=$(K210_BOOTLOADER_SIZE) seek=1
 	@mv $(BOOTLOADER).copy $(KERNEL_BIN)
 	# @sudo chmod 777 $(K210-SERIALPORT)
-	python.exe $(K210-BURNER) -p $(K210-SERIALPORT) -b 1500000 $(KERNEL_BIN)
-	python.exe -m serial.tools.miniterm --eol LF --dtr 0 --rts 0 --filter direct $(K210-SERIALPORT) 115200
+	python3 $(K210-BURNER) -p $(K210-SERIALPORT) -b 1500000 $(KERNEL_BIN)
+	python3 -m serial.tools.miniterm --eol LF --dtr 0 --rts 0 --filter direct $(K210-SERIALPORT) 115200
 endif
 
 debug: build
