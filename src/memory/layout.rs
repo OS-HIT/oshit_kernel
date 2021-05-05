@@ -264,6 +264,19 @@ impl MemLayout {
             )
         );
         debug!("Physical memory mapped @ 0x{:X} ~ 0x{:X} (identity), RW--.", ekernel as usize, MEM_END);
+
+        verbose!("Mapping MMIO...");
+        for pair in MMIO {
+            layout.add_segment(
+                Segment::new(
+                    (*pair).0.into(),
+                    ((*pair).0 + (*pair).1).into(),
+                    MapType::Identity,
+                    SegmentFlags::R | SegmentFlags::W,
+                )
+            );
+            debug!("MMIO mapped @ 0x{:X} ~ 0x{:X} (identity), RW--.", (*pair).0, (*pair).0 + (*pair).1);
+        }
         info!("Kernel memory layout initilized.");
 
         return layout;

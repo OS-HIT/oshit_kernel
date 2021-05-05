@@ -14,6 +14,9 @@ global_asm!(include_str!("link_app.asm"));
 #[macro_use]    // so that we get vec![] macro
 extern crate alloc;
 extern crate xmas_elf;
+extern crate k210_pac;
+extern crate k210_soc;
+extern crate k210_hal;
 
 #[macro_use]
 mod sbi;
