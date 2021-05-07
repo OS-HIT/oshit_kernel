@@ -63,7 +63,7 @@ pub fn sys_waitpid(pid: isize, exit_code_ptr: VirtAddr) -> isize {
             let child_arcpcb = child.get_inner_locked();
             if child_arcpcb.status == ProcessStatus::Zombie {
                 assert_eq!(Arc::strong_count(child), 1, "This child process seems to be referenced more then once.");
-                unsafe {*translate_user_va(current_satp(), exit_code_ptr) = child_arcpcb.exit_code;}
+                unsafe {*translate_user_va(arcpcb.layout.get_satp(), exit_code_ptr) = child_arcpcb.exit_code;}
                 return child.get_pid() as isize;
             }
         }

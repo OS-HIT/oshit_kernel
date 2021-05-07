@@ -89,6 +89,7 @@ impl Processor {
         let mut arcpcb = process.get_inner_locked();
         let context_ptr2 = &(arcpcb.context_ptr) as *const usize;
         arcpcb.status = ProcessStatus::Ready;
+        arcpcb.utime = arcpcb.utime + get_time() - arcpcb.last_start;
         drop(arcpcb);
         enqueue(process);
         let idle_context_ptr2 = self.get_idle_context_ptr2();
@@ -112,12 +113,13 @@ impl Processor {
         }
         arcpcb.children.clear();
         arcpcb.layout.drop_all();
+        arcpcb.utime = arcpcb.utime + get_time() - arcpcb.last_start;
         drop(arcpcb);
-        enqueue(process);
+        drop(process);
         let _unused: usize = 0;
         let idle_context_ptr2 = self.get_idle_context_ptr2();
         unsafe {
-            __switch(&_unused as *const usize, idle_context_ptr2);
+            __switch((&_unused) as *const usize, idle_context_ptr2);
         }
     }
 
@@ -128,6 +130,7 @@ impl Processor {
                 let mut arcpcb = process.get_inner_locked();
                 let next_context_ptr2 = &(arcpcb.context_ptr) as *const usize;
                 arcpcb.status = ProcessStatus::Running;
+                arcpcb.last_start = get_time();
                 drop(arcpcb);
                 self.inner.borrow_mut().current = Some(process);
                 unsafe {
@@ -149,7 +152,8 @@ impl Processor {
     pub fn current_utime(&self) -> u64 {
         let inner = self.inner.borrow();
         if let Some(current) = &inner.current {
-            return current.get_inner_locked().utime;
+            let arcpcb = current.get_inner_locked();
+            return arcpcb.utime + get_time() - arcpcb.last_start;
         } else {
             return 0;
         }
