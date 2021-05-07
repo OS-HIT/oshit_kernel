@@ -188,4 +188,9 @@ impl ProcessControlBlock {
     pub fn get_pid(&self) -> usize {
         self.pid.0
     }
+
+    pub fn get_ppid(&self) -> usize {
+        let arcpcb = self.get_inner_locked();
+        arcpcb.parent.as_ref().unwrap().upgrade().unwrap().get_pid()
+    }
 }

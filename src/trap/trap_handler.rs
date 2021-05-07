@@ -65,7 +65,14 @@ pub fn user_trap(_cx: &mut TrapContext) -> ! {
         Trap::Exception(Exception::UserEnvCall) => {
             let mut cx = current_trap_context();
             cx.sepc += 4;   // so that we don't stuck at one instruction
-            let result = syscall(cx.regs[17], [cx.regs[10], cx.regs[11], cx.regs[12]]) as usize;   // exec syscall in s-mode
+            let result = syscall(cx.regs[17], [
+                cx.regs[10], 
+                cx.regs[11], 
+                cx.regs[12],
+                cx.regs[13],
+                cx.regs[14],
+                cx.regs[15],
+            ]) as usize;   // exec syscall in s-mode
             cx =  current_trap_context();
             cx.regs[10] = result as usize;
         },

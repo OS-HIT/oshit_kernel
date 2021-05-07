@@ -18,6 +18,7 @@ use crate::process::{
 };
 
 use alloc::sync::Arc;
+use core::convert::TryInto;
 
 pub fn sys_yield() -> isize {
     suspend_switch();
@@ -69,4 +70,12 @@ pub fn sys_waitpid(pid: isize, exit_code_ptr: VirtAddr) -> isize {
         }
     }
     return if found {-2} else {-1};
+}
+
+pub fn sys_getpid() -> isize {
+    return current_process().unwrap().get_pid() as isize;
+}
+
+pub fn sys_getppid() -> isize {
+    return current_process().unwrap().get_ppid() as isize;
 }

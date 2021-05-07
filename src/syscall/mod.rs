@@ -43,7 +43,9 @@ pub use process_syscall::{
     sys_yield,
     sys_fork,
     sys_exec,
-    sys_waitpid
+    sys_waitpid,
+    sys_getpid,
+    sys_getppid,
 };
 pub use trivial_syscall::{
     sys_time, 
@@ -52,7 +54,7 @@ pub use trivial_syscall::{
 
 use crate::memory::VirtAddr;
 
-pub fn syscall(syscall_id: usize, args: [usize; 3]) -> isize {
+pub fn syscall(syscall_id: usize, args: [usize; 6]) -> isize {
     match syscall_id {
         SYSCALL_READ        => sys_read(args[0], args[1].into(), args[2]),
         SYSCALL_WRITE       => sys_write(args[0], VirtAddr(args[1]), args[2]),
@@ -61,6 +63,8 @@ pub fn syscall(syscall_id: usize, args: [usize; 3]) -> isize {
         SYSCALL_FORK        => sys_fork(),
         SYSCALL_EXEC        => sys_exec(args[0].into()),
         SYSCALL_WAITPID     => sys_waitpid(args[0] as isize, args[1].into()),
+        SYSCALL_GETPID      => sys_getpid(),
+        SYSCALL_GETPPID     => sys_getppid(),
         SYSCALL_TIMES       => sys_time(VirtAddr(args[0])),
         SYSCALL_UNAME       => sys_uname(VirtAddr(args[0])),
 
