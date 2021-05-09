@@ -29,6 +29,7 @@ mod memory;
 pub mod config;
 pub mod version;
 mod utils;
+mod drivers;
 
 #[cfg(not(any(feature="board_qemu", feature="board_k210")))]
 compile_error!("At least one of the board_* feature should be active!");
@@ -39,6 +40,9 @@ pub extern "C" fn rust_main() -> !{
     info!("Vendor id = {}", sbi::get_vendor_id());
     memory::init();
     trap::init();
+    fs::list_tree("/", 0).unwrap();
+
+    // fs::fs_test();
     // process::run_first_app();
     process::init();
     panic!("drop off from bottom!");
