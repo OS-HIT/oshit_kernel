@@ -120,7 +120,7 @@ impl FAT {
                 }
                 if new != 0 {
                         self.write_next(new, 0x0FFF_FFFF).unwrap();
-                        clear_cluster(new);
+                        clear_cluster(new).unwrap();
                         return Ok(new);
                 } else {
                         return Err("get_free_cluster: no free cluster found");
@@ -182,8 +182,8 @@ pub fn truncat_file_chain(start: u32) -> Result<(), ()> {
                 Ok(()) => {
                         match FAT_INST_2.clear_file_chain(start) {
                                 Ok(()) => {
-                                        FAT_INST.write_next(start, 0x0).unwrap();
-                                        FAT_INST_2.write_next(start, 0x0).unwrap();
+                                        FAT_INST.write_next(start, 0x0FFF_FFFF).unwrap();
+                                        FAT_INST_2.write_next(start, 0x0FFF_FFFF).unwrap();
                                         return Ok(());
                                 },
                                 _ => {
@@ -212,8 +212,8 @@ pub fn get_free_cluster() -> Result<u32, &'static str> {
 pub fn append_chain(end: u32) -> Result<u32, &'static str> {
         match FAT_INST.append_cluster(end) {
                 Ok(new) => {
-                        FAT_INST_2.write_next(end, new);
-                        FAT_INST_2.write_next(end, 0x0FFF_FFFF);
+                        FAT_INST_2.write_next(end, new).unwrap();
+                        FAT_INST_2.write_next(end, 0x0FFF_FFFF).unwrap();
                         return Ok(new);
                 } ,
                 Err(msg) => {

@@ -137,7 +137,7 @@ impl FILE {
                         Err(msg) => {
                                 if mode & FILE::FMOD_CREATE != 0 {
                                         let mut parent = path.clone();
-                                        let file = parent.pop().unwrap();
+                                        parent.pop().unwrap();
                                         if parent.len() != 0 {
                                                 if let Err(_) = find_entry(&parent, true) {
                                                         return Err("open_file: parent directory not exists");
@@ -169,6 +169,9 @@ impl FILE {
                                 return Err(to_string(error));
                         }
                 };
+                if is_dir {
+                        return Err("delete_file: input path is referring a directory");
+                }
                 match find_entry(&path, false) {
                         Ok(entry) => {
                                 if ! entry.is_file() {
@@ -189,9 +192,9 @@ impl FILE {
                 if mode != FILE::FMOD_READ {
                         return Err("open_dir: Not implemented yet");
                 }
-                let (path, is_dir) = match parse_path(path) {
-                        Ok((path, is_dir)) => {
-                                (path, is_dir)
+                let path = match parse_path(path) {
+                        Ok((path, _)) => {
+                                path
                         },
                         Err(error) => {
                                 return Err(to_string(error));
@@ -236,8 +239,8 @@ impl FILE {
                 }
                 let dir = path.pop().unwrap();
                 let mut dir = vec![dir];
-                let mut cluster: u32;
-                let mut dirent: DirEntry;
+                let cluster: u32;
+                let dirent: DirEntry;
                 let mut pstart = *ROOT_DIR;
                 if path.len() == 0 {
                         if let Err(_) = find_entry(&dir, false) {
@@ -279,8 +282,10 @@ impl FILE {
                                                 start_l: (cluster & 0xff) as u16,
                                         };
                                         if let Ok(update_size) = new_entry_at(&parent, &dirent) {
-                                                parent.size += size_of::<DirEntry>() as u32;
-                                                update_entry(&path, true, &parent).unwrap();
+                                                if update_size {
+                                                        parent.size += size_of::<DirEntry>() as u32;
+                                                        update_entry(&path, true, &parent).unwrap();
+                                                }
                                         } else {
                                                 return Err("make_dir: failed to set new entry");
                                         }
@@ -305,14 +310,14 @@ impl FILE {
                         mod_sec: 0, mod_date: 0,
                         start_l: (cluster & 0xff) as u16,
                 };
-                new_entry_at(&dirent, &dir_tmp);
+                new_entry_at(&dirent, &dir_tmp).unwrap();
                 dir_tmp.name[1] = '.' as u8;
                 if path.len() == 0 {
                         dir_tmp.set_start(*ROOT_DIR);
                 } else {
                         dir_tmp.set_start(pstart);
                 }
-                new_entry_at(&dirent, &dir_tmp);
+                new_entry_at(&dirent, &dir_tmp).unwrap();
                 flush();
                 return Ok(());
         }
@@ -352,7 +357,7 @@ impl FILE {
                         if let Ok(entry) = find_entry(&dir, true) {
                                 if FILE::is_empty_dir(&entry) {
                                         delete_entry(&dir, true).unwrap();
-                                        clear_file_chain(entry.get_start());
+                                        clear_file_chain(entry.get_start()).unwrap();
                                         flush();
                                         return Ok(());
                                 } else {
@@ -365,7 +370,7 @@ impl FILE {
                         if let Ok(parent) = find_entry(&path, true) {
                                 if let Ok(entry) = find_entry_from(parent.get_start(), &dir, true) {
                                         if FILE::is_empty_dir(&entry) {
-                                                clear_file_chain(entry.get_start());
+                                                clear_file_chain(entry.get_start()).unwrap();
                                                 delete_entry(&dir, true).unwrap();
                                                 flush();
                                                 return Ok(());

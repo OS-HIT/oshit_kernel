@@ -24,15 +24,15 @@ pub enum PathFormatError {
 
 pub fn to_string(error: PathFormatError) -> &'static str {
         match error {
-                NotAbs => "Path should start with '/'",
-                EmptyFileName => "File name is empty",
-                FileNameTooLong => "File name longer than 8 bytes is not allowed",
-                InvalidCharInFileName => "Invalid char is found in file name",
-                EmptyFileExt => "File name with no extend should not have '.'",
-                InvalidCharInFileExt => "Invalid char is found in file extension",
-                EmptyPath => "Path is empty",
-                ReferingRootParent => "Path invalid because is refering parent of root",
-                _ => "unknown error",
+                PathFormatError::NotAbs => "Path should start with '/'",
+                PathFormatError::EmptyFileName => "File name is empty",
+                PathFormatError::FileNameTooLong => "File name longer than 8 bytes is not allowed",
+                PathFormatError::InvalidCharInFileName => "Invalid char is found in file name",
+                PathFormatError::EmptyFileExt => "File name with no extend should not have '.'",
+                PathFormatError::InvalidCharInFileExt => "Invalid char is found in file extension",
+                PathFormatError::EmptyPath => "Path is empty",
+                PathFormatError::ReferingRootParent => "Path invalid because is refering parent of root",
+                // _ => "unknown error",
         }
 }
 

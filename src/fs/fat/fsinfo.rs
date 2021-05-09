@@ -1,3 +1,4 @@
+#![allow(unused)]
 use super::super::block_cache::get_block_cache;
 
 use super::dbr::DBR_INST;

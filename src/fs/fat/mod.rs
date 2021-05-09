@@ -44,6 +44,7 @@ pub fn print_vec(vec : Vec<u32>) {
 
 // DBR functions
 #[inline]
+#[allow(unused)]
 pub fn print_dbr() {
         dbr::print_dbr();
 }
@@ -130,7 +131,6 @@ pub fn find_entry_from(from: u32, path: &Path, is_dir: bool) -> Result<DirEntry,
         let mut depth = 0;
         for node in path {
                 let fname = cat_name(&node);
-                let mut start = 0;
                 'search: for clst in dir.iter() {
                         for i in 0..*DIRENT_P_CLST {
                                 if let Some(item) = read_dirent(*clst, i) {
@@ -267,7 +267,7 @@ pub fn new_entry(parent: &Path, new: &DirEntry) -> Result<(), &'static str> {
         if update_size && parent.len() != 0{
                 if let Some(mut entry) = entry {
                         entry.size += size_of::<DirEntry>() as u32;
-                        update_entry(&parent, true, &entry);
+                        update_entry(&parent, true, &entry).unwrap();
                 } else {
                         return Err("new_entry: what happened to my entry?");
                 }

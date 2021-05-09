@@ -54,7 +54,7 @@ pub fn list(path: &str) -> Result<(), &'static str> {
                                         Ok(dirent) => {
                                                 dirent.print();
                                         },
-                                        Err(msg) => {
+                                        Err(_) => {
                                                 return Ok(());
                                         }
                                 }
@@ -67,7 +67,7 @@ pub fn list(path: &str) -> Result<(), &'static str> {
 }
 
 pub fn list_tree(path: &str, level: u32) -> Result<(), &'static str> {
-        const indent: &str = "|   ";
+        const INDENT: &str = "|   ";
         match FILE::open_dir(path, FILE::FMOD_READ) {
                 Ok(mut dir) => {
                         loop{
@@ -76,8 +76,8 @@ pub fn list_tree(path: &str, level: u32) -> Result<(), &'static str> {
                                                 if dirent.get_name() == "." || dirent.get_name() == ".." {
                                                         continue;
                                                 }
-                                                for i in 0..level{
-                                                        print!("{}", indent);
+                                                for _i in 0..level{
+                                                        print!("{}", INDENT);
                                                 }
                                                 dirent.print();
                                                 if dirent.is_dir() {
@@ -88,7 +88,7 @@ pub fn list_tree(path: &str, level: u32) -> Result<(), &'static str> {
                                                         }
                                                 }
                                         },
-                                        Err(msg) => {
+                                        Err(_) => {
                                                 return Ok(());
                                         }
                                 }
