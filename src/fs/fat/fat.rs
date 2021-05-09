@@ -4,6 +4,7 @@ use alloc::vec::Vec;
 
 use lazy_static::*;
 use super::dbr::DBR_INST;
+use super::dbr::clear_cluster;
 use super::CLUSTER_CNT;
 use super::super::block_cache::get_block_cache;
 
@@ -119,6 +120,7 @@ impl FAT {
                 }
                 if new != 0 {
                         self.write_next(new, 0x0FFF_FFFF).unwrap();
+                        clear_cluster(new);
                         return Ok(new);
                 } else {
                         return Err("get_free_cluster: no free cluster found");
@@ -138,14 +140,6 @@ impl FAT {
                 }
 
         }
-
-        // pub fn write_file_chain(&self, chain: &[u32]) -> Result {
-        //         for clst in chain.iter() {
-        //                 if clst > self.len {
-        //                         return Err();
-        //                 }
-        //         }
-        // }
 }
 
 lazy_static! {

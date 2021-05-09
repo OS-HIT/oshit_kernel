@@ -8,13 +8,14 @@
 
 use core::mem::size_of;
 use alloc::vec::Vec;
-use alloc::string::String;
-use alloc::string::ToString;
 use lazy_static::*;
 
 use super::block_cache::get_block_cache;
 use super::block_cache::flush_all;
 use super::dirent::DirEntry;
+use super::dirent::DIRENT_P_CLST;
+use super::path::Path;
+use super::path::cat_name;
 
 mod dbr;
 pub mod fsinfo;
@@ -22,12 +23,14 @@ pub mod fat;
 
 use dbr::DBR_INST;
 use dbr::get_cluster_cache;
+use fat::get_file_chain;
 
 lazy_static! {
         pub static ref CLUSTER_SIZE: u32 = DBR_INST.cluster_size();
+        pub static ref ROOT_DIR: u32 = DBR_INST.root;
         
         static ref CLUSTER_CNT: u32 = DBR_INST.cluster_cnt(); 
-        static ref ROOT_DIR: Vec<u32> = fat::FAT_INST.get_clusters(DBR_INST.root);
+        // static ref ROOT_DIR: Vec<u32> = fat::FAT_INST.get_clusters(DBR_INST.root);
 }
 
 
@@ -83,7 +86,7 @@ pub fn read_dirent(cluster: u32, offset: u32) -> Option<DirEntry> {
         }
 }
 
-pub fn write_dirent(cluster:u32, offset: u32, new: &DirEntry) -> Result<(), &str> {
+pub fn write_dirent(cluster:u32, offset: u32, new: &DirEntry) -> Result<(), &'static str> {
         if cluster > *CLUSTER_CNT {
                 return Err("write_dirent: invalid cluster");
         }
@@ -111,138 +114,77 @@ pub fn delete_dirent(cluster: u32, offset: u32) -> Result<(), &'static str> {
         }
 }
 
-fn get_fname(path: &str) -> String {
-        let mut len = path.len();
-        if len <= 1 {
-                return "".to_string();
-        }
-        if path.chars().nth(0).unwrap() != '/' {
-                return "".to_string();
-        }
-        for (i, c) in path.chars().enumerate() {
-                if i == 0 {
-                        continue;
-                } 
-                if c == '/' {
-                        len = i;
-                        break;
-                }
-        }
-        return path.chars().skip(1).take(len - 1).collect();
+pub fn find_entry(path: &Path, is_dir: bool) -> Result<DirEntry, &'static str> {
+        find_entry_from(*ROOT_DIR, path, is_dir)
 }
 
-pub fn find_entry(path: &str) -> Result<DirEntry, &str> {
-        let mut dir:Vec<u32> = ROOT_DIR.to_vec();
-        let mut path = path.trim();
-        let p_end = path.len() - 1;
-        if path.chars().nth(0).unwrap() != '/' {
-                return Err("find_entry: absolute path required");
+pub fn find_entry_from(from: u32, path: &Path, is_dir: bool) -> Result<DirEntry, &'static str> {
+        if path.len() == 0 {
+                return Err("find_entry_from: no entry for root directory");
         }
-        if p_end == 0 {
-                return Err("find_entry: no entry for root directory");
+        let mut dir = get_file_chain(from);
+        if dir.len() == 0 {
+                return Err("find_entry_from: invalid file chain");
         }
-        let is_dir = if path.chars().nth(p_end).unwrap() == '/' {
-                path = &path[..p_end-1];
-                true
-        } else {
-                false
-        };
-        loop {
-                // println!("path: {}", path);
-                let fname = get_fname(path);
+        let mut dirent: Option<DirEntry> = None;
+        let mut depth = 0;
+        for node in path {
+                let fname = cat_name(&node);
                 let mut start = 0;
-                if fname.len() == 0 {
-                        break Err("File not find\n");
-                }
-                for clst in dir.iter() {
-                        let mut i = 0;
-                        loop {
+                'search: for clst in dir.iter() {
+                        for i in 0..*DIRENT_P_CLST {
                                 if let Some(item) = read_dirent(*clst, i) {
-                                        i += 1;
                                         if item.deleted() || item.is_ext() {
                                                 continue;
                                         }
-                                        // item.print();
-                                        if fname.to_uppercase() == item.get_name() {
-                                                if path[1..] == fname {
-                                                        if !is_dir || is_dir != item.is_dir() {
-                                                                return Ok(item);
-                                                        } else {
-                                                                return Err("find_entry: not a directory");
-                                                        }
-                                                } else {
-                                                        path = &path[fname.len()+1..];
-                                                        start = item.get_start();
-                                                        // println!("Getting round two");
-                                                        break;
-                                                }
-                                                
+                                        if fname == item.get_name() {
+                                                dirent = Some(item);
+                                                depth += 1;
+                                                dir = item.get_chain();
+                                                break 'search;
                                         }
                                 } else {
                                         break;
                                 }
                         }
-                        if start != 0 {
-                                break;
+                }
+        }
+        if depth == path.len() {
+                if let Some(de) = dirent {
+                        if is_dir && !de.is_dir() {
+                                return Err("find_entry_from: not a directory");
                         }
-                }
-                if start != 0{
-                        dir = fat::get_file_chain(start);
+                        return Ok(de);
                 } else {
-                        break Err("File not find\n");
+                        return Err("find_entry_from: file not found");
                 }
+        } else {
+                return Err("find_entry_from: file not found");
         }
 }
 
-fn get_lname(path: &str) -> String {
-        if path.len() <= 1 {
-                return "".to_string();
-        }
-        if path.chars().nth(0).unwrap() != '/' {
-                return "".to_string();
-        }
-        let mut len = 1;
-        for (i, c) in path.chars().enumerate() {
-                if c == '/' {
-                        len = i + 1;
-                }
-        }
-        return path.chars().skip(len).take(path.len() - len).collect();
-}
-
-pub fn delete_entry(path: &str) -> Result<(),&str> {
-        let mut path = path.trim();
-        let p_end = path.len() - 1;
-        if path.chars().nth(0).unwrap() != '/' {
-                return Err("delete_entry: absolute path required");
-        }
-        if p_end == 0 {
+pub fn delete_entry(path: &Path, is_dir: bool) -> Result<(),&'static str> {
+        if path.len() == 0 {
                 return Err("delete_entry: no entry for root directory");
         }
-        if path.chars().nth(p_end).unwrap() == '/' {
-                path = &path[..p_end-1];
-        }
-        let lname = get_lname(path);
-        if lname.len() == 0 {
-                return Err("delete_entry: invalid path");
-        }
-        let chain = if lname.len() < p_end {
-                let plen = p_end - lname.len();
-                path = &path[..plen];
-                let parent = find_entry(path).unwrap();
-                fat::get_file_chain(parent.get_start())
+        let mut parent_path = path.clone();
+        let file = parent_path.pop().unwrap();
+        let chain = if parent_path.len() == 0 {
+                get_file_chain(*ROOT_DIR)
         } else {
-                ROOT_DIR.to_vec()
+                let entry = find_entry(&parent_path, true).unwrap();
+                get_file_chain(entry.get_start())
         };
         for clst in chain {
-                let mut offset = 0;
-                loop {
+                for offset in 0..*DIRENT_P_CLST {
                         if let Some(dirent) = read_dirent(clst, offset) {
-                                offset += 1;
                                 if dirent.is_ext() || dirent.deleted() {
                                         continue;
                                 }
-                                if lname.to_uppercase() == dirent.get_name() {
+                                if cat_name(&file) == dirent.get_name() {
+                                        if is_dir && !dirent.is_dir() {
+                                                return Err("delete_entry: not a directory");
+                                        }
                                         delete_dirent(clst,offset).unwrap();
                                         return Ok(());
                                 }
@@ -254,42 +196,29 @@ pub fn delete_entry(path: &str) -> Result<(),&str> {
         return Err("delete_entry: entry not found");
 }
 
-pub fn update_entry(path: &str, new: &DirEntry) -> Result<(), &'static str> {
-        let mut path = path.trim();
-        let p_end = path.len() - 1;
-        if path.chars().nth(0).unwrap() != '/' {
-                return Err("update_entry: absolute path required");
-        }
-        if p_end == 0 {
+pub fn update_entry(path: &Path, is_dir: bool, new: &DirEntry) -> Result<(), &'static str> {
+        if path.len() == 0 {
                 return Err("update_entry: no entry for root directory");
         }
-        if path.chars().nth(p_end).unwrap() == '/' {
-                path = &path[..p_end-1];
-        }
-        let lname = get_lname(path);
-        if lname.len() == 0 {
-                return Err("update_entry: invalid path");
-        }
-        let chain = if lname.len() < p_end {
-                let plen = p_end - lname.len();
-                path = &path[..plen];
-                let parent = find_entry(path).unwrap();
-                fat::get_file_chain(parent.get_start())
+        let mut parent_path = path.clone();
+        let file = parent_path.pop().unwrap();
+        let chain = if parent_path.len() == 0 {
+                get_file_chain(*ROOT_DIR)
         } else {
-                ROOT_DIR.to_vec()
+                let entry = find_entry(&parent_path, true).unwrap();
+                get_file_chain(entry.get_start())
         };
         for clst in chain {
-                let mut offset = 0;
-                loop {
+                for offset in 0..*DIRENT_P_CLST {
                         if let Some(dirent) = read_dirent(clst, offset) {
-                                offset += 1;
                                 if dirent.is_ext() || dirent.deleted() {
                                         continue;
                                 }
-                                if lname.to_uppercase() == dirent.get_name() {
-                                        println!("update_entry: {} {}", clst, offset - 1);
-                                        // delete_dirent(clst,offset).unwrap();
-                                        write_dirent(clst, offset-1, new).unwrap();
+                                if is_dir && !dirent.is_dir() {
+                                        return Err("update_entry: not a directory");
+                                }
+                                if cat_name(&file) == dirent.get_name() {
+                                        write_dirent(clst, offset, new).unwrap();
                                         return Ok(());
                                 }
                         } else {
@@ -300,12 +229,71 @@ pub fn update_entry(path: &str, new: &DirEntry) -> Result<(), &'static str> {
         return Err("update_entry: entry not found");
 }
 
+#[inline]
+//                                  (clst, offset, update_size)
+fn get_free_entry(chain: &Vec<u32>) -> (u32, u32, bool) {
+        for clst in chain {
+                for offset in 0..*DIRENT_P_CLST {
+                        if let Some(dirent) = read_dirent(*clst, offset) {
+                                if dirent.deleted() {
+                                        return (*clst, offset, false);
+                                }
+                        } else {
+                                return (*clst, offset, true);
+                        }
+                }
+        }
+        if let Ok(clst) = append_chain(chain[chain.len() - 1]) {
+                return (clst, 0, true);
+        }
+        return (0,0, false);
+}
+
+pub fn new_entry(parent: &Path, new: &DirEntry) -> Result<(), &'static str> {
+        let mut fchain = get_file_chain(*ROOT_DIR);
+        let mut entry: Option<DirEntry> = None;
+        if parent.len() != 0 {
+                if let Ok(ent) = find_entry(&parent, true) {
+                        entry = Some(ent);
+                        fchain = ent.get_chain();
+                } else {
+                        return Err("new_entry: parent not found");
+                }
+        }
+        let (clst, offset, update_size) = get_free_entry(&fchain);
+        if clst == 0 {
+                return Err("new_entry: no space for new entry");
+        }
+        if update_size && parent.len() != 0{
+                if let Some(mut entry) = entry {
+                        entry.size += size_of::<DirEntry>() as u32;
+                        update_entry(&parent, true, &entry);
+                } else {
+                        return Err("new_entry: what happened to my entry?");
+                }
+        }
+        write_dirent(clst, offset, new)
+}
+
+pub fn new_entry_at(parent: &DirEntry, new: &DirEntry) -> Result<bool, &'static str> {
+        let fchain = get_file_chain(parent.get_start());
+        let (clst, offset, update_size) = get_free_entry(&fchain);
+        if clst == 0 {
+                return Err("new_entry_at: no space for new entry");
+        } 
+        if let Err(msg) = write_dirent(clst, offset, new) {
+                return Err(msg);
+        } else {
+                return Ok(update_size);
+        }
+}
+
+#[allow(unused)]
 pub fn ls_root() {
-        for cluster in ROOT_DIR.iter() {
-                let mut offset = 0;
-                loop {
+        let chain = get_file_chain(*ROOT_DIR);
+        for cluster in chain.iter() {
+                for offset in 0..*DIRENT_P_CLST {
                         if let Some(dirent) = read_dirent(*cluster, offset) {
-                                offset += 1;
                                 if dirent.deleted() || dirent.is_ext() {
                                         continue;
                                 } 

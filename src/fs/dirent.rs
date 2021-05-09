@@ -2,23 +2,31 @@
 use core::str::from_utf8;
 use alloc::vec::Vec;
 use alloc::string::String;
+use lazy_static::*;
+use core::mem::size_of;
+
+use super::fat::CLUSTER_SIZE;
 
 #[derive(Clone, Copy)]
 #[repr(C, packed(1))]
 pub struct DirEntry {
         pub name: [u8; 8],
         pub ext: [u8; 3],
-        attr: u8,
-        reserved: u8,
-        created_minisec: u8,
-        created_sec: u16,
-        created_date: u16,
-        accessed_sec: u16,
-        start_h: u16,
-        mod_sec: u16,
-        mod_date: u16,
-        start_l: u16,
+        pub attr: u8,
+        pub reserved: u8,
+        pub created_minisec: u8,
+        pub created_sec: u16,
+        pub created_date: u16,
+        pub accessed_sec: u16,
+        pub start_h: u16,
+        pub mod_sec: u16,
+        pub mod_date: u16,
+        pub start_l: u16,
         pub size: u32,
+}
+
+lazy_static! {
+        pub static ref DIRENT_P_CLST: u32 = *CLUSTER_SIZE / size_of::<DirEntry>() as u32;
 }
 
 #[repr(C, packed(1))]
@@ -44,6 +52,16 @@ impl DirEntry {
         const ATTR_LFN: u8 = 0x0f;
 
         #[inline]
+        pub fn attr_file() -> u8 {
+                return DirEntry::ATTR_FILE;
+        }
+
+        #[inline]
+        pub fn attr_dir() -> u8 {
+                return DirEntry::ATTR_SUBDIR;
+        }
+
+        #[inline]
         pub fn deleted(&self) -> bool {
                 return self.name[0] == 0xE5;
         }
@@ -61,6 +79,11 @@ impl DirEntry {
         #[inline]
         pub fn is_file(&self) -> bool {
                 return self.attr & DirEntry::ATTR_FILE == DirEntry::ATTR_FILE;
+        }
+
+        #[inline]
+        pub fn is_read_only(&self) -> bool {
+                return self.attr & DirEntry::ATTR_RDONLY == DirEntry::ATTR_RDONLY;
         }
 
         pub fn get_start(&self) -> u32 {

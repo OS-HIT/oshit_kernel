@@ -6,6 +6,9 @@ use blkcache::BlockCache;
 use alloc::collections::VecDeque;
 use lazy_static::*;
 
+use crate::drivers::BlockDevice;
+use crate::drivers::BLOCK_DEVICE;
+
 pub const BLOCK_SZ: usize = 512;
 
 const BLOCK_CACHE_SIZE: usize = 16;
@@ -49,6 +52,14 @@ impl BlockCacheManager {
                 }
         }
 
+        pub fn clear_block_cache(&mut self, block_id: usize) {
+                if let Some(pair) = self.queue.iter().find(|pair| pair.0 == block_id) {
+                        pair.1.lock().clear();
+                }
+                BLOCK_DEVICE.clear_block(block_id);
+                return;
+        }
+
         pub fn flush_all(&self) {
                 for cache in self.queue.iter() {
                         cache.1.lock().sync();
@@ -67,6 +78,10 @@ pub fn get_block_cache(
         block_id: usize,
 ) -> Arc<Mutex<BlockCache>> {
         BLOCK_CACHE_MANAGER.lock().get_block_cache(block_id)
+}
+
+pub fn clear_block_cache (block_id: usize) {
+        BLOCK_CACHE_MANAGER.lock().clear_block_cache(block_id);
 }
 
 pub fn flush(cache: Arc<Mutex<BlockCache>>) {

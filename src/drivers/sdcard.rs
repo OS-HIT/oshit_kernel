@@ -643,12 +643,16 @@ impl SDCard0WithLock {
         }
 }
 
+const zeros: [u8;512] = [0u8; 512];
 impl BlockDevice for SDCard0WithLock {
         fn read_block(&self, block_id: usize, buf: &mut [u8]) {
                 self.0.lock().read_sector(buf,block_id as u32).unwrap();
         }
         fn write_block(&self, block_id: usize, buf: &[u8]) {
                 self.0.lock().write_sector(buf,block_id as u32).unwrap();
+        }
+        fn clear_block(&self, block_id: usize) {
+                self.0.lock().write_sector(&zeros, block_id as u32).unwrap();
         }
         fn block_cnt(&self) -> u64{
                 let info = self.0.lock().info.unwrap();

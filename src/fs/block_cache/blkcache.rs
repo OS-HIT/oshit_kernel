@@ -48,6 +48,13 @@ impl BlockCache {
                 unsafe { &mut *(addr as *mut T) }
         }
 
+        pub fn clear(&mut self) {
+                self.modified = false;
+                for i in 0..BLOCK_SZ {
+                        self.cache[i] = 0;
+                }
+        }
+
         pub fn sync(&mut self) {
                 if self.modified {
                         self.modified = false;

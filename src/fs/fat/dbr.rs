@@ -3,6 +3,7 @@ use core::mem::size_of;
 use lazy_static::*;
 
 use super::super::block_cache::get_block_cache;
+use super::super::block_cache::clear_block_cache;
 use super::super::block_cache::BLOCK_SZ;
 
 use super::fsinfo::FSINFO;
@@ -207,4 +208,16 @@ pub fn write_cluster(cluster: u32, offset: u32, buf: &[u8]) -> Result<u32, &str>
                 } 
         }
         return Ok(buf.len() as u32);
+}
+
+pub fn clear_cluster(cluster:u32) -> Result<(), &'static str> {
+        if cluster >= DBR_INST.cluster_cnt() {
+                return Err("clear_cluster: Invalid cluster");
+        } 
+        if let Some(block) = get_cluster_cache(cluster, 0) {
+                for i in 0..(*super::CLUSTER_SIZE / BLOCK_SZ as u32) {
+                        clear_block_cache((block+i) as usize);
+                }
+        }
+        return Ok(());
 }
