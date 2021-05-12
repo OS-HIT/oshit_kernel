@@ -40,7 +40,6 @@ pub extern "C" fn rust_main() -> !{
     info!("Vendor id = {}", sbi::get_vendor_id());
     memory::init();
     trap::init();
-    fs::list_tree("/", 0).unwrap();
     process::init();
     panic!("drop off from bottom!");
 }

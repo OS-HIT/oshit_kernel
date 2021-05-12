@@ -14,6 +14,7 @@ K210-SERIALPORT	:= /dev/ttyUSB0
 K210-BURNER 	:= ../kflash.py/kflash.py
 BOOTLOADER 		:= ../bootloader/rustsbi-$(BOARD).bin
 K210_BOOTLOADER_SIZE := 131072
+FS_IMG 			:= ../fs.img
 
 # KERNEL ENTRY
 ifeq ($(BOARD), qemu)
@@ -21,8 +22,6 @@ ifeq ($(BOARD), qemu)
 else ifeq ($(BOARD), k210)
 	KERNEL_ENTRY_PA := 0x80020000
 endif
-
-
 
 build: env $(KERNEL_BIN)
 
@@ -56,7 +55,9 @@ ifeq ($(BOARD),qemu)
 		-machine virt \
 		-nographic \
 		-bios $(BOOTLOADER)\
-		-device loader,file=$(KERNEL_BIN),addr=$(KERNEL_ENTRY_PA)
+		-device loader,file=$(KERNEL_BIN),addr=$(KERNEL_ENTRY_PA) \
+		-drive file=$(FS_IMG),if=none,format=raw,id=x0 \
+		-device virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0
 else
 	@cp $(BOOTLOADER) $(BOOTLOADER).copy
 	@dd if=$(KERNEL_BIN) of=$(BOOTLOADER).copy bs=$(K210_BOOTLOADER_SIZE) seek=1
@@ -73,5 +74,7 @@ debug: build
 			-nographic \
 			-bios $(BOOTLOADER)\
 			-device loader,file=$(KERNEL_BIN),addr=$(KERNEL_ENTRY_PA)
+			-drive file=$(FS_IMG),if=none,format=raw,id=x0 \
+			-device virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0
 			
 .PHONY: build env kernel clean disasm run debug

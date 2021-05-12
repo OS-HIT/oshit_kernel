@@ -150,7 +150,7 @@ impl AbsPathCheck {
                                                 return None;
                                         }
                                 } else {
-                                        if c.is_alphanumeric() || c == '_' {
+                                        if c.is_alphanumeric() || c == '_' || c == '~' {
                                                 if self.name_buf.len() < 8 {
                                                         self.name_buf.push(c);
                                                         return None;
@@ -181,7 +181,7 @@ impl AbsPathCheck {
                                         self.result = Some(Err(PathFormatError::InvalidCharInFileExt));
                                         return Some(Err(PathFormatError::InvalidCharInFileExt));
                                 } else {
-                                        if c.is_alphanumeric() || c == '_' {
+                                        if c.is_alphanumeric() || c == '_' || c == '~' {
                                                 if self.ext_buf.len() < 8 {
                                                         self.ext_buf.push(c);
                                                         return None;

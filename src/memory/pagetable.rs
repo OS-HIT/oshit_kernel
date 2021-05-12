@@ -6,6 +6,7 @@ use super::{
     PhysPageNum,
     VirtPageNum,
     VirtAddr,
+    PhysAddr,
     FrameTracker,
     alloc_frame,
 };
@@ -150,6 +151,12 @@ impl PageTable {
 
     pub fn translate(&self, vpn: VirtPageNum) -> Option<PageTableEntry> {
         self.walk(vpn).map(|pte| pte.clone())
+    }
+
+    pub fn translate_va(&self, va: VirtAddr) -> Option<PhysAddr> {
+        self.walk(va.clone().to_vpn()).map(|pte| {
+            return PhysAddr::from(pte.ppn()) + va.page_offset()
+        })
     }
 }
 

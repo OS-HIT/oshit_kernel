@@ -27,14 +27,7 @@ pub use dirent::DirEntry;
 // FILE::open_dir(path: &str, mode: u32) -> Result<FILE, &'static str>
 // FILE::get_dirent(&mut self) ->Result<DirEntry, &str> 
 
-use lazy_static::*;
-use alloc::sync::Arc;
-use crate::drivers::{SDCard0WithLock, BlockDevice};
-
-lazy_static! {
-        pub static ref BLOCK_DEVICE: Arc<SDCard0WithLock> = Arc::new(SDCard0WithLock::new());
-}
-
+use crate::drivers::BLOCK_DEVICE;
 
 #[allow(unused)]
 pub fn sdcard_test() {
