@@ -14,7 +14,6 @@ K210-SERIALPORT	:= /dev/ttyUSB0
 K210-BURNER 	:= ../kflash.py/kflash.py
 BOOTLOADER 		:= ../bootloader/rustsbi-$(BOARD).bin
 K210_BOOTLOADER_SIZE := 131072
-PY 				:= python3
 
 # KERNEL ENTRY
 ifeq ($(BOARD), qemu)

@@ -7,7 +7,7 @@ use alloc::collections::VecDeque;
 use lazy_static::*;
 
 use crate::drivers::BlockDevice;
-use crate::drivers::BLOCK_DEVICE;
+use crate::fs::BLOCK_DEVICE;
 
 pub const BLOCK_SZ: usize = 512;
 
