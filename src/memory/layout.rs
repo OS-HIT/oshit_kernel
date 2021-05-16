@@ -26,6 +26,10 @@ lazy_static! {
     pub static ref KERNEL_MEM_LAYOUT: Arc<Mutex<MemLayout>> = Arc::new(Mutex::new(MemLayout::new_kernel()));
 }
 
+pub fn kernel_satp() -> usize {
+    return KERNEL_MEM_LAYOUT.lock().get_satp();
+}
+
 #[derive(PartialEq, Debug, Copy, Clone)]
 pub enum MapType {
     Identity,   // identity mapping

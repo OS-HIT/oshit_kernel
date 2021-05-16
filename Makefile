@@ -14,6 +14,7 @@ K210-SERIALPORT	:= /dev/ttyUSB0
 K210-BURNER 	:= ../kflash.py/kflash.py
 BOOTLOADER 		:= ../bootloader/rustsbi-$(BOARD).bin
 K210_BOOTLOADER_SIZE := 131072
+FS_IMG 			:= ../fs.img
 
 # KERNEL ENTRY
 ifeq ($(BOARD), qemu)
@@ -54,14 +55,16 @@ ifeq ($(BOARD),qemu)
 		-machine virt \
 		-nographic \
 		-bios $(BOOTLOADER)\
-		-device loader,file=$(KERNEL_BIN),addr=$(KERNEL_ENTRY_PA)
+		-device loader,file=$(KERNEL_BIN),addr=$(KERNEL_ENTRY_PA) \
+		-drive file=$(FS_IMG),if=none,format=raw,id=x0 \
+		-device virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0
 else
 	@cp $(BOOTLOADER) $(BOOTLOADER).copy
 	@dd if=$(KERNEL_BIN) of=$(BOOTLOADER).copy bs=$(K210_BOOTLOADER_SIZE) seek=1
 	@mv $(BOOTLOADER).copy $(KERNEL_BIN)
 	# @sudo chmod 777 $(K210-SERIALPORT)
-	python3 $(K210-BURNER) -p $(K210-SERIALPORT) -b 1500000 $(KERNEL_BIN)
-	python3 -m serial.tools.miniterm --eol LF --dtr 0 --rts 0 --filter direct $(K210-SERIALPORT) 115200
+	$(PY) $(K210-BURNER) -p $(K210-SERIALPORT) -b 1500000 $(KERNEL_BIN)
+	$(PY) -m serial.tools.miniterm --eol LF --dtr 0 --rts 0 --filter direct $(K210-SERIALPORT) 115200
 endif
 
 debug: build
@@ -71,5 +74,7 @@ debug: build
 			-nographic \
 			-bios $(BOOTLOADER)\
 			-device loader,file=$(KERNEL_BIN),addr=$(KERNEL_ENTRY_PA)
+			-drive file=$(FS_IMG),if=none,format=raw,id=x0 \
+			-device virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0
 			
 .PHONY: build env kernel clean disasm run debug

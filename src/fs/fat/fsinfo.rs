@@ -16,7 +16,7 @@ impl FSINFO {
 
         pub fn set_fclst(&mut self, fclst: u32) -> Result<(), &str> {
                 let cache = get_block_cache(1);
-                if fclst > DBR_INST.cluster_cnt() {
+                if fclst > DBR_INST.clst_cnt {
                         return Err("set_fclst: invalid fclst");
                 }
                 self.free_clst = fclst;

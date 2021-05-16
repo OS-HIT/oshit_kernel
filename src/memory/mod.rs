@@ -97,10 +97,12 @@ pub use pagetable::{
 pub use frame_alloc::{
     FrameTracker,
     alloc_frame,
+    free_frame,
 };
 
 pub use layout::{
     KERNEL_MEM_LAYOUT,
+    kernel_satp,
     MemLayout,
     Segment,
     MapType,

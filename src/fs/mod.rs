@@ -1,4 +1,4 @@
-mod block_cache;
+pub mod block_cache;
 pub mod fat;
 mod dirent;
 mod path;
@@ -26,6 +26,24 @@ pub use dirent::DirEntry;
 // FILE::delete_dir(path: &str) -> Result<(), &'static str>
 // FILE::open_dir(path: &str, mode: u32) -> Result<FILE, &'static str>
 // FILE::get_dirent(&mut self) ->Result<DirEntry, &str> 
+
+use crate::drivers::BLOCK_DEVICE;
+
+#[allow(unused)]
+pub fn sdcard_test() {
+        for i in 0..10 as u8 {
+                let buf = [i; 512];
+                BLOCK_DEVICE.write_block(i as usize, &buf);
+        }
+
+        for i in 0..10 as u8 {
+                let mut buf = [0u8; 512];
+                BLOCK_DEVICE.read_block(i as usize, &mut buf);
+                assert_eq!(buf[i as usize], i);
+        }
+
+        info!("sdcard test passed");
+}
 
 pub fn stat_file(path_s:& str) -> Result<DirEntry, &'static str> {
         match path::parse_path(path_s) {

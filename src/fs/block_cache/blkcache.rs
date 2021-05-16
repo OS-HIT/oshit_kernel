@@ -1,5 +1,4 @@
 use crate::drivers::BlockDevice;
-use crate::drivers::sdcard::SDCard0WithLock;
 use crate::drivers::BLOCK_DEVICE;
 use alloc::sync::Arc;
 
@@ -13,7 +12,7 @@ pub struct BlockCache {
 
 impl BlockCache {
         // const block_device: Arc<SDCard0WithLock> = BLOCK_DEVICE.clone();
-        fn device() -> Arc<SDCard0WithLock> {
+        fn device() -> Arc<dyn BlockDevice> {
                 return BLOCK_DEVICE.clone();
         }
         /// Load a new BlockCache from disk.
