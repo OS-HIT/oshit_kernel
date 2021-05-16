@@ -6,7 +6,6 @@ use blkcache::BlockCache;
 use alloc::collections::VecDeque;
 use lazy_static::*;
 
-use crate::drivers::BlockDevice;
 use crate::fs::BLOCK_DEVICE;
 
 pub const BLOCK_SZ: usize = 512;

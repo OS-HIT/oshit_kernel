@@ -1,5 +1,4 @@
 use crate::drivers::BlockDevice;
-use crate::drivers::sdcard::SDCard0WithLock;
 use crate::drivers::BLOCK_DEVICE;
 use alloc::sync::Arc;
 

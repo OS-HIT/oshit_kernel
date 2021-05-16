@@ -1,4 +1,4 @@
-mod block_cache;
+pub mod block_cache;
 pub mod fat;
 mod dirent;
 mod path;
