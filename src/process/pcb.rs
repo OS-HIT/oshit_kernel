@@ -1,3 +1,8 @@
+use crate::fs::{
+    FILE,
+    FTYPE,
+};
+
 use crate::memory::{
     MemLayout,
     PhysAddr,
@@ -73,6 +78,7 @@ pub struct ProcessControlBlockInner {
     pub utime: u64,
     pub parent: Option<Weak<ProcessControlBlock>>,
     pub children: Vec<Arc<ProcessControlBlock>>,
+    pub files: Vec<FILE>,
     pub exit_code: i32,
 }
 
@@ -97,6 +103,33 @@ impl ProcessControlBlock {
         let kernel_stack_top = kernel_stack.top();
         let context_ptr = kernel_stack.save_to_top(ProcessContext::init()) as usize;
         let status = ProcessStatus::Ready;
+
+        let stdin = FILE {
+            path: Vec::new(),
+            ftype: FTYPE::TStdIn,
+            fchain: Vec::new(),
+            fsize: 0,
+            cursor: 0,
+            flag: FILE::FMOD_READ,
+        };
+        let stdout = FILE {
+            path: Vec::new(), 
+            ftype: FTYPE::TStdOut,
+            fchain: Vec::new(),
+            fsize: 0,
+            cursor: 0,
+            flag: FILE::FMOD_WRITE,
+        };
+        let stderr = FILE {
+            path: Vec::new(),
+            ftype: FTYPE::TStdErr,
+            fchain: Vec::new(),
+            fsize: 0,
+            cursor: 0,
+            flag: FILE::FMOD_WRITE,
+        };
+        let files = vec![stdin, stdout, stderr];
+
         let pcb = Self {
             pid,
             kernel_stack,
@@ -111,6 +144,7 @@ impl ProcessControlBlock {
                 utime: 0,
                 parent: None,       // FIXME: Isn't it PROC0?
                 children: Vec::new(),
+                files,
                 exit_code: 0
             }),
         };
@@ -149,6 +183,7 @@ impl ProcessControlBlock {
                 utime: parent_arcpcb.utime,
                 parent: Some(Arc::downgrade(self)),
                 children: Vec::new(),
+                files: parent_arcpcb.files.clone(),
                 exit_code: 0
             }),
         });

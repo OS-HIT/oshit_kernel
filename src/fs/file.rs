@@ -30,19 +30,25 @@ use super::fat::fat::clear_file_chain;
 use super::fat::fat::truncat_file_chain;
 use super::fat::fat::get_free_cluster;
 
+#[derive(Clone)]
 pub struct FILE {
-        path: Path,
-        ftype: FTYPE,
-        fchain: Vec<u32>,
-        fsize: u32,
-        cursor: u32,
-        flag: u32,
+        pub path: Path,
+        pub ftype: FTYPE,
+        pub fchain: Vec<u32>,
+        pub fsize: u32,
+        pub cursor: u32,
+        pub flag: u32,
 }
 
 #[derive(PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub enum FTYPE {
         TDir,
         TFile,
+        TStdIn,
+        TStdOut,
+        TStdErr,
+        TFree,
 }
 
 pub enum FSEEK {
@@ -475,9 +481,9 @@ impl FILE {
                 };
         }
 
-        pub fn read_file(&mut self, buf: &mut [u8]) -> Result<u32, &str> {
-                if self.ftype == FTYPE::TDir {
-                        return Err("read_file: This is a directory");
+        pub fn read_file(&mut self, buf: &mut [u8]) -> Result<u32, &'static str> {
+                if self.ftype != FTYPE::TFile {
+                        return Err("read_file: Not a regular file");
                 }
                 
                 if !self.read_allowed() {
@@ -504,8 +510,8 @@ impl FILE {
         }
 
         pub fn write_file(&mut self, buf: &[u8]) -> Result<u32, &str> {
-                if self.ftype == FTYPE::TDir {
-                        return Err("write_file: This is a directory");
+                if self.ftype != FTYPE::TFile {
+                        return Err("write_file: Not a regular file");
                 }
                 if !self.write_allowed() {
                         if !self.append_allowed() {
