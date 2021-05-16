@@ -41,7 +41,7 @@ pub extern "C" fn rust_main() -> !{
     memory::init();
     trap::init();
         
-    // fs::list_tree("/", 0).unwrap();
+    fs::list_tree("/", 0).unwrap();
     process::init();
     panic!("drop off from bottom!");
 }

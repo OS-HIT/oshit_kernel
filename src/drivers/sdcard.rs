@@ -481,7 +481,6 @@ impl SDCard0 {
         }
 
         pub fn read_sector(&self, data_buf: &mut [u8], sector: u32) -> Result<(), ()> {
-                debug!("read_sector call:{}", sector);
                 if data_buf.len() < SEC_LEN || (data_buf.len() % SEC_LEN) != 0 {
                         return Err(());
                 }
@@ -490,7 +489,6 @@ impl SDCard0 {
                 } else {
                         sector
                 };
-                debug!("read_sector: send cmd with {}", sector);
                 /* Send CMD17 to read one block, or CMD18 for multiple */
                 let flag = if data_buf.len() == SEC_LEN {
                         self.send_cmd(CMD::CMD17, sector, 0);
@@ -522,13 +520,13 @@ impl SDCard0 {
                         /* Get CRC bytes (not really needed by us, but required by SD) */
                         let mut frame = [0u8; 2];
                         self.read_data(&mut frame);
-                        for i in 0..32 {
-                                for j in 0..16 {
-                                        print!("{:02X} ", tmp_chunk[i * 16 + j]);
-                                }
-                                println!();
-                        }
-                        println!();
+                        // for i in 0..32 {
+                        //         for j in 0..16 {
+                        //                 print!("{:02X} ", tmp_chunk[i * 16 + j]);
+                        //         }
+                        //         println!();
+                        // }
+                        // println!();
                 }
                 self.end_cmd();
                 if flag {

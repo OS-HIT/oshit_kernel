@@ -121,7 +121,6 @@ impl DBR {
                 
                 let fat_sec = b2u32(&raw.fat_sec);
                 let fat_cnt = raw.fat_cnt as u32;
-                debug!("{} {}", fat_sec, sec_len);
                 let fat_len = fat_sec * sec_len;
                 
                 let data_sec_base = rsv_sec + fat_cnt * fat_sec;
