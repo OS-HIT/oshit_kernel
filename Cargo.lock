@@ -189,22 +189,22 @@ checksum = "24d5f089152e60f62d28b835fbff2cd2e8dc0baf1ac13343bef92ab7eed84548"
 [[package]]
 name = "riscv"
 version = "0.6.0"
-source = "git+https://github.com/rcore-os/riscv#21e32ee1dc786cc0d5006ceee0040ce4f8398575"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a2f0b705d428e9d0f78e2bb73093887ee58a83c9688de3faedbb4c0631c4618e"
 dependencies = [
  "bare-metal",
  "bit_field",
- "bitflags",
  "riscv-target",
 ]
 
 [[package]]
 name = "riscv"
 version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a2f0b705d428e9d0f78e2bb73093887ee58a83c9688de3faedbb4c0631c4618e"
+source = "git+https://github.com/rcore-os/riscv#21e32ee1dc786cc0d5006ceee0040ce4f8398575"
 dependencies = [
  "bare-metal",
  "bit_field",
+ "bitflags",
  "riscv-target",
 ]
 
