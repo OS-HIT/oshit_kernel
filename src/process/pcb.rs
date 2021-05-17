@@ -1,6 +1,10 @@
 use crate::fs::{
     FILE,
     FTYPE,
+    File,
+    Stdin,
+    Stdout,
+    Stderr
 };
 
 use crate::memory::{
@@ -78,7 +82,7 @@ pub struct ProcessControlBlockInner {
     pub utime: u64,
     pub parent: Option<Weak<ProcessControlBlock>>,
     pub children: Vec<Arc<ProcessControlBlock>>,
-    pub files: Vec<FILE>,
+    pub files: Vec<Option<Arc<dyn File + Send+ Sync>>>,
     pub exit_code: i32,
 }
 
@@ -92,6 +96,20 @@ impl ProcessControlBlockInner {
     pub fn get_satp(&self) -> usize {
         return self.layout.get_satp();
     }
+    
+    pub fn alloc_fd(&self) -> usize {
+        let empty_slot = (0..self.files.len()).find(
+            |i|
+                self.files[*i].is_none()
+        );
+        match empty_slot {
+            Some(fd ) => fd,
+            None => {
+                self.files.push(None);
+                self.files.len() - 1
+            }
+        }
+    }
 }
 
 impl ProcessControlBlock {
@@ -104,31 +122,30 @@ impl ProcessControlBlock {
         let context_ptr = kernel_stack.save_to_top(ProcessContext::init()) as usize;
         let status = ProcessStatus::Ready;
 
-        let stdin = FILE {
-            path: Vec::new(),
-            ftype: FTYPE::TStdIn,
-            fchain: Vec::new(),
-            fsize: 0,
-            cursor: 0,
-            flag: FILE::FMOD_READ,
-        };
-        let stdout = FILE {
-            path: Vec::new(), 
-            ftype: FTYPE::TStdOut,
-            fchain: Vec::new(),
-            fsize: 0,
-            cursor: 0,
-            flag: FILE::FMOD_WRITE,
-        };
-        let stderr = FILE {
-            path: Vec::new(),
-            ftype: FTYPE::TStdErr,
-            fchain: Vec::new(),
-            fsize: 0,
-            cursor: 0,
-            flag: FILE::FMOD_WRITE,
-        };
-        let files = vec![stdin, stdout, stderr];
+        // let stdin = FILE {
+        //     path: Vec::new(),
+        //     ftype: FTYPE::TStdIn,
+        //     fchain: Vec::new(),
+        //     fsize: 0,
+        //     cursor: 0,
+        //     flag: FILE::FMOD_READ,
+        // };
+        // let stdout = FILE {
+        //     path: Vec::new(), 
+        //     ftype: FTYPE::TStdOut,
+        //     fchain: Vec::new(),
+        //     fsize: 0,
+        //     cursor: 0,
+        //     flag: FILE::FMOD_WRITE,
+        // };
+        // let stderr = FILE {
+        //     path: Vec::new(),
+        //     ftype: FTYPE::TStdErr,
+        //     fchain: Vec::new(),
+        //     fsize: 0,
+        //     cursor: 0,
+        //     flag: FILE::FMOD_WRITE,
+        // };
 
         let pcb = Self {
             pid,
@@ -144,7 +161,11 @@ impl ProcessControlBlock {
                 utime: 0,
                 parent: None,       // FIXME: Isn't it PROC0?
                 children: Vec::new(),
-                files,
+                files: vec![
+                    Some(Arc::new(Stdin)), 
+                    Some(Arc::new(Stdout)), 
+                    Some(Arc::new(Stderr))
+                ],
                 exit_code: 0
             }),
         };
@@ -227,5 +248,10 @@ impl ProcessControlBlock {
     pub fn get_ppid(&self) -> usize {
         let arcpcb = self.get_inner_locked();
         arcpcb.parent.as_ref().unwrap().upgrade().unwrap().get_pid()
+    }
+
+    pub fn alloc_fd(&self) -> usize {
+        let arcpcb = self.get_inner_locked();
+        arcpcb.alloc_fd()
     }
 }

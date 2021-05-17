@@ -3,7 +3,9 @@ pub mod fat;
 mod dirent;
 mod path;
 pub mod file;
-// mod stdio;
+mod stdio;
+
+pub use stdio::{Stdin, Stderr, Stdout};
 
 use alloc::string::String;
 

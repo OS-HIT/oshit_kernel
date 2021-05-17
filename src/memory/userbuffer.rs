@@ -1,5 +1,6 @@
-use alloc::vec::Vec;
+use alloc::{collections::binary_heap::Iter, vec::Vec};
 use core::ops::{Index, IndexMut};
+use core::mem::size_of;
 
 pub struct UserBuffer {
     pub parts: Vec<&'static mut [u8]>
@@ -16,6 +17,41 @@ impl UserBuffer {
             total += p.len();
         }
         return total;
+    }
+
+    pub fn write<T>(&mut self, offset: usize, obj: &T) {
+        let size = size_of::<T>();
+        let mut iter = obj as *const T as usize as *const u8;
+        for i in 0..size {
+            unsafe {
+                self[offset + i] = *iter;
+                iter = iter.add(1) 
+            };
+        }
+    }
+
+    // Note: this only return a copy of original data
+    // TODO: check if this actually works.
+    pub fn read<T>(&self, offset: usize) -> &mut T {
+        let mut res: Vec<u8> = Vec::new();
+        for i in 0..size_of::<T>() {
+            res.push(self[offset+i]);
+        }
+        let u8s: &[u8] = &res;
+        let dst: *mut T = u8s.as_ptr() as usize as *mut T;
+        return unsafe{dst.as_mut().unwrap()};
+    }
+}
+
+impl<'a> IntoIterator for &'a UserBuffer {
+    type Item = u8;
+    type IntoIter = UserBufferIter<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        UserBufferIter {
+            index: 0,
+            buffer: self
+        }
     }
 }
 
@@ -45,5 +81,23 @@ impl IndexMut<usize> for UserBuffer {
             len -= p.len();
         }
         panic!("Index out of bound!");
+    }
+}
+
+pub struct UserBufferIter<'a> {
+    index: usize,
+    buffer: &'a UserBuffer,
+}
+
+impl<'a> Iterator for UserBufferIter<'a> {
+    type Item = u8;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index >= self.buffer.len() {
+            return None;
+        } else {
+            self.index = self.index + 1;
+            return Some(self.buffer[self.index - 1]);
+        }
     }
 }

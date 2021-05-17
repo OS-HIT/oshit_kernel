@@ -3,17 +3,19 @@ use super::super::sbi::{LogLevel, set_log_color, reset_color, get_byte};
 use crate::memory::{get_user_data, write_user_data, VirtAddr};
 use crate::process::{current_satp, suspend_switch, current_process};
 use alloc::vec::Vec;
+use alloc::sync::Arc;
+use core::convert::TryInto;
 
-#[inline]
-fn find_free_fd() -> Option<usize> {
-    let arcproc = current_process().unwrap();
-    for i in 0..arcproc.get_inner_locked().files.len() {
-        if arcproc.get_inner_locked().files[i].ftype == FTYPE::TFree {
-            return Some(i);
-        }
-    }
-    return None;
-}
+// #[inline]
+// fn find_free_fd() -> Option<usize> {
+//     let arcproc = current_process().unwrap();
+//     for i in 0..arcproc.get_inner_locked().files.len() {
+//         if arcproc.get_inner_locked().files[i].ftype == FTYPE::TFree {
+//             return Some(i);
+//         }
+//     }
+//     return None;
+// }
 
 pub fn sys_open(path: &str, mode: u32) -> isize {
     let file = match FILE::open_file(path, mode) {
@@ -25,18 +27,22 @@ pub fn sys_open(path: &str, mode: u32) -> isize {
     };
 
     let mut arcproc = current_process().unwrap();
+    let mut arcpcb = arcproc.get_inner_locked();
+    let fd = arcpcb.alloc_fd();
+    arcpcb.files[fd] = Some(Arc::new(file));
+    return fd.try_into().unwrap();
 
-    match find_free_fd() {
-        Some(fd) => {
-            arcproc.get_inner_locked().files[fd] = file;
-            return fd as isize;
-        },
-        None => {
-            let fd = arcproc.get_inner_locked().files.len() as isize;
-            arcproc.get_inner_locked().files.push(file);
-            return fd;
-        }
-    }
+    // match find_free_fd() {
+    //     Some(fd) => {
+    //         arcproc.get_inner_locked().files[fd] = file;
+    //         return fd as isize;
+    //     },
+    //     None => {
+    //         let fd = arcproc.get_inner_locked().files.len() as isize;
+    //         arcproc.get_inner_locked().files.push(file);
+    //         return fd;
+    //     }
+    // }
 }
 
 pub fn sys_close(fd: usize) -> isize {

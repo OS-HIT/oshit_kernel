@@ -57,6 +57,16 @@ pub enum FSEEK {
         END(i32),
 }
 
+impl super::File for FILE {
+    fn read(&self, buf: crate::memory::UserBuffer) -> isize {
+        todo!()
+    }
+
+    fn write(&self, buf: crate::memory::UserBuffer) -> isize {
+        todo!()
+    }
+}
+
 impl FILE {
         // pub const FLAG_READ: u32= 1;
         // pub const FLAG_WRITE: u32 = 2;
