@@ -26,10 +26,10 @@ use dbr::get_cluster_cache;
 use fat::get_file_chain;
 
 lazy_static! {
-        pub static ref CLUSTER_SIZE: u32 = DBR_INST.cluster_size();
+        pub static ref CLUSTER_SIZE: u32 = DBR_INST.clst_size;
         pub static ref ROOT_DIR: u32 = DBR_INST.root;
         
-        static ref CLUSTER_CNT: u32 = DBR_INST.cluster_cnt(); 
+        static ref CLUSTER_CNT: u32 = DBR_INST.clst_cnt; 
         // static ref ROOT_DIR: Vec<u32> = fat::FAT_INST.get_clusters(DBR_INST.root);
 }
 
@@ -75,7 +75,7 @@ pub fn read_dirent(cluster: u32, offset: u32) -> Option<DirEntry> {
                 return None;
         }
         if let Some(block) = get_cluster_cache(cluster, offset * size_of::<DirEntry>() as u32) {
-                let off = offset * size_of::<DirEntry>() as u32 % DBR_INST.sec_len as u32;
+                let off = offset * size_of::<DirEntry>() as u32 % DBR_INST.sec_len;
                 let dirent = *get_block_cache(block as usize).lock().get_ref::<DirEntry>(off as usize);
                 if dirent.name[0] == 0 {
                         None
@@ -92,7 +92,7 @@ pub fn write_dirent(cluster:u32, offset: u32, new: &DirEntry) -> Result<(), &'st
                 return Err("write_dirent: invalid cluster");
         }
         if let Some(block) = get_cluster_cache(cluster, offset * size_of::<DirEntry>() as u32) {
-                let off = offset * size_of::<DirEntry>() as u32 % DBR_INST.sec_len as u32;
+                let off = offset * size_of::<DirEntry>() as u32 % DBR_INST.sec_len;
                 // println!("b:{:#010X} off:{:#010X}", block, off);
                 *get_block_cache(block as usize).lock().get_mut::<DirEntry>(off as usize) = *new;
                 return Ok(());       
@@ -106,7 +106,7 @@ pub fn delete_dirent(cluster: u32, offset: u32) -> Result<(), &'static str> {
                 return Err("delete_dirent: invalid cluster");
         }
         if let Some(block) = get_cluster_cache(cluster, offset * size_of::<DirEntry>() as u32) {
-                let off = offset * size_of::<DirEntry>() as u32 % (*DBR_INST).sec_len as u32;
+                let off = offset * size_of::<DirEntry>() as u32 % (*DBR_INST).sec_len;
                 // println!("b:{:#010X} off:{:#010X}", block, off);
                 get_block_cache(block as usize).lock().get_mut::<DirEntry>(off as usize).name[0] = 0xE5;
                 return Ok(());

@@ -520,6 +520,13 @@ impl SDCard0 {
                         /* Get CRC bytes (not really needed by us, but required by SD) */
                         let mut frame = [0u8; 2];
                         self.read_data(&mut frame);
+                        // for i in 0..32 {
+                        //         for j in 0..16 {
+                        //                 print!("{:02X} ", tmp_chunk[i * 16 + j]);
+                        //         }
+                        //         println!();
+                        // }
+                        // println!();
                 }
                 self.end_cmd();
                 if flag {
