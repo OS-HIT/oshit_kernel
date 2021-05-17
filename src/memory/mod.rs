@@ -70,6 +70,7 @@ mod pagetable;
 mod kernel_heap;
 mod frame_alloc;
 mod layout;
+mod userbuffer;
 
 use alloc::vec::Vec;
 
@@ -108,6 +109,8 @@ pub use layout::{
     MapType,
     SegmentFlags
 };
+
+pub use userbuffer::UserBuffer;
 
 pub fn init() {
     debug!("Initilizing memory managment unit...");

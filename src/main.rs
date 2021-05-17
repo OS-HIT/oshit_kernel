@@ -36,6 +36,7 @@ compile_error!("At least one of the board_* feature should be active!");
 
 #[no_mangle]
 pub extern "C" fn rust_main() -> !{
+    print!("{}", config::logo);
     info!("Kernel hello world!");
     info!("Vendor id = {}", sbi::get_vendor_id());
     memory::init();

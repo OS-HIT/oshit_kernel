@@ -3,6 +3,7 @@ pub mod fat;
 mod dirent;
 mod path;
 pub mod file;
+// mod stdio;
 
 use alloc::string::String;
 
@@ -14,6 +15,7 @@ pub use file::FILE;
 pub use file::FTYPE;
 pub use file::FSEEK;
 pub use dirent::DirEntry;
+// pub use stdio::{Stdin, Stdout};
 
 // FILE::open_file(path: &str, mode: u32) -> Result<FILE, &str> 
 // FILE::seek_file(&mut self, seek: &FSEEK) -> i32
@@ -28,6 +30,12 @@ pub use dirent::DirEntry;
 // FILE::get_dirent(&mut self) ->Result<DirEntry, &str> 
 
 use crate::drivers::BLOCK_DEVICE;
+use crate::memory::UserBuffer;
+
+pub trait File: Send + Sync {
+        fn read(&self, buf: UserBuffer) -> isize;
+        fn write(&self, buf: UserBuffer) -> isize;
+}
 
 #[allow(unused)]
 pub fn sdcard_test() {
