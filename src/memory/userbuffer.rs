@@ -41,6 +41,25 @@ impl UserBuffer {
         let dst: *mut T = u8s.as_ptr() as usize as *mut T;
         return unsafe{dst.as_mut().unwrap()};
     }
+
+    // TODO: use Vec::from_raw_parts
+    pub fn clone_bytes(&self) -> Vec<u8> {
+        let mut cloned: Vec<u8> = Vec::new();
+        for b in self {
+            cloned.push(b);
+        }
+        cloned
+    }
+
+    pub fn write_bytes(&mut self, bytes: &[u8], offset: usize)  {
+        if offset + bytes.len() > self.len() {
+            panic!("UserBuffer overflow!");
+        }
+
+        for (idx, b) in bytes.iter().enumerate() {
+            self[offset + idx] = *b;
+        }
+    }
 }
 
 impl<'a> IntoIterator for &'a UserBuffer {

@@ -4,6 +4,9 @@ mod dirent;
 mod path;
 pub mod file;
 mod stdio;
+mod virt_file;
+
+pub use virt_file::VirtFile;
 
 pub use stdio::{Stdin, Stderr, Stdout};
 

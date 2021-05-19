@@ -9,6 +9,8 @@ use super::{
     PageTableEntry,
     PTEFlags,
     alloc_frame,
+    get_user_buffer,
+    UserBuffer
 };
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
@@ -374,6 +376,49 @@ impl MemLayout {
 
     pub fn drop_all(&mut self) {
         self.segments.clear();
+    }
+
+    pub fn get_user_data(&self, mut start: VirtAddr, len: usize) -> Vec<&'static mut [u8]> {
+        let end = start + len;
+        let mut pages = Vec::new();
+        while start < end {
+            let mut vpn = start.to_vpn();
+            let ppn = self.translate(vpn).unwrap().ppn();
+            vpn.step();
+            let copy_end = min(vpn.into(), end);    // page end or buf end
+            pages.push(&mut ppn.page_ptr()[
+                start.page_offset()
+                ..
+                copy_end.page_offset()
+            ]);
+            start = copy_end;
+        }
+    
+        return pages;
+    }
+
+    // Get a CLONE of the cstring.
+    pub fn get_user_bytes(&self, start: VirtAddr) -> Vec<u8> {
+        let mut bytes: Vec<u8> = Vec::new();
+        let mut vpn = start.to_vpn();
+        let mut iter: usize = start.page_offset();
+        'outer: loop {
+            let ppn = self.translate(vpn).unwrap().ppn();
+            while iter < PAGE_SIZE {
+                bytes.push(ppn.page_ptr()[iter]);
+                iter += 1;
+                if ppn.page_ptr()[iter] == 0 {
+                    break 'outer;
+                }
+            }
+            vpn.step();
+            iter = 0;
+        }
+        return bytes;
+    }
+
+    pub fn get_user_buffer(&self, start: VirtAddr, len: usize) -> UserBuffer {
+        return UserBuffer::new(self.get_user_data(start, len));
     }
 }
 

@@ -1,5 +1,5 @@
 
-use core::mem::size_of;
+use core::{convert::TryInto, mem::size_of};
 
 use alloc::vec::Vec;
 
@@ -57,13 +57,9 @@ pub enum FSEEK {
         END(i32),
 }
 
-impl super::File for FILE {
-    fn read(&self, buf: crate::memory::UserBuffer) -> isize {
-        todo!()
-    }
-
-    fn write(&self, buf: crate::memory::UserBuffer) -> isize {
-        todo!()
+impl Drop for FILE {
+    fn drop(&mut self) {
+        self.close_file();      // TODO: Ask Shi Jvlao for this
     }
 }
 
@@ -565,7 +561,7 @@ impl FILE {
                 return Ok(wlen);
         }
 
-        pub fn close_file(mut self) -> Result<(), (FILE, &'static str)> {
+        pub fn close_file(&mut self) -> Result<(), (&FILE, &'static str)> {
                 if self.ftype != FTYPE::TFile {
                         return Err((self, "FILE::close_file: not a file"));
                 }

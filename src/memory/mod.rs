@@ -93,6 +93,7 @@ pub use pagetable::{
     get_user_cstr,
     write_user_data,
     translate_user_va,
+    get_user_buffer,
 };
 
 pub use frame_alloc::{
