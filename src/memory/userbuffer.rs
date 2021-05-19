@@ -32,14 +32,14 @@ impl UserBuffer {
 
     // Note: this only return a copy of original data
     // TODO: check if this actually works.
-    pub fn read<T>(&self, offset: usize) -> &mut T {
+    pub fn read<T: Copy>(&self, offset: usize) -> T {
         let mut res: Vec<u8> = Vec::new();
         for i in 0..size_of::<T>() {
             res.push(self[offset+i]);
         }
         let u8s: &[u8] = &res;
         let dst: *mut T = u8s.as_ptr() as usize as *mut T;
-        return unsafe{dst.as_mut().unwrap()};
+        return unsafe{dst.as_mut().unwrap().clone()};
     }
 
     // TODO: use Vec::from_raw_parts

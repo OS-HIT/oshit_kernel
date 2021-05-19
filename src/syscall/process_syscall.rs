@@ -26,7 +26,7 @@ pub fn sys_yield() -> isize {
 }
 
 pub fn sys_exit(code: i32) -> ! {
-    info!("Application exited with code {:}", code);
+    debug!("Application {} exited with code {:}", current_process().unwrap().pid.0, code);
     exit_switch(code);
     unreachable!("This part should be unreachable. Go check __switch.")
 }
@@ -58,15 +58,21 @@ pub fn sys_waitpid(pid: isize, exit_code_ptr: VirtAddr) -> isize {
     let proc = current_process().unwrap();
     let mut arcpcb = proc.get_inner_locked();
     let mut found: bool = false;
+    let mut cand_idx = 0;
     for (idx, child) in arcpcb.children.iter().enumerate() {
         if pid == -1 || pid as usize == child.get_pid() {
             found = true;
-            let child_arcpcb = child.get_inner_locked();
-            if child_arcpcb.status == ProcessStatus::Zombie {
-                assert_eq!(Arc::strong_count(child), 1, "This child process seems to be referenced more then once.");
-                unsafe {*translate_user_va(arcpcb.layout.get_satp(), exit_code_ptr) = child_arcpcb.exit_code;}
-                return child.get_pid() as isize;
-            }
+            cand_idx = idx;
+        }
+    }
+    if found {
+        if arcpcb.children[cand_idx].get_inner_locked().status == ProcessStatus::Zombie {
+            let child_proc = arcpcb.children.remove(cand_idx);
+            let child_arcpcb = child_proc.get_inner_locked();
+            assert_eq!(Arc::strong_count(&child_proc), 1, "This child process seems to be referenced more then once.");
+            unsafe {*translate_user_va(arcpcb.layout.get_satp(), exit_code_ptr) = child_arcpcb.exit_code;}
+            debug!("Zombie {} was killed.", child_proc.get_pid());
+            return child_proc.get_pid() as isize;
         }
     }
     return if found {-2} else {-1};

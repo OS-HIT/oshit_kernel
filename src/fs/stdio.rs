@@ -7,6 +7,8 @@ use crate::process::suspend_switch;
 use crate::sbi::{
     get_byte
 };
+use spin::Mutex;
+
 pub struct Stdin;
 pub struct Stdout;
 pub struct Stderr;
@@ -21,21 +23,25 @@ impl File for Stdin {
             } else {
                 buf[i] = c;
                 i += 1;
-                if i >= buf.len() - 1 || c == b'\n' {     // TODO: check if this actually complys with syscall spec
+                if i < buf.len() - 1 && c == b'\n' {     // TODO: check if this actually complys with syscall spec
                     buf[i] = b'\0';
+                    return i.try_into().unwrap();
+                }
+
+                if i >= buf.len() {
                     return i.try_into().unwrap();
                 }
             }
         }
     }
 
-    fn write(&self, buf: UserBuffer) -> isize {
+    fn write(&self, _: UserBuffer) -> isize {
         panic!("Cannot write to STDIN!");
     }
 }
 
 impl File for Stdout {
-    fn read(&self, buf: UserBuffer) -> isize {
+    fn read(&self, _: UserBuffer) -> isize {
         panic!("Cannot read from STDOUT!");
     }
 
@@ -50,7 +56,7 @@ impl File for Stdout {
 }
 
 impl File for Stderr {
-    fn read(&self, buf: UserBuffer) -> isize {
+    fn read(&self, _: UserBuffer) -> isize {
         panic!("Cannot read from STDOUT!");
     }
 

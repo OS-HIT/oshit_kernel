@@ -12,6 +12,7 @@ use super::{
     get_user_buffer,
     UserBuffer
 };
+use core::mem::size_of;
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
 use bitflags::*;
@@ -354,7 +355,7 @@ impl MemLayout {
             PhysAddr::from(strampoline as usize).into(),
             PTEFlags::R | PTEFlags::X
         );
-        debug!("Trampoline mapped {:?} <=> {:?}, R-X-", VirtAddr::from(TRAMPOLINE), PhysAddr::from(strampoline as usize))
+        verbose!("Trampoline mapped {:?} <=> {:?}, R-X-", VirtAddr::from(TRAMPOLINE), PhysAddr::from(strampoline as usize))
     }
 
     pub fn translate(&self, vpn: VirtPageNum) -> Option<PageTableEntry> {
@@ -419,6 +420,17 @@ impl MemLayout {
 
     pub fn get_user_buffer(&self, start: VirtAddr, len: usize) -> UserBuffer {
         return UserBuffer::new(self.get_user_data(start, len));
+    }
+
+    pub fn write_user_data<T>(&self, start: VirtAddr, obj: &T) {
+        let mut buf = UserBuffer::new(self.get_user_data(start, size_of::<T>()));
+        buf.write(0, obj);
+    }
+
+    // note: this returns a CLONE
+    pub fn read_user_data<T: Copy>(&self, start: VirtAddr) -> T {
+        let buf =UserBuffer::new(self.get_user_data(start, size_of::<T>()));
+        buf.read(0)
     }
 }
 

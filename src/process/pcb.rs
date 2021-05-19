@@ -97,7 +97,7 @@ impl ProcessControlBlockInner {
         return self.layout.get_satp();
     }
     
-    pub fn alloc_fd(&self) -> usize {
+    pub fn alloc_fd(&mut self) -> usize {
         let empty_slot = (0..self.files.len()).find(
             |i|
                 self.files[*i].is_none()
@@ -250,8 +250,8 @@ impl ProcessControlBlock {
         arcpcb.parent.as_ref().unwrap().upgrade().unwrap().get_pid()
     }
 
-    pub fn alloc_fd(&self) -> usize {
-        let arcpcb = self.get_inner_locked();
+    pub fn alloc_fd(&mut self) -> usize {
+        let mut arcpcb = self.get_inner_locked();
         arcpcb.alloc_fd()
     }
 }

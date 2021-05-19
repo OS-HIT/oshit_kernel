@@ -1,10 +1,10 @@
-use crate::sbi::get_time;
+use crate::{process::current_process, sbi::get_time};
 use crate::process::{current_up_since, current_utime, current_satp};
 use crate::memory::{VirtAddr, translate_user_va};
 use crate::config::*;
 use crate::utils::strcpy;
 use crate::version::*;
-use core::convert::TryInto;
+use core::{borrow::Borrow, convert::TryInto};
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
@@ -16,15 +16,22 @@ pub struct TMS {
 }
 
 pub fn sys_time(tms_va: VirtAddr) -> isize {
-    let tms_ptr: *mut TMS = translate_user_va(current_satp(), tms_va);
-    unsafe {
-        if let Some(tms) = tms_ptr.as_mut() {
-            tms.tms_stime = (get_time() - current_up_since()) as u64;
-            tms.tms_utime = current_utime();
-            tms.tms_cstime = 0; // TODO: add these after we implemented fork
-            tms.tms_cutime = 0;
-        }
+    let process = current_process().unwrap();
+    let arcpcb = process.get_inner_locked();
+
+    let mut tms = TMS {
+        tms_stime  : (get_time() - arcpcb.up_since) as u64,
+        tms_utime  : arcpcb.utime,
+        tms_cstime : 0,
+        tms_cutime : 0,
+    };
+    for child_proc in arcpcb.children.iter() {
+        tms.tms_cstime += get_time() - child_proc.get_inner_locked().up_since;
+        tms.tms_cutime += child_proc.get_inner_locked().utime;
     }
+
+    arcpcb.layout.write_user_data(tms_va, &tms);
+
     return get_time().try_into().unwrap();
 }
 

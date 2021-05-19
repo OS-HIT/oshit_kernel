@@ -1,10 +1,10 @@
 use super::super::fs::file::FILE;
-use crate::fs::VirtFile;
+use crate::{fs::{VirtFile, make_pipe}, memory::translate_user_va};
 use crate::memory::{VirtAddr};
 use crate::process::{current_process};
 // use alloc::vec::Vec;
 use alloc::sync::Arc;
-use core::convert::TryInto;
+use core::{convert::TryInto, mem::size_of};
 
 // #[inline]
 // fn find_free_fd() -> Option<usize> {
@@ -36,13 +36,15 @@ pub fn sys_open(path: VirtAddr, mode: u32) -> isize {
 }
 
 pub fn sys_close(fd: usize) -> isize {
+    verbose!("Closing fd");
     let process = current_process().unwrap();
     let mut arcpcb = process.get_inner_locked();
     let file = &mut arcpcb.files[fd];
     if file.is_some() {
-        *file = None;
+        file.take();
     } else {
-        error!("Invalid FD")
+        error!("Invalid FD");
+        return -1;
     }
 
     loop {
@@ -55,6 +57,7 @@ pub fn sys_close(fd: usize) -> isize {
             break;
         }
     }
+    verbose!("Fd closed");
     return 0;
 }
 
@@ -63,7 +66,11 @@ pub fn sys_write(fd: usize, buf: VirtAddr, len: usize) -> isize {
     let arcpcb = process.get_inner_locked();
     let buf = arcpcb.layout.get_user_buffer(buf, len);
     match &arcpcb.files[fd] {
-        Some(file) => return file.write(buf),
+        Some(file) => {
+            let file = file.clone();
+            drop(arcpcb);
+            return file.write(buf);
+        },
         None => {
             error!("No such file descriptor!");
             return -1;
@@ -76,10 +83,29 @@ pub fn sys_read(fd: usize, buf: VirtAddr, len: usize) -> isize {
     let arcpcb = process.get_inner_locked();
     let buf = arcpcb.layout.get_user_buffer(buf, len);
     match &arcpcb.files[fd] {
-        Some(file) => return file.read(buf),
+        Some(file) => {
+            let file = file.clone();
+            drop(arcpcb);
+            return file.read(buf);
+        },
         None => {
             error!("No such file descriptor!");
             return -1;
         }
     }
+}
+
+pub fn sys_pipe(pipe: VirtAddr) -> isize {
+    let process = current_process().unwrap();
+    let mut arcpcb = process.get_inner_locked();
+    let (read, write) = make_pipe();
+    let rd = arcpcb.alloc_fd();
+    arcpcb.files[rd] = Some(read);
+    let wd = arcpcb.alloc_fd();
+    arcpcb.files[wd] = Some(write);
+    
+    arcpcb.layout.write_user_data(pipe, &rd);
+    arcpcb.layout.write_user_data(pipe + size_of::<usize>(), &wd);
+
+    0
 }

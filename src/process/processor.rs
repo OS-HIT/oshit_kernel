@@ -136,6 +136,8 @@ impl Processor {
                 unsafe {
                     __switch(idle_context_ptr2, next_context_ptr2);
                 }
+            } else {
+                warning!("No process to run!");
             }
         }
     }

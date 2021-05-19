@@ -10,6 +10,7 @@ pub const SYSCALL_MOUNT         : usize = 40;
 pub const SYSCALL_CHDIR         : usize = 49;
 pub const SYSCALL_OPENAT        : usize = 56;
 pub const SYSCALL_CLOSE         : usize = 57;
+pub const SYSCALL_PIPE          : usize = 59;
 pub const SYSCALL_PIPE2         : usize = 59;
 pub const SYSCALL_GETDENTS64    : usize = 61;
 pub const SYSCALL_READ          : usize = 63;
@@ -37,7 +38,15 @@ mod fs_syscall;
 mod process_syscall;
 mod trivial_syscall;
 
-pub use fs_syscall::{sys_write, sys_read};
+use core::convert::TryInto;
+
+pub use fs_syscall::{
+    sys_write, 
+    sys_read,
+    sys_open,
+    sys_close,
+    sys_pipe,
+};
 pub use process_syscall::{
     sys_exit, 
     sys_yield,
@@ -67,7 +76,9 @@ pub fn syscall(syscall_id: usize, args: [usize; 6]) -> isize {
         SYSCALL_GETPPID     => sys_getppid(),
         SYSCALL_TIMES       => sys_time(VirtAddr(args[0])),
         SYSCALL_UNAME       => sys_uname(VirtAddr(args[0])),
-
+        SYSCALL_PIPE        => sys_pipe(VirtAddr(args[0])),
+        // SYSCALL_OPEN        => sys_open(VirtAddr(args[0]), args[1].try_into().unwrap()),
+        SYSCALL_CLOSE       => sys_close(args[0]),
         _ => panic!("Unsupported syscall_id: {}", syscall_id),
     }
 }

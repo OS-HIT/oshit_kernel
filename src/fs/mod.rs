@@ -5,16 +5,19 @@ mod path;
 pub mod file;
 mod stdio;
 mod virt_file;
+mod pipe;
 
 pub use virt_file::VirtFile;
+pub use pipe::{
+        make_pipe,
+        Pipe,
+        PipeEnd,
+        PipeFlags,
+};
 
 pub use stdio::{Stdin, Stderr, Stdout};
 
 use alloc::string::String;
-
-pub const FD_STDIN:     usize = 0;
-pub const FD_STDOUT:    usize = 1;
-pub const FD_STDERR:    usize = 2;
 
 pub use file::FILE;
 pub use file::FTYPE;

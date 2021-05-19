@@ -9,6 +9,7 @@ pub const PAGE_SIZE         : usize = 1 << PAGE_OFFSET;
 pub const MEM_END           : usize = 0x80800000;   // ref: https://github.com/laanwj/k210-sdk-stuff/blob/master/doc/memory_map.md
 pub const TRAMPOLINE        : usize = usize::MAX - PAGE_SIZE + 1;
 pub const TRAP_CONTEXT      : usize = TRAMPOLINE - PAGE_SIZE;
+pub const PIP_BUF_MAX       : usize = 65536;    // same as linux
 
 #[cfg(feature = "board_k210")]
 pub const CLOCK_FREQ: u64 = 403000000 / 62;
