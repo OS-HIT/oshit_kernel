@@ -8,6 +8,8 @@ use crate::sbi::{
     get_byte
 };
 use spin::Mutex;
+use alloc::sync::Arc;
+use lazy_static::*;
 
 pub struct Stdin;
 pub struct Stdout;
@@ -68,4 +70,50 @@ impl File for Stderr {
         print!("\033[91m{}\033[0m", core::str::from_utf8(&s).unwrap());
         buf.len().try_into().unwrap()
     }
+}
+
+pub struct LockedStdin {
+    pub inner: Mutex<Stdin>
+}
+pub struct LockedStdout {
+    pub inner: Mutex<Stdout>
+}
+pub struct LockedStderr {
+    pub inner: Mutex<Stderr>
+}
+
+impl File for LockedStdin {
+    fn read(&self, buf: UserBuffer) -> isize {
+        self.inner.lock().read(buf)
+    }
+
+    fn write(&self, buf: UserBuffer) -> isize {
+        self.inner.lock().write(buf)
+    }
+}
+
+impl File for LockedStdout {
+    fn read(&self, buf: UserBuffer) -> isize {
+        self.inner.lock().read(buf)
+    }
+
+    fn write(&self, buf: UserBuffer) -> isize {
+        self.inner.lock().write(buf)
+    }
+}
+
+impl File for LockedStderr {
+    fn read(&self, buf: UserBuffer) -> isize {
+        self.inner.lock().read(buf)
+    }
+
+    fn write(&self, buf: UserBuffer) -> isize {
+        self.inner.lock().write(buf)
+    }
+}
+
+lazy_static!{
+    pub static ref STDIN: Arc<LockedStdin> = Arc::new(LockedStdin{inner: Mutex::new(Stdin)});
+    pub static ref STDOUT: Arc<LockedStdout> = Arc::new(LockedStdout{inner: Mutex::new(Stdout)});
+    pub static ref STDERR: Arc<LockedStderr> = Arc::new(LockedStderr{inner: Mutex::new(Stderr)});
 }

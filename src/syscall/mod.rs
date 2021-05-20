@@ -70,7 +70,7 @@ pub fn syscall(syscall_id: usize, args: [usize; 6]) -> isize {
         SYSCALL_EXIT        => sys_exit(args[0] as i32),
         SYSCALL_SCHED_YIELD => sys_yield(),
         SYSCALL_FORK        => sys_fork(),
-        SYSCALL_EXEC        => sys_exec(args[0].into()),
+        SYSCALL_EXEC        => sys_exec(args[0].into(), args[1].into(), args[2].into()),
         SYSCALL_WAITPID     => sys_waitpid(args[0] as isize, args[1].into()),
         SYSCALL_GETPID      => sys_getpid(),
         SYSCALL_GETPPID     => sys_getppid(),

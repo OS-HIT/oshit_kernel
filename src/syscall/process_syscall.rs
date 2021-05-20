@@ -18,7 +18,10 @@ use crate::process::{
 };
 
 use alloc::sync::Arc;
+use alloc::vec::Vec;
 use core::convert::TryInto;
+
+use crate::fs::FILE;
 
 pub fn sys_yield() -> isize {
     suspend_switch();
@@ -42,16 +45,41 @@ pub fn sys_fork() -> isize {
 }
 
 // TODO: add argc and argv support
-pub fn sys_exec(app_name: VirtAddr) -> isize {
+pub fn sys_exec(app_name: VirtAddr, argv: VirtAddr, envp: VirtAddr) -> isize {
     let app_name = get_user_cstr(current_satp(), app_name);
-    if let Some(elf_data) = get_app(app_name.as_str()) {
-        let proc = current_process().unwrap();
-        proc.exec(elf_data);
-        0
-    } else {
-        error!("No such command or application: {}", app_name);
-        -1
+    verbose!("Exec {}", app_name);
+    match FILE::open_file(&app_name, FILE::FMOD_READ) {
+        Ok(mut file) => {
+            verbose!("File found {}", app_name);
+            let mut v: Vec<u8> = Vec::with_capacity(file.fsize as usize);
+            v.resize(file.fsize as usize, 0);
+
+            match file.read_file(&mut v) {
+                Ok(res) => {
+                    verbose!("Loaded App {}, size = {}", app_name, res);
+                    let proc = current_process().unwrap();
+                    proc.exec(&v);
+                    0
+                },
+                Err(msg) => {
+                    error!("Failed to read file: {}", msg);
+                    1
+                }
+            }
+        } ,
+        Err(msg) =>{
+            error!("Failed to open file: {}", msg);
+            -1
+        }
     }
+    // if let Some(elf_data) = get_app(app_name.as_str()) {
+    //     let proc = current_process().unwrap();
+    //     proc.exec(elf_data);
+    //     0
+    // } else {
+    //     error!("No such command or application: {}", app_name);
+    //     -1
+    // }
 }
 
 pub fn sys_waitpid(pid: isize, exit_code_ptr: VirtAddr) -> isize {

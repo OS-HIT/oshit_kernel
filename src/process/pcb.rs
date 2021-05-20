@@ -2,9 +2,9 @@ use crate::fs::{
     FILE,
     FTYPE,
     File,
-    Stdin,
-    Stdout,
-    Stderr
+    STDIN,
+    STDOUT,
+    STDERR,
 };
 
 use crate::memory::{
@@ -162,9 +162,9 @@ impl ProcessControlBlock {
                 parent: None,       // FIXME: Isn't it PROC0?
                 children: Vec::new(),
                 files: vec![
-                    Some(Arc::new(Stdin)), 
-                    Some(Arc::new(Stdout)), 
-                    Some(Arc::new(Stderr))
+                    Some(STDIN.clone()), 
+                    Some(STDOUT.clone()), 
+                    Some(STDERR.clone())
                 ],
                 exit_code: 0
             }),

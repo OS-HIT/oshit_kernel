@@ -15,7 +15,11 @@ pub use pipe::{
         PipeFlags,
 };
 
-pub use stdio::{Stdin, Stderr, Stdout};
+pub use stdio::{
+        STDIN,
+        STDOUT,
+        STDERR
+};
 
 use alloc::string::String;
 
