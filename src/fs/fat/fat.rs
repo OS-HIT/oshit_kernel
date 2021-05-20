@@ -51,6 +51,7 @@ impl FAT {
                 } 
                 let block_id = clst_num / self.clen + self.start;
                 let offset = clst_num % self.clen * size_of::<u32>() as u32;
+                // debug!("get_next: getting block cache");
                 Some(*get_block_cache(block_id as usize).lock().get_ref::<u32>(offset as usize))
         }
 

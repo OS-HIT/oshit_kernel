@@ -488,6 +488,7 @@ impl FILE {
         }
 
         pub fn read_file(&mut self, buf: &mut [u8]) -> Result<u32, &'static str> {
+
                 if self.ftype != FTYPE::TFile {
                         return Err("read_file: Not a regular file");
                 }
@@ -510,7 +511,7 @@ impl FILE {
                         let read_len = read_cluster(self.get_cur_cluster().unwrap(), self.cursor % *CLUSTER_SIZE, rbuf).unwrap();
                         self.cursor += read_len;
                         read += read_len;
-                        rbuf = &mut rbuf[(read as usize)..];
+                        rbuf = &mut rbuf[(read_len as usize)..];
                 }
                 return Ok(read);
         }

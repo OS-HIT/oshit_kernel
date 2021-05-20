@@ -25,6 +25,7 @@ impl BlockCacheManager {
                 &mut self,
                 block_id: usize,
         ) -> Arc<Mutex<BlockCache>> {
+                // debug!("inner get block cache");
                 if let Some(pair) = self.queue
                 .iter()
                 .find(|pair| pair.0 == block_id) {
@@ -76,7 +77,9 @@ lazy_static! {
 pub fn get_block_cache(
         block_id: usize,
 ) -> Arc<Mutex<BlockCache>> {
-        BLOCK_CACHE_MANAGER.lock().get_block_cache(block_id)
+        let mut locked = BLOCK_CACHE_MANAGER.lock();
+        // debug!("get_block_cache enter {:0x}", BlockCacheManager::get_block_cache as usize);
+        locked.get_block_cache(block_id)
 }
 
 pub fn clear_block_cache (block_id: usize) {

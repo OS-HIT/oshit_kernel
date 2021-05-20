@@ -116,7 +116,7 @@ impl AbsPathCheck {
                                                 return Some(Err(PathFormatError::InvalidCharInFileName));
                                         }
                                 } else {
-                                        if c.is_alphanumeric() || c == '_' {
+                                        if c.is_alphanumeric() || c == '_' || c == '~' {
                                                 if self.name_buf.len() < 8 {
                                                         self.name_buf.push(c);
                                                         return None;
