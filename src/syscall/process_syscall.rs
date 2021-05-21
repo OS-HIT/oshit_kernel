@@ -8,7 +8,6 @@ use crate::memory::{
 
 use crate::process::{
     current_satp,
-    temp_app_loader::get_app,
     ProcessStatus
 };
 

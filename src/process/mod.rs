@@ -1,6 +1,5 @@
 mod pcb;
 mod manager;
-pub mod temp_app_loader;
 mod pid;
 mod kernel_stack;
 mod processor;

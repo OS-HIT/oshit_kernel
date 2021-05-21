@@ -6,7 +6,6 @@ use crate::trap::TrapContext;
 // use crate::config::*;
 use core::cell::RefCell;
 use lazy_static::*;
-use super::temp_app_loader::{get_app_count, get_app_data};
 use alloc::vec::Vec;
 use crate::sbi::get_time;
 use alloc::sync::Arc;

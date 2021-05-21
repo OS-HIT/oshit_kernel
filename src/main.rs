@@ -11,7 +11,6 @@
 use lazy_static::lazy_static;
 
 global_asm!(include_str!("entry.asm"));
-global_asm!(include_str!("link_app.asm"));
 
 #[macro_use]    // so that we get vec![] macro
 extern crate alloc;
