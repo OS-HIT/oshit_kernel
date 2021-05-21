@@ -17,10 +17,11 @@ use core::{convert::TryInto, mem::size_of};
 //     return None;
 // }
 
+// TODO: This does not comply with oscomp spec. Change it.
 pub fn sys_open(path: VirtAddr, mode: u32) -> isize {
     let process = current_process().unwrap();
     let mut arcpcb = process.get_inner_locked();
-    let buf = arcpcb.layout.get_user_bytes(path);
+    let buf = arcpcb.layout.get_user_cstr(path);
 
     let file = match FILE::open_file(core::str::from_utf8(&buf).unwrap(), mode) {
         Ok(file) => file,
@@ -108,4 +109,34 @@ pub fn sys_pipe(pipe: VirtAddr) -> isize {
     arcpcb.layout.write_user_data(pipe + size_of::<usize>(), &wd);
 
     0
+}
+
+pub fn sys_dup(fd: usize) -> isize {
+    let process = current_process().unwrap();
+    let mut arcpcb = process.get_inner_locked();
+    if let Some(src) = arcpcb.files[fd].clone() {
+        let rd = arcpcb.alloc_fd();
+        arcpcb.files[rd] = Some(src);
+        rd as isize
+    } else {
+        error!("No such file descriptor.");
+        -1
+    }
+}
+
+pub fn sys_dup3(old_fd: usize, new_fd: usize, _: usize) -> isize {
+    let process = current_process().unwrap();
+    let mut arcpcb = process.get_inner_locked();
+    if let Some(src) = arcpcb.files[old_fd].clone() {
+        if arcpcb.files.len() <= new_fd {
+            arcpcb.files.resize(new_fd + 1, None);
+        } else if arcpcb.files[new_fd].is_some() {
+            arcpcb.files[new_fd].take();
+        }
+        arcpcb.files[new_fd] = Some(src);
+        new_fd as isize
+    } else {
+        error!("No such file descriptor.");
+        -1
+    }
 }

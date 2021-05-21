@@ -320,6 +320,7 @@ impl MemLayout {
                         ..
                         (program_header.offset() + program_header.file_size()) as usize
                     ]);
+                verbose!("App segment mapped: {:0x} <-> {:0x}", program_header.offset() as usize, (program_header.offset() + program_header.file_size()) as usize)
             }
         }
         // map user stacks
@@ -332,6 +333,8 @@ impl MemLayout {
                 SegmentFlags::R |SegmentFlags::W |SegmentFlags::U
             )
         );
+        verbose!("stack mapped: {:0x} <-> {:0x}", stack_bottom.0, (stack_bottom + USER_STACK_SIZE).0);
+            
         // map trapcontext
         layout.add_segment(
             Segment::new(
@@ -386,11 +389,11 @@ impl MemLayout {
             let mut vpn = start.to_vpn();
             let ppn = self.translate(vpn).unwrap().ppn();
             vpn.step();
-            let copy_end = min(vpn.into(), end);    // page end or buf end
+            let copy_end = min(VirtAddr::from(vpn), end);    // page end or buf end
             pages.push(&mut ppn.page_ptr()[
                 start.page_offset()
                 ..
-                copy_end.page_offset()
+                if copy_end.page_offset() == 0 { PAGE_SIZE } else { copy_end.page_offset() }
             ]);
             start = copy_end;
         }
@@ -399,7 +402,7 @@ impl MemLayout {
     }
 
     // Get a CLONE of the cstring.
-    pub fn get_user_bytes(&self, start: VirtAddr) -> Vec<u8> {
+    pub fn get_user_cstr(&self, start: VirtAddr) -> Vec<u8> {
         let mut bytes: Vec<u8> = Vec::new();
         let mut vpn = start.to_vpn();
         let mut iter: usize = start.page_offset();
@@ -407,14 +410,15 @@ impl MemLayout {
             let ppn = self.translate(vpn).unwrap().ppn();
             while iter < PAGE_SIZE {
                 bytes.push(ppn.page_ptr()[iter]);
-                iter += 1;
                 if ppn.page_ptr()[iter] == 0 {
                     break 'outer;
                 }
+                iter += 1;
             }
             vpn.step();
             iter = 0;
         }
+        bytes.push(0);
         return bytes;
     }
 

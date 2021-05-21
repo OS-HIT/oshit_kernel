@@ -8,6 +8,8 @@
 #![feature(const_in_array_repeat_expressions)]
 #![feature(alloc_error_handler)]
 
+use lazy_static::lazy_static;
+
 global_asm!(include_str!("entry.asm"));
 global_asm!(include_str!("link_app.asm"));
 

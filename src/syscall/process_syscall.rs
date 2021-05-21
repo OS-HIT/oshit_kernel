@@ -1,9 +1,4 @@
-use crate::process::{
-    suspend_switch,
-    exit_switch,
-    current_process,
-    enqueue
-};
+use crate::process::{current_path, current_process, enqueue, exit_switch, suspend_switch};
 
 use crate::memory::{
     VirtAddr,
@@ -20,6 +15,8 @@ use crate::process::{
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::convert::TryInto;
+use alloc::string::ToString;
+use alloc::string::String;
 
 use crate::fs::FILE;
 
@@ -46,7 +43,12 @@ pub fn sys_fork() -> isize {
 
 // TODO: add argc and argv support
 pub fn sys_exec(app_name: VirtAddr, argv: VirtAddr, envp: VirtAddr) -> isize {
-    let app_name = get_user_cstr(current_satp(), app_name);
+    let mut app_name = get_user_cstr(current_satp(), app_name);
+    if !app_name.starts_with("/") {
+        let mut path = current_path();
+        path.push_str(app_name.as_str());
+        app_name = path;
+    }
     verbose!("Exec {}", app_name);
     match FILE::open_file(&app_name, FILE::FMOD_READ) {
         Ok(mut file) => {
@@ -58,8 +60,42 @@ pub fn sys_exec(app_name: VirtAddr, argv: VirtAddr, envp: VirtAddr) -> isize {
                 Ok(res) => {
                     verbose!("Loaded App {}, size = {}", app_name, res);
                     let proc = current_process().unwrap();
-                    proc.exec(&v);
-                    0
+                    let arcpcb = proc.get_inner_locked();
+
+                    verbose!("Loading argv");
+                    let mut args: Vec<Vec<u8>> = Vec::new();
+                    if argv.0 != 0 {
+                        verbose!("argv @ {:0x}", argv.0);
+                        let mut iter = argv;
+                        loop {
+                            let ptr: usize = arcpcb.layout.read_user_data(iter);
+                            if ptr == 0 {
+                                break;
+                            }
+                            args.push(arcpcb.layout.get_user_cstr(ptr.into()));
+                            iter += core::mem::size_of::<usize>();
+                        }
+                    }
+                    for (idx, a) in args.iter().enumerate() {
+                        verbose!("argc [{}]: {}", idx, core::str::from_utf8(a).unwrap())
+                    }
+
+                    verbose!("Loading envp");
+                    let mut envs: Vec<Vec<u8>> = Vec::new();
+                    if envp.0 != 0 {
+                        verbose!("envp @ {:0x}", envp.0);
+                        let mut iter = envp;
+                        loop {
+                            let ptr: usize = arcpcb.layout.read_user_data(iter);
+                            if ptr == 0 {
+                                break;
+                            }
+                            envs.push(arcpcb.layout.get_user_cstr(ptr.into()));
+                            iter += core::mem::size_of::<usize>();
+                        }
+                    }
+                    drop(arcpcb);
+                    proc.exec(&v, app_name, args, envs)
                 },
                 Err(msg) => {
                     error!("Failed to read file: {}", msg);
@@ -72,14 +108,6 @@ pub fn sys_exec(app_name: VirtAddr, argv: VirtAddr, envp: VirtAddr) -> isize {
             -1
         }
     }
-    // if let Some(elf_data) = get_app(app_name.as_str()) {
-    //     let proc = current_process().unwrap();
-    //     proc.exec(elf_data);
-    //     0
-    // } else {
-    //     error!("No such command or application: {}", app_name);
-    //     -1
-    // }
 }
 
 pub fn sys_waitpid(pid: isize, exit_code_ptr: VirtAddr) -> isize {
@@ -112,4 +140,34 @@ pub fn sys_getpid() -> isize {
 
 pub fn sys_getppid() -> isize {
     return current_process().unwrap().get_ppid() as isize;
+}
+
+pub fn sys_getcwd(buf: VirtAddr, size: usize) -> isize {
+    if buf.0 == 0 {
+        return 0;
+    }
+
+    let proc = current_process().unwrap();
+    let arcpcb = proc.get_inner_locked();
+    let mut buffer = arcpcb.layout.get_user_buffer(buf, size);
+    buffer.write_bytes(arcpcb.path.as_bytes(), 0);
+    return buf.0 as isize;
+}
+
+
+pub fn sys_chdir(buf: VirtAddr) -> isize {
+    let proc = current_process().unwrap();
+    let mut arcpcb = proc.get_inner_locked();
+    if let Ok (dir_str) = core::str::from_utf8(&arcpcb.layout.get_user_cstr(buf)) {
+        if let Ok (_) = FILE::open_dir(dir_str, FILE::FMOD_READ) {
+            arcpcb.path = dir_str.to_string();
+            return 0;
+        } else {
+            error!("No such directory!");
+            return -1;
+        }
+    } else {
+        error!("Invalid charactor in chdir");
+        return -1;
+    }
 }

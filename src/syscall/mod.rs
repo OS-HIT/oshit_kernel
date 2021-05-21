@@ -9,6 +9,7 @@ pub const SYSCALL_UMOUNT2       : usize = 39;
 pub const SYSCALL_MOUNT         : usize = 40;
 pub const SYSCALL_CHDIR         : usize = 49;
 pub const SYSCALL_OPENAT        : usize = 56;
+pub const SYSCALL_OPEN          : usize = 56;
 pub const SYSCALL_CLOSE         : usize = 57;
 pub const SYSCALL_PIPE          : usize = 59;
 pub const SYSCALL_PIPE2         : usize = 59;
@@ -46,6 +47,8 @@ pub use fs_syscall::{
     sys_open,
     sys_close,
     sys_pipe,
+    sys_dup,
+    sys_dup3,
 };
 pub use process_syscall::{
     sys_exit, 
@@ -55,6 +58,7 @@ pub use process_syscall::{
     sys_waitpid,
     sys_getpid,
     sys_getppid,
+    sys_getcwd
 };
 pub use trivial_syscall::{
     sys_time, 
@@ -74,10 +78,13 @@ pub fn syscall(syscall_id: usize, args: [usize; 6]) -> isize {
         SYSCALL_WAITPID     => sys_waitpid(args[0] as isize, args[1].into()),
         SYSCALL_GETPID      => sys_getpid(),
         SYSCALL_GETPPID     => sys_getppid(),
+        SYSCALL_GETCWD      => sys_getcwd(args[0].into(), args[1]),
         SYSCALL_TIMES       => sys_time(VirtAddr(args[0])),
         SYSCALL_UNAME       => sys_uname(VirtAddr(args[0])),
         SYSCALL_PIPE        => sys_pipe(VirtAddr(args[0])),
-        // SYSCALL_OPEN        => sys_open(VirtAddr(args[0]), args[1].try_into().unwrap()),
+        SYSCALL_DUP         => sys_dup(args[0]),
+        SYSCALL_DUP3        => sys_dup3(args[0], args[1], args[2]),
+        SYSCALL_OPEN        => sys_open(VirtAddr(args[0]), args[1].try_into().unwrap()),
         SYSCALL_CLOSE       => sys_close(args[0]),
         _ => panic!("Unsupported syscall_id: {}", syscall_id),
     }

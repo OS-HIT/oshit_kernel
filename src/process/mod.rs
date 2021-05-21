@@ -31,6 +31,7 @@ pub use proc0::{PROC0, init_proc0};
 
 use crate::trap::TrapContext;
 use alloc::sync::Arc;
+use alloc::string::String;
 
 pub fn init() {
     debug!("Initializing process control unit...");
@@ -67,4 +68,8 @@ pub fn current_trap_context() -> &'static mut TrapContext {
 
 pub fn current_process() -> Option<Arc<ProcessControlBlock>> {      // TODO: Add multi-core support here in these current_* funcs.
     return PROCESSOR0.current();
+}
+
+pub fn current_path() -> String {
+    return current_process().unwrap().get_inner_locked().path.clone();
 }
