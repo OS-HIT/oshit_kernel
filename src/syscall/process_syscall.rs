@@ -70,3 +70,10 @@ pub fn sys_waitpid(pid: isize, exit_code_ptr: VirtAddr) -> isize {
     }
     return if found {-2} else {-1};
 }
+
+// pub fn sys_sbrk(sz: i32) -> i32 {
+//     let current_proc = current_process().unwrap();
+//     // TODO: sbrk call growproc or
+//     // See how exec allocs the memory
+//     return new_pid as isize;
+// }
