@@ -83,6 +83,12 @@ impl Segment {
         }
         pagetable.map(vpn, ppn, PTEFlags::from_bits(self.flags.bits).unwrap());
     }
+    
+    pub fn adjust_end(&mut self, sz: usize) {
+        // We need to align the end to the 4K border of the page
+        let new_end = self.range.get_end() + (VirtAddr::from(sz)).0;
+        self.range.set_end(new_end);
+    }
 
     #[allow(dead_code)]
     pub fn unmap_page(&mut self, pagetable: &mut PageTable, vpn: VirtPageNum) {
@@ -164,6 +170,21 @@ impl MemLayout {
             }
         }
         return layout;
+    }
+
+    pub fn real_sbrk(&mut self, old_vpn: VirtPageNum, new_vpn: VirtPageNum){ // sz: from the PCB, the data breakpoint
+        let num_pages = new_vpn - old_vpn;
+        if num_pages == 0 { 
+            panic!("real_sbrk should not be called here! Page should not be allocated or deallocated!")
+        }
+        if let Some((idx, segment)) = self.segments.iter_mut().enumerate().
+            find(|(_, seg)| seg.range.get_end() >= sz && seg.range.get_start() <= sz) {
+            segment.adjust_end(new_vpn);
+            // Allocate
+            for i in old_vpn..new_vpn {
+                 segment.map_page(&(layout.pagetable), i);
+            }
+        }
     }
     
     pub fn activate(&self) {
@@ -302,16 +323,6 @@ impl MemLayout {
                     ]);
             }
         }
-        // map user stacks
-        let stack_bottom = VirtAddr::from(end_vpn) + PAGE_SIZE;
-        layout.add_segment(
-            Segment::new(
-                stack_bottom, 
-                stack_bottom + USER_STACK_SIZE, 
-                MapType::Framed, 
-                SegmentFlags::R |SegmentFlags::W |SegmentFlags::U
-            )
-        );
         // map trapcontext
         layout.add_segment(
             Segment::new(
@@ -321,8 +332,30 @@ impl MemLayout {
                 SegmentFlags::R | SegmentFlags::W,
             )
         );
+        // map guard page
+        let guard_page_high_end = VirtAddr::from(TRAP_CONTEXT);
+        let guard_page_low_end = guard_page_high_end - PAGE_SIZE;
+        layout.add_segment(
+            Segment::new(
+                guard_page_low_end,
+                guard_page_high_end, 
+                MapType::Framed, 
+                SegmentFlags::R |SegmentFlags::W
+            )
+        );
+        // map user stacks
+        let stack_high_end = guard_page_low_end;
+        let stack_low_end = stack_high_end - USER_STACK_SIZE;
+        layout.add_segment(
+            Segment::new(
+                stack_low_end, 
+                stack_high_end,
+                MapType::Framed, 
+                SegmentFlags::R |SegmentFlags::W |SegmentFlags::U
+            )
+        );
 
-        return (layout, stack_bottom.0 + USER_STACK_SIZE, elf.header.pt2.entry_point() as usize);
+        return (layout, stack_high_end.0, elf.header.pt2.entry_point() as usize);
     }
 
     fn map_trampoline(&mut self) {

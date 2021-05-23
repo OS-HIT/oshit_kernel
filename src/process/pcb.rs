@@ -175,6 +175,19 @@ impl ProcessControlBlock {
         );
     }
 
+    pub fn sbrk(&self, grow: usize) {
+        let inner = self.get_inner_locked();
+        let oldsz = inner.size;
+        let newsz = oldsz + grow;
+        let old_vpn = VirtAddr::from(oldsz).to_vpn();
+        let new_vpn = VirtAddr::from(newsz).to_vpn();
+        if old_vpn != new_vpn {  // We actually need to allocate/deallocate pages
+            let layout = inner.layout;
+            layout.real_sbrk(old_vpn, new_vpn);
+        }
+        inner.size = newsz;
+    }
+
     pub fn get_inner_locked(&self) -> MutexGuard<ProcessControlBlockInner> {
         return self.inner.lock();
     }
