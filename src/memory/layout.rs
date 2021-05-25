@@ -292,36 +292,50 @@ impl MemLayout {
     pub fn new_elf(elf_data: &[u8]) -> (Self, usize, usize) {
         let mut layout = Self::new();
         layout.map_trampoline();
-        let elf = xmas_elf::ElfFile::new(elf_data).unwrap();
-        assert_eq!(elf.header.pt1.magic, [0x7f, 0x45, 0x4c, 0x46], "invalid elf!");
         let mut end_vpn = VirtPageNum::from(0);
-        // map segments
-        for i in 0..elf.header.pt2.ph_count() {
-            let program_header = elf.program_header(i).unwrap();
-            if program_header.get_type().unwrap() == xmas_elf::program::Type::Load {
-                let start = VirtAddr::from(program_header.virtual_addr() as usize);
-                let stop = VirtAddr::from((program_header.virtual_addr() + program_header.mem_size()) as usize);
-                let mut segment_flags = SegmentFlags::U;
-                if program_header.flags().is_read() {
-                    segment_flags |= SegmentFlags::R;
-                }
-                if program_header.flags().is_write() {
-                    segment_flags |= SegmentFlags::W;
-                }
-                if program_header.flags().is_execute() {
-                    segment_flags |= SegmentFlags::X;
-                }
-                let segment = Segment::new(start, stop, MapType::Framed, segment_flags);
-                end_vpn = segment.range.get_end();
-                layout.add_segment_with_source(
-                    segment, 
-                    &elf.input[
+        let mut entry_point: usize = 0;
+        if let Ok(elf) = xmas_elf::ElfFile::new(elf_data) {
+            // map segments
+            for i in 0..elf.header.pt2.ph_count() {
+                let program_header = elf.program_header(i).unwrap();
+                if program_header.get_type().unwrap() == xmas_elf::program::Type::Load {
+                    let start = VirtAddr::from(program_header.virtual_addr() as usize);
+                    let stop = VirtAddr::from((program_header.virtual_addr() + program_header.mem_size()) as usize);
+                    let mut segment_flags = SegmentFlags::U;
+                    if program_header.flags().is_read() {
+                        segment_flags |= SegmentFlags::R;
+                    }
+                    if program_header.flags().is_write() {
+                        segment_flags |= SegmentFlags::W;
+                    }
+                    if program_header.flags().is_execute() {
+                        segment_flags |= SegmentFlags::X;
+                    }
+                    let segment = Segment::new(start, stop, MapType::Framed, segment_flags);
+                    end_vpn = segment.range.get_end();
+                    layout.add_segment_with_source(
+                        segment, 
+                        &elf.input[
                         program_header.offset() as usize
                         ..
                         (program_header.offset() + program_header.file_size()) as usize
-                    ]);
-                verbose!("App segment mapped: {:0x} <-> {:0x}", program_header.offset() as usize, (program_header.offset() + program_header.file_size()) as usize)
+                        ]);
+                    verbose!("App segment mapped: {:0x} <-> {:0x}", program_header.offset() as usize, (program_header.offset() + program_header.file_size()) as usize)
+                }
             }
+            entry_point = elf.header.pt2.entry_point() as usize;
+        } else {
+            // Maybe binary file, map the whole file directly to the memory
+            let mut segment_flags = SegmentFlags::U | SegmentFlags::R | SegmentFlags::W | SegmentFlags::X ;
+            let start = VirtAddr::from(0 as usize);
+            let stop = VirtAddr::from(elf_data.len() as usize);
+            let segment = Segment::new(start, stop, MapType::Framed, segment_flags);
+            end_vpn = segment.range.get_end();
+            layout.add_segment_with_source(
+                segment, 
+                &elf_data);
+            entry_point = 0 as usize;
+            verbose!("Binary segment mapped: {:0x} <-> {:0x}", 0 as usize, elf_data.len() as usize)
         }
         // map user stacks
         let stack_bottom = VirtAddr::from(end_vpn) + PAGE_SIZE;
@@ -345,7 +359,7 @@ impl MemLayout {
             )
         );
 
-        return (layout, stack_bottom.0 + USER_STACK_SIZE, elf.header.pt2.entry_point() as usize);
+        return (layout, stack_bottom.0 + USER_STACK_SIZE, entry_point);
     }
 
     fn map_trampoline(&mut self) {
