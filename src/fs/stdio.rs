@@ -38,7 +38,8 @@ impl File for Stdin {
     }
 
     fn write(&self, _: UserBuffer) -> isize {
-        panic!("Cannot write to STDIN!");
+        error!("Cannot write to STDIN!");
+        -1
     }
 
     fn to_fs_file_locked(&self) -> Result<spin::MutexGuard<super::FILE>, &str> {
@@ -48,7 +49,8 @@ impl File for Stdin {
 
 impl File for Stdout {
     fn read(&self, _: UserBuffer) -> isize {
-        panic!("Cannot read from STDOUT!");
+        error!("Cannot read from STDOUT!");
+        -1
     }
 
     fn write(&self, buf: UserBuffer) -> isize {
@@ -67,7 +69,8 @@ impl File for Stdout {
 
 impl File for Stderr {
     fn read(&self, _: UserBuffer) -> isize {
-        panic!("Cannot read from STDOUT!");
+        error!("Cannot read from STDOUT!");
+        -1
     }
 
     fn write(&self, buf: UserBuffer) -> isize {
