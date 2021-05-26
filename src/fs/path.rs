@@ -13,6 +13,7 @@ pub enum STATE {
 #[derive(Clone, Copy)]
 pub enum PathFormatError {
         NotAbs,
+        NotRel,
         EmptyFileName,
         FileNameTooLong,
         InvalidCharInFileName,
@@ -20,11 +21,13 @@ pub enum PathFormatError {
         InvalidCharInFileExt,
         EmptyPath,
         ReferingRootParent,
+        Unknown,
 }
 
 pub fn to_string(error: PathFormatError) -> &'static str {
         match error {
                 PathFormatError::NotAbs => "Path should start with '/'",
+                PathFormatError::NotRel => "Processing non-relative path with relative parser",
                 PathFormatError::EmptyFileName => "File name is empty",
                 PathFormatError::FileNameTooLong => "File name longer than 8 bytes is not allowed",
                 PathFormatError::InvalidCharInFileName => "Invalid char is found in file name",
@@ -32,6 +35,7 @@ pub fn to_string(error: PathFormatError) -> &'static str {
                 PathFormatError::InvalidCharInFileExt => "Invalid char is found in file extension",
                 PathFormatError::EmptyPath => "Path is empty",
                 PathFormatError::ReferingRootParent => "Path invalid because is refering parent of root",
+                PathFormatError::Unknown => "unknown error",
                 // _ => "unknown error",
         }
 }
@@ -270,6 +274,166 @@ impl AbsPathCheck {
                         }
                 }
         }
+
+        fn read_r(&mut self, c: char) -> Option<Result<(Path, bool), PathFormatError>> {
+                if let Some(result) = self.result.as_ref() {
+                        return Some(result.clone());
+                }
+                match self.state {
+                        STATE::Start => if c == '/' {
+                                return Some(Err(PathFormatError::NotRel));
+                        } else if c == '.' {
+                                self.state = STATE::DirCur;
+                                return None;
+                        } else {
+                                if c.is_alphanumeric() || c == '_' || c == '~' {
+                                        self.name_buf.push(c);
+                                        return None;
+                                } else {
+                                        self.result = Some(Err(PathFormatError::InvalidCharInFileName));
+                                        return Some(Err(PathFormatError::InvalidCharInFileName));
+                                }
+
+                        },
+                        STATE::FName => {
+                                if c == '/' {
+                                        if self.name_buf.len() > 0 {
+                                                self.path.push((self.name_buf.to_ascii_uppercase(), self.ext_buf.to_ascii_uppercase()));
+                                                self.name_buf = String::with_capacity(8);
+                                                self.ext_buf = String::with_capacity(3);
+                                                return None;
+                                        } else {
+                                                self.result = Some(Err(PathFormatError::EmptyFileName));
+                                                return Some(Err(PathFormatError::EmptyFileName));
+                                        }
+                                } else if c == '.' {
+                                        if self.name_buf.len() > 0 {
+                                                self.state = STATE::FExt;
+                                                return None;
+                                        } else {
+                                                self.state = STATE::DirCur;
+                                                return None;
+                                        }
+                                } else {
+                                        if c.is_alphanumeric() || c == '_' || c == '~' {
+                                                if self.name_buf.len() < 8 {
+                                                        self.name_buf.push(c);
+                                                        return None;
+                                                } else {
+                                                        self.result = Some(Err(PathFormatError::FileNameTooLong));
+                                                        return Some(Err(PathFormatError::FileNameTooLong));
+                                                }
+                                        } else {
+                                                self.result = Some(Err(PathFormatError::InvalidCharInFileName));
+                                                return Some(Err(PathFormatError::InvalidCharInFileName));
+                                        }
+
+                                }
+                        },
+                        STATE::FExt => {
+                                if c == '/' {
+                                        if self.ext_buf.len() > 0 {
+                                                self.state = STATE::FName;
+                                                self.path.push((self.name_buf.to_ascii_uppercase(), self.ext_buf.to_ascii_uppercase()));
+                                                self.name_buf = String::with_capacity(8);
+                                                self.ext_buf = String::with_capacity(3);
+                                                return None;
+                                        } else {
+                                                self.result = Some(Err(PathFormatError::EmptyFileExt));
+                                                return Some(Err(PathFormatError::EmptyFileExt));
+                                        }
+                                } else if c == '.' {
+                                        self.result = Some(Err(PathFormatError::InvalidCharInFileExt));
+                                        return Some(Err(PathFormatError::InvalidCharInFileExt));
+                                } else {
+                                        if c.is_alphanumeric() || c == '_' || c == '~' {
+                                                if self.ext_buf.len() < 8 {
+                                                        self.ext_buf.push(c);
+                                                        return None;
+                                                } else {
+                                                        self.result = Some(Err(PathFormatError::FileNameTooLong));
+                                                        return Some(Err(PathFormatError::FileNameTooLong));
+                                                }
+                                        } else {
+                                                self.result = Some(Err(PathFormatError::InvalidCharInFileExt));
+                                                return Some(Err(PathFormatError::InvalidCharInFileExt));
+                                        }
+                                }
+                        },
+                        STATE::DirCur => {
+                                if c == '/' {
+                                        self.state = STATE::FName;
+                                        return None;
+                                } else if c == '.' {
+                                        self.state = STATE::DirParent;
+                                        return None;
+                                } else {
+                                        self.result = Some(Err(PathFormatError::InvalidCharInFileName));
+                                        return Some(Err(PathFormatError::InvalidCharInFileName));
+                                }
+                        },
+                        STATE::DirParent => {
+                                if c == '/' {
+                                        self.state = STATE::FName;
+                                        if self.path.len() > 0 {
+                                                self.path.pop().unwrap();
+                                                return None;
+                                        } else {
+                                                self.path.push((String::from(".."),String::new()));
+                                                return None;
+                                        }
+                                } else {
+                                        self.result = Some(Err(PathFormatError::InvalidCharInFileName));
+                                        return Some(Err(PathFormatError::InvalidCharInFileName));
+                                }
+                        }
+                        _ => {
+                                return Some(Err(PathFormatError::Unknown));
+                        }
+                }
+        }
+
+        fn finish_r(mut self) -> Result<(Path, bool), PathFormatError> {
+                if let Some(error) = self.result {
+                        return error;
+                }
+                match self.state {
+                        STATE::Start => {
+                                return Err(PathFormatError::EmptyPath);
+                        },
+                        STATE::FName => {
+                                if self.name_buf.len() == 0 {
+                                        return Ok((self.path, true));
+                                } else {
+                                        self.path.push((self.name_buf.to_ascii_uppercase(), self.ext_buf.to_ascii_uppercase()));
+                                        return Ok((self.path, false));
+                                }
+                        },
+                        STATE::FExt => {
+                                if self.ext_buf.len() == 0 {
+                                        return Err(PathFormatError::InvalidCharInFileName);
+                                } else {
+                                        self.path.push((self.name_buf.to_ascii_uppercase(), self.ext_buf.to_ascii_uppercase()));
+                                        return Ok((self.path, false));
+                                }
+                        }
+                        STATE::DirCur => {
+                                return Ok((self.path, true));
+                        },
+                        STATE::DirParent => {
+                                if self.path.len() > 0 {
+                                        self.path.pop().unwrap();
+                                        return Ok((self.path, true));
+                                } else {
+                                        self.path.push((String::from(".."), String::new()));
+                                        return Ok((self.path, true));
+                                }
+                        },
+                        _ => {
+                                return Err(PathFormatError::Unknown);
+                        }
+                }
+        }
 }
 
 pub fn parse_path(path: &str) -> Result<(Path, bool), PathFormatError> {
@@ -283,3 +447,13 @@ pub fn parse_path(path: &str) -> Result<(Path, bool), PathFormatError> {
         return parser.finish();
 }
 
+pub fn parse_path_r(path: &str) -> Result<(Path, bool), PathFormatError> {
+        let mut parser = AbsPathCheck::new();
+        let chars = path.chars();
+        for c in chars {
+                if let Some(error) = parser.read_r(c) {
+                        return error;
+                }
+        }
+        return parser.finish_r();
+}
