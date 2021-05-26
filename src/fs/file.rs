@@ -176,9 +176,13 @@ impl FILE {
                                                 if is_dir {
                                                         return Err("open_file_from: Cannot open dir");
                                                 }
-                                                let path_tmp = dir.path.clone();
-                                                path_tmp.append(&mut path);
-                                                path_tmp
+                                                if dir.ftype == FTYPE::TDir {
+                                                        let path_tmp = dir.path.clone();
+                                                        path_tmp.append(&mut path);
+                                                        path_tmp
+                                                } else {
+                                                        return Err("open_file_from: Are you sure you are giving me a directory?");
+                                                }
                                         },
                                         Err(err) => {
                                                 return Err(to_string(err));
