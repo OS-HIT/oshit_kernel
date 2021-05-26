@@ -172,7 +172,7 @@ impl FILE {
                         },
                         Err(PathFormatError::NotAbs) => {
                                 match parse_path_r(path) {
-                                        Ok((path, is_dir)) => {
+                                        Ok((mut path, is_dir)) => {
                                                 if is_dir {
                                                         return Err("open_file_from: Cannot open dir");
                                                 }
@@ -191,6 +191,9 @@ impl FILE {
                         },
                         Err(e) => {
                                 return Err(to_string(e))
+                        }
+                        Err(err) => {
+                                return Err(to_string(err));
                         }
                 };
                 FILE::open_file_path(path, mode)
