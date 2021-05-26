@@ -140,3 +140,44 @@ pub fn sys_dup3(old_fd: usize, new_fd: usize, _: usize) -> isize {
         -1
     }
 }
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug)]
+pub struct dirent {
+    d_ino: u64,
+    d_off: i64,
+    d_reclen: u16,
+    d_type: u8,
+    d_name: usize,
+}
+
+pub fn sys_getdents64(fd: usize, buf: VirtAddr, len: usize) -> isize {
+    let process = current_process().unwrap();
+    let mut arcpcb = process.get_inner_locked();
+    let mut last_ptr = buf;
+    if let Some(dir) = arcpcb.files[fd].to_fs_file_locked() {
+        loop{
+            match dir.get_dirent() {
+                Ok(dirent) => {
+                    let mut dirent_item = dirent {
+                        // TODO:
+                        d_ino : 0,
+                        d_off : size_of::<dirent> as i64,
+                        d_reclen: 0,
+                        d_type: 0,
+                        d_name: 0,   // How to do this?
+                    };
+                    arcpcb.layout.write_user_data(last_ptr, &dirent);
+                    last_ptr = buf + size_of::<dirent>();
+                },
+                Err(_) => {
+                    break;
+                }
+            }
+        }
+        (last_ptr - buf) as isize;
+    } else {
+        error!("No such file descriptor.");
+        -1
+    }
+}

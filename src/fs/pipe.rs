@@ -4,7 +4,7 @@ use alloc::sync::{Arc, Weak};
 use alloc::collections::VecDeque;
 use alloc::vec::Vec;
 use riscv::register::hpmcounter17::read;
-use spin::Mutex;
+use spin::{Mutex, MutexGuard};
 use crate::{memory::UserBuffer, process::suspend_switch};
 
 bitflags! {
@@ -154,6 +154,9 @@ impl super::File for PipeEnd {
         let res = self.pipe.lock().write(&buf, 0);
         verbose!("write done");
         return res;
+    }
+    fn to_fs_file_locked(&self) -> Result<MutexGuard<super::FILE>, &str> {
+        Err("Not a file")
     }
 }
 

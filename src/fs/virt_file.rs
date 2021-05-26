@@ -1,4 +1,7 @@
-use spin::Mutex;
+use spin::{
+    Mutex,
+    MutexGuard
+};
 use core::convert::TryInto;
 
 pub struct VirtFile {
@@ -10,6 +13,9 @@ impl VirtFile {
         Self {
             inner: Mutex::new(inner)
         }
+    }
+    pub fn get_inner_locked(&self) -> MutexGuard<super::FILE> {
+        return self.inner.lock();
     }
 }
 
@@ -45,5 +51,8 @@ impl super::File for VirtFile {
                 -1
             }
         }
+    }
+    fn to_fs_file_locked(&self) -> Result<MutexGuard<super::FILE>, &str> {
+        Ok(self.get_inner_locked())
     }
 }

@@ -43,10 +43,11 @@ pub use dirent::DirEntry;
 
 use crate::drivers::BLOCK_DEVICE;
 use crate::memory::UserBuffer;
-
+use spin::MutexGuard;
 pub trait File: Send + Sync {
         fn read(&self, buf: UserBuffer) -> isize;
         fn write(&self, buf: UserBuffer) -> isize;
+        fn to_fs_file_locked(&self) -> Result<MutexGuard<FILE>, &str>;
 }
 
 #[allow(unused)]
