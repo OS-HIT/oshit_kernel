@@ -21,7 +21,9 @@ use super::fat::flush;
 use super::fat::append_chain;
 
 use super::path::Path;
+use super::path::PathFormatError;
 use super::path::parse_path;
+use super::path::parse_path_r;
 use super::path::to_string;
 use super::path::get_name;
 use super::path::get_ext;
@@ -102,22 +104,7 @@ impl FILE {
                 return self.flag & FILE::FMOD_CREATE != 0;
         }
         
-        
-        pub fn open_file(path: &str, mode: u32) -> Result<FILE, &str> {
-                if !FILE::implemented(mode) {
-                        return Err("open_file: Not implemented yet");
-                }
-                let path = match parse_path(path) {
-                        Ok((path, is_dir)) => {
-                                if is_dir {
-                                        return Err("open_file: Cannot open dir");
-                                }
-                                path
-                        },
-                        Err(error) => {
-                                return Err(to_string(error));
-                        }
-                };
+        fn open_file_path(path: Path, mode: u32) -> Result<FILE, &'static str> {
                 match find_entry(&path, false) {
                         Ok(entry) => {
                                 if ! entry.is_file() {
@@ -170,6 +157,54 @@ impl FILE {
                                 }
                         }
                 }
+        }
+
+        pub fn open_file_from(dir: &FILE, path: &str, mode: u32) -> Result<FILE, &'static str> {
+                if !FILE::implemented(mode) {
+                        return Err("open_file: Not implemented yet");
+                }
+                let path = match parse_path(path) {
+                        Ok((path, is_dir)) => {
+                                if is_dir {
+                                        return Err("open_file_from: Cannot open dir");
+                                }
+                                path
+                        },
+                        Err(PathFormatError::NotAbs) => {
+                                match parse_path_r(path) {
+                                        Ok((path, is_dir)) => {
+                                                if is_dir {
+                                                        return Err("open_file_from: Cannot open dir");
+                                                }
+                                                let path_tmp = dir.path.clone();
+                                                path_tmp.append(&mut path);
+                                                path_tmp
+                                        },
+                                        Err(err) => {
+                                                return Err(to_string(err));
+                                        }
+                                }
+                        }
+                };
+                FILE::open_file_path(path, mode)
+        }
+        
+        pub fn open_file(path: &str, mode: u32) -> Result<FILE, &'static str> {
+                if !FILE::implemented(mode) {
+                        return Err("open_file: Not implemented yet");
+                }
+                let path = match parse_path(path) {
+                        Ok((path, is_dir)) => {
+                                if is_dir {
+                                        return Err("open_file: Cannot open dir");
+                                }
+                                path
+                        },
+                        Err(error) => {
+                                return Err(to_string(error));
+                        }
+                };
+                FILE::open_file_path(path, mode)
         }
 
         pub fn delete_file(path: &str) -> Result<(), &str> {
