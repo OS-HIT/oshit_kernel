@@ -44,7 +44,7 @@ use core::convert::TryInto;
 pub use fs_syscall::{
     sys_write, 
     sys_read,
-    sys_open,
+    sys_openat,
     sys_close,
     sys_pipe,
     sys_dup,
@@ -89,7 +89,7 @@ pub fn syscall(syscall_id: usize, args: [usize; 6]) -> isize {
         SYSCALL_PIPE        => sys_pipe(VirtAddr(args[0])),
         SYSCALL_DUP         => sys_dup(args[0]),
         SYSCALL_DUP3        => sys_dup3(args[0], args[1], args[2]),
-        SYSCALL_OPEN        => sys_open(VirtAddr(args[0]), args[1].try_into().unwrap()),
+        SYSCALL_OPENAT      => sys_openat(args[0] as i32, args[1].into(), args[2] as u32, args[3] as u32),
         SYSCALL_CLOSE       => sys_close(args[0]),
         SYSCALL_CHDIR       => sys_chdir(args[0].into()),
         SYSCALL_GETDENTS64  => sys_getdents64(args[0], args[1].into(), args[2]),

@@ -1,10 +1,13 @@
 use super::super::fs::file::FILE;
-use crate::{fs::{self, File, VirtFile, make_pipe}, memory::translate_user_va};
+use crate::fs::{self, File, VirtFile, make_pipe};
 use crate::memory::{VirtAddr};
 use crate::process::{current_process};
 // use alloc::vec::Vec;
 use alloc::sync::Arc;
 use core::{convert::TryInto, mem::size_of};
+use alloc::string::ToString;
+
+pub const AT_FDCWD: i32 =  -100;
 
 // #[inline]
 // fn find_free_fd() -> Option<usize> {
@@ -36,26 +39,63 @@ pub fn sys_open(path: VirtAddr, mode: u32) -> isize {
     return fd.try_into().unwrap();
 }
 
-pub fn sys_openat(fd: usize, file_name: VirtAddr, flags: u32, mode: u32) -> isize {
+pub fn sys_openat(fd: i32, file_name: VirtAddr, flags: u32, mode: u32) -> isize {
     let process = current_process().unwrap();
     let mut arcpcb = process.get_inner_locked();
-    let buf = arcpcb.layout.get_user_cstr(file_name);
-    if let Some(dir) = &arcpcb.files[fd] {
-        if let Ok(dir_file) = dir.to_fs_file_locked() {
-            if dir_file.ftype == fs::FTYPE::TDir {
-                // TODO: What to do?
-                0
+    let mut buf = arcpcb.layout.get_user_cstr(file_name);
+
+    if buf[0] == b'.' && buf[1] == b'/' {
+        buf.rotate_left(2);
+    }
+
+    if let Ok(path) = core::str::from_utf8(&buf) {
+        if fd == AT_FDCWD {
+            verbose!("openat found AT_FDCWD!");
+            let mut whole_path = arcpcb.path.clone();
+            whole_path.push_str(path);
+
+            let file = match FILE::open_file(whole_path.as_str(), flags) {
+                Ok(file) => file,
+                Err(msg) => {
+                    error!("{}", msg);
+                    return -1;
+                }
+            };
+        
+            let new_fd = arcpcb.alloc_fd();
+            arcpcb.files[new_fd] = Some(Arc::new(VirtFile::new(file)));
+            return new_fd.try_into().unwrap();
+        }
+
+        if let Some(dir) = arcpcb.files[fd as usize].clone() {
+            if let Ok(dir_file) = dir.to_fs_file_locked() {
+                if dir_file.ftype == fs::FTYPE::TDir {
+                    match dir_file.open_file_from(path, flags) {
+                        Ok(fs_file) => {
+                            let new_fd = arcpcb.alloc_fd();
+                            arcpcb.files[new_fd] = Some(Arc::new(VirtFile::new(fs_file)));
+                            return new_fd as isize;
+                        }
+                        Err(err_msg) => {
+                            error!("{}", err_msg);
+                            return -1;
+                        }
+                    }
+                } else {
+                    error!("Not a directory!");
+                    -1
+                }
             } else {
-                error!("Not a directory!");
+                error!("Not a file!");
                 -1
             }
         } else {
-            error!("Not a file!");
-            -1
+            error!("No such fd");
+            return -1;
         }
     } else {
-        error!("No such fd");
-        return -1;
+        error!("Invalid UTF-8 sequence in path");
+        -1
     }
 }
 

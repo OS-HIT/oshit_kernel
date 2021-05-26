@@ -159,7 +159,7 @@ impl FILE {
                 }
         }
 
-        pub fn open_file_from(dir: &FILE, path: &str, mode: u32) -> Result<FILE, &'static str> {
+        pub fn open_file_from(&self, path: &str, mode: u32) -> Result<FILE, &'static str> {
                 if !FILE::implemented(mode) {
                         return Err("open_file: Not implemented yet");
                 }
@@ -176,9 +176,9 @@ impl FILE {
                                                 if is_dir {
                                                         return Err("open_file_from: Cannot open dir");
                                                 }
-                                                if dir.ftype == FTYPE::TDir {
-                                                        let path_tmp = dir.path.clone();
-                                                        path_tmp.append(&mut path);
+                                                if self.ftype == FTYPE::TDir {
+                                                        let mut path_tmp = self.path.clone();
+                                                        path_tmp.append(&mut path.clone());
                                                         path_tmp
                                                 } else {
                                                         return Err("open_file_from: Are you sure you are giving me a directory?");
@@ -188,6 +188,9 @@ impl FILE {
                                                 return Err(to_string(err));
                                         }
                                 }
+                        },
+                        Err(e) => {
+                                return Err(to_string(e))
                         }
                 };
                 FILE::open_file_path(path, mode)
