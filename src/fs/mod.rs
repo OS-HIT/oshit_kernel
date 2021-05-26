@@ -30,6 +30,7 @@ pub use dirent::DirEntry;
 // pub use stdio::{Stdin, Stdout};
 
 // FILE::open_file(path: &str, mode: u32) -> Result<FILE, &str> 
+// FILE::open_file_from(dir: &FILE, path: &str, mode: u32) -> Result<FILE, &'static str> 
 // FILE::seek_file(&mut self, seek: &FSEEK) -> i32
 // FILE::read_file(&mut self, buf: &mut [u8]) -> Result<u32, &str>
 // FILE::write_file(&mut self, buf: &[u8]) -> Result<u32, &str>
