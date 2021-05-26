@@ -172,12 +172,12 @@ impl FILE {
                         },
                         Err(PathFormatError::NotAbs) => {
                                 match parse_path_r(path) {
-                                        Ok((path, is_dir)) => {
+                                        Ok((mut path, is_dir)) => {
                                                 if is_dir {
                                                         return Err("open_file_from: Cannot open dir");
                                                 }
                                                 if dir.ftype == FTYPE::TDir {
-                                                        let path_tmp = dir.path.clone();
+                                                        let mut path_tmp = dir.path.clone();
                                                         path_tmp.append(&mut path);
                                                         path_tmp
                                                 } else {
@@ -188,6 +188,9 @@ impl FILE {
                                                 return Err(to_string(err));
                                         }
                                 }
+                        }
+                        Err(err) => {
+                                return Err(to_string(err));
                         }
                 };
                 FILE::open_file_path(path, mode)
