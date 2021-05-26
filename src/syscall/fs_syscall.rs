@@ -1,5 +1,5 @@
 use super::super::fs::file::FILE;
-use crate::{fs::{VirtFile, make_pipe}, memory::translate_user_va};
+use crate::{fs::{VirtFile, make_pipe, File}, memory::translate_user_va};
 use crate::memory::{VirtAddr};
 use crate::process::{current_process};
 // use alloc::vec::Vec;
@@ -148,34 +148,45 @@ pub struct dirent {
     d_off: i64,
     d_reclen: u16,
     d_type: u8,
-    d_name: usize,
+    d_name: [u8; 256],
 }
 
 pub fn sys_getdents64(fd: usize, buf: VirtAddr, len: usize) -> isize {
     let process = current_process().unwrap();
-    let mut arcpcb = process.get_inner_locked();
+    let arcpcb = process.get_inner_locked();
     let mut last_ptr = buf;
-    if let Some(dir) = arcpcb.files[fd].to_fs_file_locked() {
-        loop{
-            match dir.get_dirent() {
-                Ok(dirent) => {
-                    let mut dirent_item = dirent {
-                        // TODO:
-                        d_ino : 0,
-                        d_off : size_of::<dirent> as i64,
-                        d_reclen: 0,
-                        d_type: 0,
-                        d_name: 0,   // How to do this?
-                    };
-                    arcpcb.layout.write_user_data(last_ptr, &dirent);
-                    last_ptr = buf + size_of::<dirent>();
-                },
-                Err(_) => {
-                    break;
+    if let Some(file) = &arcpcb.files[fd] {
+        if let Ok(mut dir) = file.to_fs_file_locked() {
+            loop{
+                match dir.get_dirent() {
+                    Ok(dirent) => {
+                        if last_ptr - buf > len {
+                            error!("Memory out of bound");
+                            return -1;
+                        }
+
+                        let mut dirent_item = dirent {
+                            // TODO: d_ino
+                            d_ino : 0,
+                            d_off : size_of::<dirent> as i64,
+                            d_reclen: dirent.get_name().len() as u16,
+                            d_type: dirent.attr,
+                            d_name: [0; 256],   // How to do this?
+                        };
+                        dirent_item.d_name[0..dirent.name.len()].copy_from_slice(&dirent.name);
+                        arcpcb.layout.write_user_data(last_ptr, &dirent_item);
+                        last_ptr = buf + size_of::<dirent>();
+                    },
+                    Err(_) => {
+                        break;
+                    }
                 }
             }
+            (last_ptr - buf) as isize
+        } else {
+            error!("Not a directory.");
+            -1
         }
-        (last_ptr - buf) as isize;
     } else {
         error!("No such file descriptor.");
         -1

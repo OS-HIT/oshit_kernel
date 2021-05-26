@@ -115,6 +115,13 @@ impl ops::Sub<usize> for VirtAddr {
     }
 }
 
+impl ops::Sub<VirtAddr> for VirtAddr {
+    type Output = usize;
+    fn sub(self, rhs: VirtAddr) -> usize {
+        return self.0 - rhs.0;
+    }
+}
+
 impl ops::SubAssign<usize> for VirtAddr {
     fn sub_assign(&mut self, rhs: usize) { 
         self.0 -= rhs;
@@ -166,6 +173,13 @@ impl ops::Sub<usize> for PhysAddr {
     type Output = PhysAddr;
     fn sub(self, rhs: usize) -> PhysAddr {
         return PhysAddr(self.0 - rhs);
+    }
+}
+
+impl ops::Sub<PhysAddr> for PhysAddr {
+    type Output = usize;
+    fn sub(self, rhs: PhysAddr) -> usize {
+        return self.0 - rhs.0;
     }
 }
 

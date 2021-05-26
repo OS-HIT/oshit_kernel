@@ -40,6 +40,10 @@ impl File for Stdin {
     fn write(&self, _: UserBuffer) -> isize {
         panic!("Cannot write to STDIN!");
     }
+
+    fn to_fs_file_locked(&self) -> Result<spin::MutexGuard<super::FILE>, &str> {
+        Err("STDIO is not directory")
+    }
 }
 
 impl File for Stdout {
@@ -55,6 +59,10 @@ impl File for Stdout {
         print!("{}", core::str::from_utf8(&s).unwrap());
         buf.len().try_into().unwrap()
     }
+
+    fn to_fs_file_locked(&self) -> Result<spin::MutexGuard<super::FILE>, &str> {
+        Err("STDIO is not directory")
+    }
 }
 
 impl File for Stderr {
@@ -69,6 +77,10 @@ impl File for Stderr {
         }
         print!("\033[91m{}\033[0m", core::str::from_utf8(&s).unwrap());
         buf.len().try_into().unwrap()
+    }
+
+    fn to_fs_file_locked(&self) -> Result<spin::MutexGuard<super::FILE>, &str> {
+        Err("STDIO is not directory")
     }
 }
 
@@ -90,6 +102,10 @@ impl File for LockedStdin {
     fn write(&self, buf: UserBuffer) -> isize {
         self.inner.lock().write(buf)
     }
+
+    fn to_fs_file_locked(&self) -> Result<spin::MutexGuard<super::FILE>, &str> {
+        Err("STDIO is not directory")
+    }
 }
 
 impl File for LockedStdout {
@@ -100,6 +116,10 @@ impl File for LockedStdout {
     fn write(&self, buf: UserBuffer) -> isize {
         self.inner.lock().write(buf)
     }
+
+    fn to_fs_file_locked(&self) -> Result<spin::MutexGuard<super::FILE>, &str> {
+        Err("STDIO is not directory")
+    }
 }
 
 impl File for LockedStderr {
@@ -109,6 +129,10 @@ impl File for LockedStderr {
 
     fn write(&self, buf: UserBuffer) -> isize {
         self.inner.lock().write(buf)
+    }
+
+    fn to_fs_file_locked(&self) -> Result<spin::MutexGuard<super::FILE>, &str> {
+        Err("STDIO is not directory")
     }
 }
 
