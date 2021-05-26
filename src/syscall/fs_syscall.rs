@@ -60,7 +60,7 @@ pub fn sys_openat(fd: usize, file_name: VirtAddr, flags: u32, mode: u32) -> isiz
 }
 
 pub fn sys_close(fd: usize) -> isize {
-    verbose!("Closing fd");
+    verbose!("Closing fd {}", fd);
     let process = current_process().unwrap();
     let mut arcpcb = process.get_inner_locked();
     let file = &mut arcpcb.files[fd];
@@ -123,13 +123,13 @@ pub fn sys_pipe(pipe: VirtAddr) -> isize {
     let process = current_process().unwrap();
     let mut arcpcb = process.get_inner_locked();
     let (read, write) = make_pipe();
-    let rd = arcpcb.alloc_fd();
-    arcpcb.files[rd] = Some(read);
     let wd = arcpcb.alloc_fd();
     arcpcb.files[wd] = Some(write);
-    
-    arcpcb.layout.write_user_data(pipe, &rd);
-    arcpcb.layout.write_user_data(pipe + size_of::<usize>(), &wd);
+    let rd = arcpcb.alloc_fd();
+    arcpcb.files[rd] = Some(read);
+    verbose!("pipe fd: rd {}, wd {}", rd, wd);
+    arcpcb.layout.write_user_data(pipe, &(rd as i32));
+    arcpcb.layout.write_user_data(pipe + size_of::<i32>(), &(wd as i32));
 
     0
 }

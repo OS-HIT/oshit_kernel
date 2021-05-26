@@ -1,4 +1,4 @@
-use crate::{process::current_process, sbi::get_time};
+use crate::{process::{current_process, suspend_switch}, sbi::get_time};
 use crate::process::{current_up_since, current_utime, current_satp};
 use crate::memory::{VirtAddr, translate_user_va};
 use crate::config::*;
@@ -35,6 +35,22 @@ pub fn sys_time(tms_va: VirtAddr) -> isize {
     return get_time().try_into().unwrap();
 }
 
+#[repr(C)]
+#[derive(Copy, Clone, Debug)]
+pub struct TimeSPEC {
+    pub tvsec: u64,
+    pub tvnsec: u32,
+}
+
+pub fn sys_gettimeofday(ts: VirtAddr) -> isize {
+    let time = TimeSPEC {
+        tvsec: crate::sbi::get_time_ms()/1000,
+        tvnsec: (crate::sbi::get_time() * (1000000000 / CLOCK_FREQ) % 1000000000) as u32 ,
+    };
+    current_process().unwrap().get_inner_locked().layout.write_user_data(ts, &time);
+    0
+}
+
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
@@ -48,20 +64,6 @@ pub struct UTSName {
 }
 
 pub fn sys_uname(uts_va: VirtAddr) -> isize {
-    // let uts_ptr: *mut UTSName = translate_user_va(current_satp(), uts_va);
-    // if let Some(uts) = unsafe{ uts_ptr.as_mut() } {
-
-    //     strcpy(SYSNAME.as_ptr(),    translate_user_va(current_satp(), VirtAddr(uts.sysname   )));
-    //     strcpy(NODENAME.as_ptr(),   translate_user_va(current_satp(), VirtAddr(uts.nodename  )));
-    //     strcpy(RELEASE.as_ptr(),    translate_user_va(current_satp(), VirtAddr(uts.release   )));
-    //     strcpy(VERSION.as_ptr(),    translate_user_va(current_satp(), VirtAddr(uts.version   )));
-    //     strcpy(MACHINE.as_ptr(),    translate_user_va(current_satp(), VirtAddr(uts.machine   )));
-    //     strcpy(DOMAINNAME.as_ptr(), translate_user_va(current_satp(), VirtAddr(uts.domainname)));
-    //     return 0;
-    // } else {
-    //     return -1;
-    // }
-
     let mut uts: UTSName = UTSName {
         sysname    : [0u8; UTSNAME_LEN] ,
         nodename   : [0u8; UTSNAME_LEN] ,
@@ -78,5 +80,17 @@ pub fn sys_uname(uts_va: VirtAddr) -> isize {
     uts.domainname[0..DOMAINNAME.len()].clone_from_slice(DOMAINNAME   );
 
     current_process().unwrap().get_inner_locked().layout.write_user_data(uts_va, &uts);
+    0
+}
+
+pub fn sys_nanosleep(req: VirtAddr, _: VirtAddr) -> isize{
+    let req: TimeSPEC = current_process().unwrap().get_inner_locked().layout.read_user_data(req);
+    while get_time() / CLOCK_FREQ < req.tvsec {
+        suspend_switch();
+    }
+    while (get_time() * (1000000000 / CLOCK_FREQ)) % 1000000000 < req.tvnsec as u64 {
+        suspend_switch();
+    }
+
     0
 }
