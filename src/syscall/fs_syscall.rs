@@ -1,5 +1,5 @@
 use super::super::fs::file::FILE;
-use crate::{fs::{VirtFile, make_pipe, File}, memory::translate_user_va};
+use crate::{fs::{self, File, VirtFile, make_pipe}, memory::translate_user_va};
 use crate::memory::{VirtAddr};
 use crate::process::{current_process};
 // use alloc::vec::Vec;
@@ -34,6 +34,29 @@ pub fn sys_open(path: VirtAddr, mode: u32) -> isize {
     let fd = arcpcb.alloc_fd();
     arcpcb.files[fd] = Some(Arc::new(VirtFile::new(file)));
     return fd.try_into().unwrap();
+}
+
+pub fn sys_openat(fd: usize, file_name: VirtAddr, flags: u32, mode: u32) -> isize {
+    let process = current_process().unwrap();
+    let mut arcpcb = process.get_inner_locked();
+    let buf = arcpcb.layout.get_user_cstr(file_name);
+    if let Some(dir) = &arcpcb.files[fd] {
+        if let Ok(dir_file) = dir.to_fs_file_locked() {
+            if dir_file.ftype == fs::FTYPE::TDir {
+                // TODO: What to do?
+                0
+            } else {
+                error!("Not a directory!");
+                -1
+            }
+        } else {
+            error!("Not a file!");
+            -1
+        }
+    } else {
+        error!("No such fd");
+        return -1;
+    }
 }
 
 pub fn sys_close(fd: usize) -> isize {
