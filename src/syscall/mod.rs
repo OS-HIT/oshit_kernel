@@ -49,6 +49,7 @@ pub use fs_syscall::{
     sys_pipe,
     sys_dup,
     sys_dup3,
+    sys_getdents64,
 };
 pub use process_syscall::{
     sys_exit, 
@@ -86,6 +87,7 @@ pub fn syscall(syscall_id: usize, args: [usize; 6]) -> isize {
         SYSCALL_DUP3        => sys_dup3(args[0], args[1], args[2]),
         SYSCALL_OPEN        => sys_open(VirtAddr(args[0]), args[1].try_into().unwrap()),
         SYSCALL_CLOSE       => sys_close(args[0]),
+        SYSCALL_GETDENTS64  => sys_getdents64(args[0], args[1].into(), args[2]),
         _ => panic!("Unsupported syscall_id: {}", syscall_id),
     }
 }
