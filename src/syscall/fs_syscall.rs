@@ -1,6 +1,6 @@
 //! Wrappers of file system related syscalls.
 use super::super::fs::file::FILE;
-use crate::fs::{self, VirtFile, FileWithLock, make_pipe};
+use crate::fs::{self, FTYPE, FileWithLock, VirtFile, make_pipe};
 use crate::memory::{VirtAddr};
 use crate::process::{current_process};
 // use alloc::vec::Vec;
@@ -25,8 +25,18 @@ pub fn sys_openat(fd: i32, file_name: VirtAddr, flags: u32, _: u32) -> isize {
             verbose!("openat found AT_FDCWD!");
             let mut whole_path = arcpcb.path.clone();
             whole_path.push_str(path);
-
-            let file = match FILE::open_file(whole_path.as_str(), flags) {
+            let fs_flags: u32 = match flags {
+                0x000 => FILE::FMOD_READ,
+                0x001 => FILE::FMOD_WRITE,
+                0x002 => FILE::FMOD_READ | FILE::FMOD_WRITE,
+                0x040 => FILE::FMOD_CREATE,
+                0x042 => FILE::FMOD_READ | FILE::FMOD_WRITE | FILE::FMOD_CREATE,
+                _ => {
+                    error!("Not supported combination");
+                    return -1;
+                }
+            };
+            let file = match FILE::open_file(whole_path.as_str(), fs_flags) {
                 Ok(file) => file,
                 Err(msg) => {
                     error!("{}", msg);
@@ -280,4 +290,46 @@ pub fn sys_getdents64(fd: usize, buf: VirtAddr, len: usize) -> isize {
         error!("No such file descriptor.");
         -1
     }
+}
+
+/// just delete the file
+pub fn sys_unlink(dirfd: i32, file_name: VirtAddr, flags: usize) -> isize{
+    let proc = current_process().unwrap();
+    let arcpcb = proc.get_inner_locked();
+    let mut buf = arcpcb.layout.get_user_cstr(file_name);
+    if let Ok(path) = core::str::from_utf8(&buf) {
+        if dirfd == AT_FDCWD {
+            verbose!("sys_unlink found AT_FDCWD!");
+            let mut whole_path = arcpcb.path.clone();
+            whole_path.push_str(path);
+
+            match FILE::delete_dir(whole_path.as_str()) {
+                Ok(_) => return 0,
+                Err(msg) => {
+                    error!("{}", msg);
+                    return -1;
+                }
+            };
+        }
+
+        if buf[0] == b'/' {
+            match FILE::delete_dir(path) {
+                Ok(_) => return 0,
+                Err(msg) => {
+                    error!("{}", msg);
+                    return -1;
+                }
+            };
+        }
+
+        return -1;
+        // if let Some(dir) = &arcpcb.files[dirfd as usize] {
+        //     if let Ok(dir_file) = dir.to_fs_file_locked() {
+        //         if dir_file.ftype == FTYPE::TDir {
+                    
+        //         }
+        //     }
+        // }
+    }
+    return -1;
 }

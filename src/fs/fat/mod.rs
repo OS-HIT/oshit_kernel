@@ -17,6 +17,7 @@ use super::dirent::DirEntry;
 use super::dirent::DirEntryExt;
 use super::dirent::DIRENT_P_CLST;
 use super::path::Path;
+use alloc::borrow::ToOwned;
 
 mod dbr;
 pub mod fsinfo;
