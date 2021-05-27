@@ -8,6 +8,7 @@
 
 use core::mem::size_of;
 use alloc::vec::Vec;
+use alloc::string::String;
 use lazy_static::*;
 
 use super::block_cache::get_block_cache;
@@ -15,7 +16,6 @@ use super::block_cache::flush_all;
 use super::dirent::DirEntry;
 use super::dirent::DIRENT_P_CLST;
 use super::path::Path;
-use super::path::cat_name;
 
 mod dbr;
 pub mod fsinfo;
@@ -70,7 +70,7 @@ pub fn truncat_chain(start: u32) -> Result<(), ()> {
         fat::truncat_file_chain(start)
 }
 
-pub fn read_dirent(cluster: u32, offset: u32) -> Option<DirEntry> {
+pub fn read_dirent(chain: &Vec::<u32>, offset: u32) -> Option<(DirEntry, Option<String>)> {
         if cluster > *CLUSTER_CNT {
                 return None;
         }
@@ -120,8 +120,12 @@ pub fn find_entry(path: &Path, is_dir: bool) -> Result<DirEntry, &'static str> {
 }
 
 pub fn find_entry_from(from: u32, path: &Path, is_dir: bool) -> Result<DirEntry, &'static str> {
-        if path.len() == 0 {
-                return Err("find_entry_from: no entry for root directory");
+        if path.path.len() == 0 {
+                if path.is_abs {
+                        return Err("find_entry_from: no entry for root directory");
+                } else {
+                        return Err("find_entry_from: current entry?");
+                }
         }
         let mut dir = get_file_chain(from);
         if dir.len() == 0 {
@@ -129,8 +133,7 @@ pub fn find_entry_from(from: u32, path: &Path, is_dir: bool) -> Result<DirEntry,
         }
         let mut dirent: Option<DirEntry> = None;
         let mut depth = 0;
-        for node in path {
-                let fname = cat_name(&node);
+        for fname in path.path {
                 'search: for clst in dir.iter() {
                         for i in 0..*DIRENT_P_CLST {
                                 if let Some(item) = read_dirent(*clst, i) {
