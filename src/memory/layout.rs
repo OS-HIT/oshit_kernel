@@ -9,7 +9,10 @@ use super::{
     PageTableEntry,
     PTEFlags,
     alloc_frame,
+    get_user_buffer,
+    UserBuffer
 };
+use core::mem::size_of;
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
 use bitflags::*;
@@ -24,6 +27,10 @@ use core::fmt::{self, Debug, Formatter};
 
 lazy_static! {
     pub static ref KERNEL_MEM_LAYOUT: Arc<Mutex<MemLayout>> = Arc::new(Mutex::new(MemLayout::new_kernel()));
+}
+
+pub fn kernel_satp() -> usize {
+    return KERNEL_MEM_LAYOUT.lock().get_satp();
 }
 
 #[derive(PartialEq, Debug, Copy, Clone)]
@@ -287,6 +294,19 @@ impl MemLayout {
             )
         );
         debug!("Physical memory mapped @ 0x{:X} ~ 0x{:X} (identity), RW--.", ekernel as usize, MEM_END);
+
+        verbose!("Mapping MMIO...");
+        for pair in MMIO {
+            layout.add_segment(
+                Segment::new(
+                    (*pair).0.into(),
+                    ((*pair).0 + (*pair).1).into(),
+                    MapType::Identity,
+                    SegmentFlags::R | SegmentFlags::W,
+                )
+            );
+            debug!("MMIO mapped @ 0x{:X} ~ 0x{:X} (identity), RW--.", (*pair).0, (*pair).0 + (*pair).1);
+        }
         info!("Kernel memory layout initilized.");
 
         return layout;
@@ -296,8 +316,6 @@ impl MemLayout {
     pub fn new_elf(elf_data: &[u8]) -> (Self, usize, usize, usize) {
         let mut layout = Self::new();
         layout.map_trampoline();
-        let elf = xmas_elf::ElfFile::new(elf_data).unwrap();
-        assert_eq!(elf.header.pt1.magic, [0x7f, 0x45, 0x4c, 0x46], "invalid elf!");
         let mut end_vpn = VirtPageNum::from(0);
         let mut data_top = 0;
         // map segments
@@ -330,6 +348,7 @@ impl MemLayout {
                     data_top = ph_end
                 }
             }
+            entry_point = elf.header.pt2.entry_point() as usize;
         }
         // map trapcontext
         layout.add_segment(
@@ -376,7 +395,7 @@ impl MemLayout {
             PhysAddr::from(strampoline as usize).into(),
             PTEFlags::R | PTEFlags::X
         );
-        debug!("Trampoline mapped {:?} <=> {:?}, R-X-", VirtAddr::from(TRAMPOLINE), PhysAddr::from(strampoline as usize))
+        verbose!("Trampoline mapped {:?} <=> {:?}, R-X-", VirtAddr::from(TRAMPOLINE), PhysAddr::from(strampoline as usize))
     }
 
     pub fn translate(&self, vpn: VirtPageNum) -> Option<PageTableEntry> {
@@ -398,6 +417,61 @@ impl MemLayout {
 
     pub fn drop_all(&mut self) {
         self.segments.clear();
+    }
+
+    pub fn get_user_data(&self, mut start: VirtAddr, len: usize) -> Vec<&'static mut [u8]> {
+        let end = start + len;
+        let mut pages = Vec::new();
+        while start < end {
+            let mut vpn = start.to_vpn();
+            let ppn = self.translate(vpn).unwrap().ppn();
+            vpn.step();
+            let copy_end = min(VirtAddr::from(vpn), end);    // page end or buf end
+            pages.push(&mut ppn.page_ptr()[
+                start.page_offset()
+                ..
+                if copy_end.page_offset() == 0 { PAGE_SIZE } else { copy_end.page_offset() }
+            ]);
+            start = copy_end;
+        }
+    
+        return pages;
+    }
+
+    // Get a CLONE of the cstring.
+    pub fn get_user_cstr(&self, start: VirtAddr) -> Vec<u8> {
+        let mut bytes: Vec<u8> = Vec::new();
+        let mut vpn = start.to_vpn();
+        let mut iter: usize = start.page_offset();
+        'outer: loop {
+            let ppn = self.translate(vpn).unwrap().ppn();
+            while iter < PAGE_SIZE {
+                bytes.push(ppn.page_ptr()[iter]);
+                if ppn.page_ptr()[iter] == 0 {
+                    break 'outer;
+                }
+                iter += 1;
+            }
+            vpn.step();
+            iter = 0;
+        }
+        bytes.push(0);
+        return bytes;
+    }
+
+    pub fn get_user_buffer(&self, start: VirtAddr, len: usize) -> UserBuffer {
+        return UserBuffer::new(self.get_user_data(start, len));
+    }
+
+    pub fn write_user_data<T>(&self, start: VirtAddr, obj: &T) {
+        let mut buf = UserBuffer::new(self.get_user_data(start, size_of::<T>()));
+        buf.write(0, obj);
+    }
+
+    // note: this returns a CLONE
+    pub fn read_user_data<T: Copy>(&self, start: VirtAddr) -> T {
+        let buf =UserBuffer::new(self.get_user_data(start, size_of::<T>()));
+        buf.read(0)
     }
 }
 

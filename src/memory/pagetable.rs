@@ -6,8 +6,10 @@ use super::{
     PhysPageNum,
     VirtPageNum,
     VirtAddr,
+    PhysAddr,
     FrameTracker,
     alloc_frame,
+    UserBuffer
 };
 use alloc::vec::Vec;
 use core::cmp::min;
@@ -151,9 +153,15 @@ impl PageTable {
     pub fn translate(&self, vpn: VirtPageNum) -> Option<PageTableEntry> {
         self.walk(vpn).map(|pte| pte.clone())
     }
+
+    pub fn translate_va(&self, va: VirtAddr) -> Option<PhysAddr> {
+        self.walk(va.clone().to_vpn()).map(|pte| {
+            return PhysAddr::from(pte.ppn()) + va.page_offset()
+        })
+    }
 }
 
-pub fn get_user_data(satp: usize, mut start: VirtAddr, len: usize) -> Vec<&'static [u8]> {
+pub fn get_user_data(satp: usize, mut start: VirtAddr, len: usize) -> Vec<&'static mut [u8]> {
     let pagetable = PageTable::from_satp(satp);
     let end = start + len;
     let mut pages = Vec::new();
@@ -162,7 +170,7 @@ pub fn get_user_data(satp: usize, mut start: VirtAddr, len: usize) -> Vec<&'stat
         let ppn = pagetable.translate(vpn).unwrap().ppn();
         vpn.step();
         let copy_end = min(vpn.into(), end);    // page end or buf end
-        pages.push(&ppn.page_ptr()[
+        pages.push(&mut ppn.page_ptr()[
             start.page_offset()
             ..
             copy_end.page_offset()
@@ -171,6 +179,10 @@ pub fn get_user_data(satp: usize, mut start: VirtAddr, len: usize) -> Vec<&'stat
     }
 
     return pages;
+}
+
+pub fn get_user_buffer(satp: usize, start: VirtAddr, len: usize) -> UserBuffer {
+    return UserBuffer::new(get_user_data(satp, start, len));
 }
 
 pub fn write_user_data(satp: usize, data: &[u8], mut start: VirtAddr, len: usize) {

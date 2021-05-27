@@ -3,7 +3,7 @@ use crate::config::CLOCK_FREQ;
 use riscv::register::time;
 
 // trigger per 1ms
-pub const TICKS_PER_SECOND  : u64 = 1000;
+pub const TICKS_PER_SECOND  : u64 = 100;
 pub const MILLI_PER_SECOND  : u64 = 1000;
 
 pub fn get_time() -> u64 {

@@ -35,6 +35,10 @@ pub fn alloc_frame() -> Option<FrameTracker> {
     FRAME_ALLOCATOR.lock().alloc().map(|ppn| FrameTracker::new(ppn))
 }
 
+pub fn free_frame(ppn: PhysPageNum) {
+    FRAME_ALLOCATOR.lock().free(ppn);
+}
+
 // Impl drop, to auto gc
 // TODO: Lock it maybe? To avoid race
 pub struct FrameTracker {

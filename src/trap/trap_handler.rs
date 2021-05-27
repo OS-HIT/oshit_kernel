@@ -50,7 +50,7 @@ fn set_user_trap_entry() {
 
 #[no_mangle]
 pub fn kernel_trap() -> ! {
-    fatal!("Fatal error: unhandled trap {:?}.", scause::read().cause());
+    fatal!("unhandled trap {:?}.", scause::read().cause());
     panic!("Kernel trap not supported yet!");
 }
 
@@ -65,7 +65,14 @@ pub fn user_trap(_cx: &mut TrapContext) -> ! {
         Trap::Exception(Exception::UserEnvCall) => {
             let mut cx = current_trap_context();
             cx.sepc += 4;   // so that we don't stuck at one instruction
-            let result = syscall(cx.regs[17], [cx.regs[10], cx.regs[11], cx.regs[12]]) as usize;   // exec syscall in s-mode
+            let result = syscall(cx.regs[17], [
+                cx.regs[10], 
+                cx.regs[11], 
+                cx.regs[12],
+                cx.regs[13],
+                cx.regs[14],
+                cx.regs[15],
+            ]) as usize;   // exec syscall in s-mode
             cx =  current_trap_context();
             cx.regs[10] = result as usize;
         },
@@ -81,8 +88,8 @@ pub fn user_trap(_cx: &mut TrapContext) -> ! {
         Trap::Exception(Exception::InstructionPageFault) |
         Trap::Exception(Exception::LoadFault) |
         Trap::Exception(Exception::LoadPageFault) => {
-            println!(
-                "[kernel] {:?} in application, bad addr = {:#x}, bad instruction = {:#x}, core dumped.",
+            error!(
+                "{:?} in application, bad addr = {:#x}, bad instruction = {:#x}, core dumped.",
                 scause.cause(),
                 stval,
                 current_trap_context().sepc,

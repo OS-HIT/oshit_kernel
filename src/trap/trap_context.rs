@@ -11,6 +11,7 @@ pub struct TrapContext {
 
 impl TrapContext {
     pub fn set_sp(&mut self, sp: usize) {
+        verbose!("Setting TrapContext user sp to {:0x}", sp);
         self.regs[2] = sp;  // sp = x2
     }
 
@@ -22,6 +23,7 @@ impl TrapContext {
         kernel_sp: usize,
         user_trap: usize
     ) -> Self {
+        verbose!("init TrapContext kernel_sp to {:0x}", kernel_sp);
         let mut sstatus = sstatus::read();
         sstatus.set_spp(SPP::User);
         let mut context = TrapContext {
