@@ -84,10 +84,19 @@ impl Segment {
         pagetable.map(vpn, ppn, PTEFlags::from_bits(self.flags.bits).unwrap());
     }
     
-    pub fn adjust_end(&mut self, sz: usize) {
+    pub fn adjust_end(&mut self, pagetable: &mut PageTable, new_end: VirtPageNum) {
         // We need to align the end to the 4K border of the page
-        let new_end = self.range.get_end() + (VirtAddr::from(sz)).0;
-        self.range.set_end(new_end);
+        // let new_end = self.range.get_end() + (VirtAddr::from(sz)).0;
+        // self.range.set_end(new_end);
+        if new_end < self.range.get_end() {
+            for i in new_end.0..self.range.get_end().0 {
+                self.unmap_page(pagetable, i.into());
+            }
+        } else if new_end > self.range.get_end() {
+            for i in self.range.get_end().0..new_end.0 {
+                self.map_page(pagetable, i.into());
+            }
+        }
     }
 
     #[allow(dead_code)]
@@ -172,18 +181,11 @@ impl MemLayout {
         return layout;
     }
 
-    pub fn real_sbrk(&mut self, old_vpn: VirtPageNum, new_vpn: VirtPageNum){ // sz: from the PCB, the data breakpoint
-        let num_pages = new_vpn - old_vpn;
-        if num_pages == 0 { 
-            panic!("real_sbrk should not be called here! Page should not be allocated or deallocated!")
-        }
-        if let Some((idx, segment)) = self.segments.iter_mut().enumerate().
-            find(|(_, seg)| seg.range.get_end() >= sz && seg.range.get_start() <= sz) {
-            segment.adjust_end(new_vpn);
-            // Allocate
-            for i in old_vpn..new_vpn {
-                 segment.map_page(&(layout.pagetable), i);
-            }
+    pub fn alter_segment(&mut self, old_end: VirtPageNum, new_end: VirtPageNum) {
+        if let Some((idx, segment)) = self.segments.iter_mut().enumerate().find(|(_, seg)| seg.range.get_end() == old_end) {
+            segment.adjust_end(&mut self.pagetable, new_end);
+        } else {
+            error!("No segment end with {:?}", old_end);
         }
     }
     
@@ -290,12 +292,14 @@ impl MemLayout {
         return layout;
     }
 
-    pub fn new_elf(elf_data: &[u8]) -> (Self, usize, usize) {
+    /// return memory layout and data segment end and user stack top and entry point
+    pub fn new_elf(elf_data: &[u8]) -> (Self, usize, usize, usize) {
         let mut layout = Self::new();
         layout.map_trampoline();
         let elf = xmas_elf::ElfFile::new(elf_data).unwrap();
         assert_eq!(elf.header.pt1.magic, [0x7f, 0x45, 0x4c, 0x46], "invalid elf!");
         let mut end_vpn = VirtPageNum::from(0);
+        let mut data_top = 0;
         // map segments
         for i in 0..elf.header.pt2.ph_count() {
             let program_header = elf.program_header(i).unwrap();
@@ -314,13 +318,17 @@ impl MemLayout {
                 }
                 let segment = Segment::new(start, stop, MapType::Framed, segment_flags);
                 end_vpn = segment.range.get_end();
+                let ph_end = program_header.offset() + program_header.file_size();
                 layout.add_segment_with_source(
                     segment, 
                     &elf.input[
                         program_header.offset() as usize
                         ..
-                        (program_header.offset() + program_header.file_size()) as usize
+                        ph_end as usize
                     ]);
+                if data_top < ph_end {
+                    data_top = ph_end
+                }
             }
         }
         // map trapcontext
@@ -355,7 +363,7 @@ impl MemLayout {
             )
         );
 
-        return (layout, stack_high_end.0, elf.header.pt2.entry_point() as usize);
+        return (layout, data_top as usize, stack_high_end.0, elf.header.pt2.entry_point() as usize);
     }
 
     fn map_trampoline(&mut self) {

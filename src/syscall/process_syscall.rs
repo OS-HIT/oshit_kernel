@@ -1,3 +1,5 @@
+use core::convert::TryInto;
+
 use crate::process::{
     suspend_switch,
     exit_switch,
@@ -71,9 +73,11 @@ pub fn sys_waitpid(pid: isize, exit_code_ptr: VirtAddr) -> isize {
     return if found {-2} else {-1};
 }
 
-// pub fn sys_sbrk(sz: i32) -> i32 {
-//     let current_proc = current_process().unwrap();
-//     // TODO: sbrk call growproc or
-//     // See how exec allocs the memory
-//     return new_pid as isize;
-// }
+pub fn sys_sbrk(sz: isize) -> isize {
+    let proc = current_process().unwrap();
+    let mut arcpcb = proc.get_inner_locked();
+    let original_size = arcpcb.size as isize;
+    arcpcb.layout.alter_segment(VirtAddr::from(original_size as usize).into(), VirtAddr::from((original_size + sz) as usize).into());
+
+    return 0;
+}

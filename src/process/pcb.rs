@@ -90,7 +90,7 @@ impl ProcessControlBlockInner {
 
 impl ProcessControlBlock {
     pub fn new(elf_data: &[u8]) -> Self {
-        let (layout, user_stack_top, entry) = MemLayout::new_elf(elf_data);
+        let (layout, data_top, user_stack_top, entry) = MemLayout::new_elf(elf_data);
         let trap_context_ppn = layout.translate(VirtAddr::from(TRAP_CONTEXT).into()).unwrap().ppn();
         let pid = alloc_pid();
         let kernel_stack = KernelStack::new(&pid);
@@ -105,11 +105,11 @@ impl ProcessControlBlock {
                 status,
                 layout,
                 trap_context_ppn,
-                size: user_stack_top,
+                size: data_top,
                 up_since: get_time(),
                 last_start: 0,
                 utime: 0,
-                parent: None,       // FIXME: Isn't it PROC0?
+                parent: None,
                 children: Vec::new(),
                 exit_code: 0
             }),
@@ -160,11 +160,12 @@ impl ProcessControlBlock {
     }
 
     pub fn exec(&self, elf_data: &[u8]) {
-        let (layout, user_stack_top, entry) = MemLayout::new_elf(elf_data);
+        let (layout, data_top, user_stack_top, entry) = MemLayout::new_elf(elf_data);
         let trap_context_ppn = layout.translate(VirtAddr::from(TRAP_CONTEXT).into()).unwrap().ppn();
         let mut arcpcb = self.get_inner_locked();
         arcpcb.layout = layout;     // original layout dropped, thus freed.
         arcpcb.trap_context_ppn = trap_context_ppn;
+        arcpcb.size = data_top;
         let trap_context = arcpcb.get_trap_context();
         *trap_context = TrapContext::init(
             entry, 
@@ -173,19 +174,6 @@ impl ProcessControlBlock {
             self.kernel_stack.top().0, 
             user_trap as usize
         );
-    }
-
-    pub fn sbrk(&self, grow: usize) {
-        let inner = self.get_inner_locked();
-        let oldsz = inner.size;
-        let newsz = oldsz + grow;
-        let old_vpn = VirtAddr::from(oldsz).to_vpn();
-        let new_vpn = VirtAddr::from(newsz).to_vpn();
-        if old_vpn != new_vpn {  // We actually need to allocate/deallocate pages
-            let layout = inner.layout;
-            layout.real_sbrk(old_vpn, new_vpn);
-        }
-        inner.size = newsz;
     }
 
     pub fn get_inner_locked(&self) -> MutexGuard<ProcessControlBlockInner> {
