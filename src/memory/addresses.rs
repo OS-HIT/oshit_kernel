@@ -1,5 +1,7 @@
+//! Definition of all the primitive data type in memory management module.  
+//! Including Virtual address, Physical address, Physical Page Number, Virtual Page Number and Page table entry.  
+//! Operator overloading is also put here.
 #![allow(dead_code)]
-/// Virtual address, Physical address, Physical Page Number, Virtual Page Number
 
 use core::fmt::{self, Debug, Formatter};
 use core::ops;
@@ -11,21 +13,27 @@ use crate::utils::{
     SimpleRange
 };
 
-///  63                                                            12 11           0
-///  |                           PPN                                | |   offset   |
-/// [XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX
+/// The representation of physical address (used in kernel space).
+//  63                                                            12 11           0
+//  |                           PPN                                | |   offset   |
+// [XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX
+#[repr(C)]
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub struct PhysAddr(pub usize);
 
-///  63                           3938       3029       2120       12 11           0
-///  |            EXT              ||   L2    ||   L1    ||    L0   | |   offset   |
-/// [XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX
+/// The representation of virtua; address (used in user space).
+//  63                           3938       3029       2120       12 11           0
+//  |            EXT              ||   L2    ||   L1    ||    L0   | |   offset   |
+// [XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX
+#[repr(C)]
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub struct VirtAddr(pub usize);
 
+/// The representation of physical page number.
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub struct PhysPageNum(pub usize);
 
+/// The representation of virtual page number.
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub struct VirtPageNum(pub usize);
 
@@ -82,14 +90,29 @@ impl From<VirtPageNum> for VirtAddr {
 
 /// utility for virtaddr
 impl VirtAddr {
+    /// Truncate down to Virtual Page Number.
+    /// # Description
+    /// Truncate down to Virtual Page Number.
+    /// # Return
+    /// Return the virtual page number of the virtual address.
     pub fn to_vpn(&self) -> VirtPageNum {
         return VirtPageNum(self.0 / PAGE_SIZE);
     }
 
+    /// Truncate up to Virtual Page Number.
+    /// # Description
+    /// Truncate up to Virtual Page Number.
+    /// # Return
+    /// Return the virtual page number of the virtual address, rounded up.
     pub fn to_vpn_ceil(&self) -> VirtPageNum {
         return VirtPageNum((self.0 - 1) / PAGE_SIZE + 1);
     }
 
+    /// Get the page offset of the virtual address
+    /// # Description
+    /// Get the page offset of the virtual address
+    /// # Return
+    /// The page offset of the virtual address
     pub fn page_offset(&self) -> usize {
         return self.0 % PAGE_SIZE;
     }
@@ -137,18 +160,40 @@ impl ops::Add<VirtAddr> for usize {
 
 /// utility for physaddr
 impl PhysAddr {
-    pub fn to_vpn(&self) -> PhysPageNum {
+    /// Truncate down to physical Page Number.
+    /// # Description
+    /// Truncate down to physical Page Number.
+    /// # Return
+    /// Return the physical page number of the physical address.
+    pub fn to_ppn(&self) -> PhysPageNum {
         return PhysPageNum(self.0 / PAGE_SIZE);
     }
 
-    pub fn to_vpn_ceil(&self) -> PhysPageNum {
+    /// Truncate up to physical Page Number.
+    /// # Description
+    /// Truncate up to physical Page Number.
+    /// # Return
+    /// Return the physical page number of the physical address, rounded up.
+    pub fn to_ppn_ceil(&self) -> PhysPageNum {
         return PhysPageNum((self.0 - 1) / PAGE_SIZE + 1);
     }
 
+    /// Get the page offset of the physical address
+    /// # Description
+    /// Get the page offset of the physical address
+    /// # Return
+    /// The page offset of the physical address
     pub fn page_offset(&self) -> usize {
         return self.0 % PAGE_SIZE;
     }
 
+    /// Get an mutable object from corresponding physical address.
+    /// # Description
+    /// Get an mutable object from corresponding physical address.  
+    /// Warning: Will not work properly on page edge, for continuous virtual pages are not always continuous in physical memory.
+    /// # Return
+    /// A mutable reference of the object at that physical memory
+    #[deprecated]
     pub fn get_mut<T>(&self) -> &'static mut T {
         unsafe {
             return (self.0 as *mut T).as_mut().unwrap();
@@ -229,17 +274,35 @@ impl ops::Add<PhysPageNum> for usize {
     }
 }
 
+/// utils for the physical page number
 impl PhysPageNum {
+    /// Get address of head of the physical page.
+    /// # Description
+    /// Get the address of first byte in the physical page
+    /// # Return
+    /// The physical address the first byte in the physical page.
     pub fn head_pa(&self) -> PhysAddr {
         return PhysAddr(self.0 << PAGE_OFFSET);
     }
 
+    /// Get raw bytes from physical page as array
+    /// # Description
+    /// Get raw bytes from physical page as array.  
+    /// Read/write to the returned array will change the corresponding memory.
+    /// # Return
+    /// `[u8; PAGE_SIZE]` representing corresponding memory area
     pub fn page_ptr(&self) -> &'static mut [u8] {
         unsafe {
             return core::slice::from_raw_parts_mut(self.head_pa().0 as *mut u8, PAGE_SIZE);
         }
     }
 
+
+    /// Read the page table entries from the physical page
+    /// # Description
+    /// Read the page table entries from the physical page, according to RISC-V SV39 standard. 
+    /// # Return
+    /// A list of PageTableEntries.
     pub fn read_pte(&self) -> &'static mut [PageTableEntry] {
         unsafe {
             return core::slice::from_raw_parts_mut(self.head_pa().0 as *mut PageTableEntry, PAGE_SIZE / size_of::<PageTableEntry>());
@@ -288,6 +351,19 @@ impl ops::Add<VirtPageNum> for usize {
 }
 
 impl VirtPageNum {
+    /// Get the L2/L1/L0 bits from the virtual page number
+    /// # Description
+    /// Get the L2/L1/L0 bits from the virtual page number, which looks something like this:  
+    /// ` 63                           3938       3029       2120       12 11           0`  
+    /// ` |            EXT              ||   L2    ||   L1    ||    L0   | |   offset   |`  
+    /// `[XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX`  
+    /// # Example
+    /// ```
+    /// let vpn: VirtPageNum = va.into();
+    /// let (l2, l1, l0) = vpn.indexes();
+    /// ```
+    /// # Return
+    /// Returns the three indexes of the virtual page number
     pub fn indexes(&self) -> [usize; 3] {
         return [
             (self.0 >> 18) & 0b1_1111_1111,

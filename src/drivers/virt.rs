@@ -1,4 +1,4 @@
-/// TODO: change to our implementation
+//! QEMU virtio driver wrapper
 use virtio_drivers::{VirtIOBlk, VirtIOHeader};
 use crate::memory::{
     PhysAddr,
@@ -16,6 +16,7 @@ use spin::Mutex;
 use alloc::vec::Vec;
 use lazy_static::*;
 
+/// MMIO address for QEMU device
 #[allow(unused)]
 const VIRTIO0: usize = 0x10001000;
 
@@ -37,7 +38,7 @@ impl BlockDevice for VirtIOBlock {
         self.0.lock().write_block(block_id, &ZEROS).unwrap();
     }
     fn block_cnt(&self) -> u64 {
-        return 0;
+        0
     }
 }
 

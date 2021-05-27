@@ -4,11 +4,11 @@ use spin::{
 };
 use core::convert::TryInto;
 
-pub struct VirtFile {
+pub struct FileWithLock {
     pub inner: Mutex<super::FILE>,
 }
 
-impl VirtFile {
+impl FileWithLock {
     pub fn new(inner: super::FILE) -> Self {
         Self {
             inner: Mutex::new(inner)
@@ -19,7 +19,7 @@ impl VirtFile {
     }
 }
 
-impl super::File for VirtFile {
+impl super::VirtFile for FileWithLock {
     fn read(&self, mut buf: crate::memory::UserBuffer) -> isize {
         let mut inner = self.inner.lock();
         let mut total_len = 0;

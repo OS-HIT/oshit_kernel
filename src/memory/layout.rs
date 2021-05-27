@@ -1,3 +1,5 @@
+//! An abstract of memory layout, both kernel space and user space.  
+//! Closly binded to page table stuff.
 use super::{
     VPNRange,
     VirtPageNum,
@@ -26,33 +28,54 @@ use riscv::register::satp;
 use core::fmt::{self, Debug, Formatter};
 
 lazy_static! {
+    /// The kernel space memory layout.
     pub static ref KERNEL_MEM_LAYOUT: Arc<Mutex<MemLayout>> = Arc::new(Mutex::new(MemLayout::new_kernel()));
 }
 
+/// Get the SATP value of the kernel space
+/// # Description
+/// Get the SATP value of the kernel space, can be used to load to CSR SATP or used to extract pagetable from memory.
+/// # Returns
+/// The SATP value representing the kernel space page table.
 pub fn kernel_satp() -> usize {
     return KERNEL_MEM_LAYOUT.lock().get_satp();
 }
 
+/// Maptype of a segment in the layout
 #[derive(PartialEq, Debug, Copy, Clone)]
 pub enum MapType {
-    Identity,   // identity mapping
-    Framed,     // new frame
+    /// Identity mapping, means that the virtual address and the physical address is the same.
+    Identity,
+    /// Normal mapping, physical pages are from `alloc_frame()`
+    Framed, 
     // vma,     // TODO: VMA here when working on mmap() syscall?
 }
 
 bitflags! {
+    /// Segment flags indicaing privilege.
     pub struct SegmentFlags: u8 {
+        /// Can this segment be read?
         const R = 1 << 1;
+        /// Can this segment be write?
         const W = 1 << 2;
+        /// Can this segment be executed?
         const X = 1 << 3;
+        /// Can this segment be accessed from user mode?
         const U = 1 << 4;
     }
 }
 
+/// Representing a continuous segment in the memroy layout.  
+/// For example, data segments/text segments in the user program.
 pub struct Segment {
+    /// range of the Segment, [range.start()..range.end())
     range   : VPNRange,
+    /// allocated physical frames, aloneside with their virtual page number.  
+    /// It holds the FrameTracker so that it's not dropped.
     frames  : BTreeMap<VirtPageNum, FrameTracker>,
+    /// the mapping type (identity or framed)
     map_type: MapType,
+    /// the flags
     flags   : SegmentFlags,
 }
 
@@ -63,6 +86,16 @@ impl Debug for Segment {
 }
 
 impl Segment {
+    /// Construct a new Segment.
+    /// # Description
+    /// Construct a new semgnet. Note that the physical frames are not allocated yet, 
+    /// for mapping needs a pagetable.
+    /// # Example
+    /// ```
+    /// let segment: Segment = Segment::new(0x10010000.into(), 0x10020000.into(), MapType::Identity, SegmentFlags::R);
+    /// ```
+    /// # Return
+    /// Returns a new, unmapped segment.
     pub fn new(start: VirtAddr, stop: VirtAddr, map_type: MapType, flags: SegmentFlags) -> Self {
         Self {
             range   : VPNRange::new(start.to_vpn(), stop.to_vpn_ceil()),
@@ -72,6 +105,14 @@ impl Segment {
         }
     }
 
+    /// Alloc and map a page in the segment
+    /// # Description
+    /// Alloc and map the page `vpn` in the segment, using the `pagetable` as pagetable
+    /// # Example
+    /// ```
+    /// let mut segment: Segment = Segment::new(0x10010000.into(), 0x10020000.into(), MapType::Identity, SegmentFlags::R);
+    /// segment.map_page(pagetable, VirtPageNum::From(VirtAddr::From(0x10010000)));
+    /// ```
     pub fn map_page(&mut self, pagetable: &mut PageTable, vpn: VirtPageNum) {
         if vpn < self.range.get_start() || vpn >= self.range.get_end() {
             error!("Trying to map a page that is not in this Segment.");
@@ -91,6 +132,14 @@ impl Segment {
         pagetable.map(vpn, ppn, PTEFlags::from_bits(self.flags.bits).unwrap());
     }
 
+    /// Free and unmap a page in the segment
+    /// # Description
+    /// Free and unmap the page `vpn` in the segment, using the `pagetable` as pagetable.  
+    /// By removing the corresponding FrameTracker, the physical frame is automatically freed.
+    /// # Example
+    /// ```
+    /// segment.unmap_page(pagetable, VirtPageNum::From(VirtAddr::From(0x10010000)));
+    /// ```
     #[allow(dead_code)]
     pub fn unmap_page(&mut self, pagetable: &mut PageTable, vpn: VirtPageNum) {
         if self.map_type == MapType::Framed {
@@ -99,12 +148,28 @@ impl Segment {
         pagetable.unmap(vpn);
     }
 
+    /// Alloc and map all page in the segment
+    /// # Description
+    /// Alloc and map all pages, using the `pagetable` as pagetable
+    /// # Example
+    /// ```
+    /// let mut segment: Segment = Segment::new(0x10010000.into(), 0x10020000.into(), MapType::Identity, SegmentFlags::R);
+    /// segment.map_pages(pagetable);
+    /// ```
     pub fn map_pages(&mut self, pagetable: &mut PageTable) {
         for vpn in self.range {
             self.map_page(pagetable, vpn);
         }
     }
 
+    /// Free and unmap all pages in the segment
+    /// # Description
+    /// Free and unmap all pages in the segment, using the `pagetable` as pagetable.  
+    /// By removing the corresponding FrameTracker, the physical frame is automatically freed.
+    /// # Example
+    /// ```
+    /// segment.unmap_pages(pagetable);
+    /// ```
     #[allow(dead_code)]
     pub fn unmap_pages(&mut self, pagetable: &mut PageTable) {
         for vpn in self.range {
@@ -112,6 +177,15 @@ impl Segment {
         }
     }
 
+    /// Write data to a segment.
+    /// # Description
+    /// Write data to a segment. Ths segment need to be mapped before.  
+    /// Also, the data should be no longer then the segment
+    /// # Example
+    /// ```
+    /// let mut segment = Segment::new(0x10010000.into(), 0x10020000.into(), MapType::Identity, SegmentFlags::R);
+    /// segment.write(pagetable, &[1u8; 0x10000]);
+    /// ```
     pub fn write(&mut self, pagetable: &mut PageTable, data: &[u8]) {
         assert_eq!(self.map_type, MapType::Framed, "Error: cannot write to identity mapped segment.");
         assert!(data.len() <= (self.range.get_end() - self.range.get_start()) * PAGE_SIZE, "Data too long to be written into segment.");
@@ -121,7 +195,7 @@ impl Segment {
         while data_i < len {
             let src = &data[data_i..min(data_i + PAGE_SIZE, len)];
             let dst: &mut [u8];
-            if let Some(ppn) = pagetable.translate(vpn_i) {
+            if let Some(ppn) = pagetable.translate(vpn_i) {     // TODO: Isn't it the same to use that BTreeMap?
                 dst = &mut ppn.ppn().page_ptr()[..src.len()];
             } else {
                 panic!("{:?} hasn't been mapped.", vpn_i);
@@ -132,6 +206,9 @@ impl Segment {
         }
     }
 
+    /// Clone a Segment from another Segment.
+    /// # Description
+    /// Clone a Segment from another Segment. The new segment will be unmapped and need to be mapped with another pagetable.
     pub fn clone_from(src: &Segment) -> Self {
         Self {
             range: VPNRange::new(
@@ -145,12 +222,16 @@ impl Segment {
     }
 }
 
+/// The memory layout, for kernel space or user space.
 pub struct MemLayout {
+    /// The pagetable of this memory layout.
     pagetable   : PageTable,
+    /// The segments in this memory layout.
     pub segments    : Vec<Segment>,
 }
 
 impl MemLayout {
+    /// Return a new, empty memory layout.
     pub fn new() -> Self {
         Self {
             pagetable   : PageTable::new(),
@@ -158,6 +239,12 @@ impl MemLayout {
         }
     }
 
+    /// Fork a memory layout
+    /// # Description
+    /// Fork a memory layout from a user space memory layout.  
+    /// They will have exactly the same virtual memory layout, yet on different physical pages.
+    /// # Return
+    /// Forked memory layout.
     pub fn fork_from_user(src: &MemLayout) -> Self {
         let mut layout = Self::new();
         layout.map_trampoline();
@@ -173,6 +260,9 @@ impl MemLayout {
         return layout;
     }
     
+    /// Activate the memory layout as kernel memory layout
+    /// # Description
+    /// Activate the SV39 virtual memory mode and use this memory layout as kernel memory layout
     pub fn activate(&self) {
         verbose!("Kernel switching to virtual memory space...");
         let satp = self.pagetable.get_satp();
@@ -188,17 +278,34 @@ impl MemLayout {
         }
     }
 
+    /// Add a segment to this layout.
+    /// # Description
+    /// Add a segment to this layout, map it and allocate corresponding physical pages.
     pub fn add_segment(&mut self, mut segment: Segment) {
         segment.map_pages(&mut self.pagetable);
         self.segments.push(segment);
     }
 
+    /// Add a segment to this layout, and copy data into it.
+    /// # Description
+    /// Add a segment to this layout, map it and allocate corresponding physical pages.  
+    /// After that, we copy `data` into this segment.  
+    /// Extra useful when loading user elf segments
+    /// # Example
+    /// ```
+    /// let (data, start, stop) = get_user_data_segment();    // this is a psudo-function
+    /// let segment = Segment::new(start, stop, MapType::Identity, SegmentFlags::R | SegmentFlags::W);
+    /// layout.add_segment_with_source(segment, data);
+    /// ```
     pub fn add_segment_with_source(&mut self, mut segment: Segment, data: &[u8]) {
         segment.map_pages(&mut self.pagetable);
         segment.write(&mut self.pagetable, data);
         self.segments.push(segment);
     }
 
+    /// Construct a new kernel memory layout
+    /// # Description
+    /// Construct a new kernel memory layout, including identity map of all physical memory, kernel segments, trampoline and MMIO region.
     pub fn new_kernel() -> Self {
         debug!("Building kernel memory layout...");
         extern "C" {
@@ -289,6 +396,10 @@ impl MemLayout {
         return layout;
     }
 
+    /// Construct a new user memory layout
+    /// # Description
+    /// Construct a new user memory layout, including all elf segments, user stacks and trampoline.  
+    /// Also can use bare bin file for compatbility.
     pub fn new_elf(elf_data: &[u8]) -> (Self, usize, usize) {
         let mut layout = Self::new();
         layout.map_trampoline();
@@ -326,7 +437,7 @@ impl MemLayout {
             entry_point = elf.header.pt2.entry_point() as usize;
         } else {
             // Maybe binary file, map the whole file directly to the memory
-            let mut segment_flags = SegmentFlags::U | SegmentFlags::R | SegmentFlags::W | SegmentFlags::X ;
+            let segment_flags = SegmentFlags::U | SegmentFlags::R | SegmentFlags::W | SegmentFlags::X ;
             let start = VirtAddr::from(0 as usize);
             let stop = VirtAddr::from(elf_data.len() as usize);
             let segment = Segment::new(start, stop, MapType::Framed, segment_flags);
@@ -362,6 +473,9 @@ impl MemLayout {
         return (layout, stack_bottom.0 + USER_STACK_SIZE, entry_point);
     }
 
+    /// Map the trampoline code in the Memory layout
+    /// # Description
+    /// Map the trampoline code in the Memory layout. Trampoline should be in every memory layouts.
     fn map_trampoline(&mut self) {
         extern "C"
         {
@@ -375,14 +489,23 @@ impl MemLayout {
         verbose!("Trampoline mapped {:?} <=> {:?}, R-X-", VirtAddr::from(TRAMPOLINE), PhysAddr::from(strampoline as usize))
     }
 
+    /// Translate a vpn to a pte
+    /// # Description
+    /// Translate the virtual page number to page table entry, or None if not mapped.
+    /// # Return
+    /// The page table entry of the vpn
     pub fn translate(&self, vpn: VirtPageNum) -> Option<PageTableEntry> {
         return self.pagetable.translate(vpn);
     }
 
+    /// Get the SATP value of the pagetable in the layout.
     pub fn get_satp(&self) -> usize {
         return self.pagetable.get_satp();
     }
 
+    /// Drop a segment in the memory layout
+    /// # Description
+    /// Drop a segment in the memory layout identified by the first virtual page number, and free all the corresponding physical pages.
     pub fn drop_segment(&mut self, start: VirtPageNum) {
         if let Some((idx, segment)) = self.segments
         .iter_mut().enumerate()
@@ -392,10 +515,14 @@ impl MemLayout {
         }
     }
 
+    /// Drop all segments in the layout.
     pub fn drop_all(&mut self) {
         self.segments.clear();
     }
 
+    /// Tranlate a user buffer into kernel space
+    /// # Description
+    /// Tranlate a user buffer into kernel space. Note that due to paging, the result is not continuous.
     pub fn get_user_data(&self, mut start: VirtAddr, len: usize) -> Vec<&'static mut [u8]> {
         let end = start + len;
         let mut pages = Vec::new();
@@ -415,7 +542,12 @@ impl MemLayout {
         return pages;
     }
 
-    // Get a CLONE of the cstring.
+    /// Get a c-style string from the user space.
+    /// # Description
+    /// Get a c-style string from the user space, that is, read until a `b'\0'` is encountered.  
+    /// Note that this function returns a clone of the original string.
+    /// # Return
+    /// A clone of the original c-style string in the user space, in a vector of bytes.
     pub fn get_user_cstr(&self, start: VirtAddr) -> Vec<u8> {
         let mut bytes: Vec<u8> = Vec::new();
         let mut vpn = start.to_vpn();
@@ -436,22 +568,41 @@ impl MemLayout {
         return bytes;
     }
 
+    /// Get a UserBuffer in user space
+    /// # Description
+    /// Get a UserBuffer in user space. Modify to UserBuffer will modify the corresponding user space memory.
+    /// # Return
+    /// The userbuffer of corresponding area
     pub fn get_user_buffer(&self, start: VirtAddr, len: usize) -> UserBuffer {
         return UserBuffer::new(self.get_user_data(start, len));
     }
 
+    /// Write a object into user space.
+    /// # Description
+    /// Write a object into user space. Can cross page boundry
+    /// # Example
+    /// ```
+    /// let to_write: usize = 123456;
+    /// current_process.unwrap().get_inner_locked().layout.write_user_data(0x10000.into(), to_write);
+    /// ```
     pub fn write_user_data<T>(&self, start: VirtAddr, obj: &T) {
         let mut buf = UserBuffer::new(self.get_user_data(start, size_of::<T>()));
         buf.write(0, obj);
     }
 
-    // note: this returns a CLONE
+    /// Get an object from the user space.
+    /// # Description
+    /// Get an object from the user space. Note that this function returns a clone of the original object,  
+    /// meaning that modifying that object will not change the user memory.
+    /// # Return
+    /// A clone of the original object in the user space
     pub fn read_user_data<T: Copy>(&self, start: VirtAddr) -> T {
         let buf =UserBuffer::new(self.get_user_data(start, size_of::<T>()));
         buf.read(0)
     }
 }
 
+/// A kernel memory map test
 pub fn remap_test() {
     extern "C" {
         fn stext();

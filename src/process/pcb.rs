@@ -1,10 +1,10 @@
 use crate::fs::{
     FILE,
     FTYPE,
-    File,
-    STDIN,
-    STDOUT,
-    STDERR,
+    VirtFile,
+    LOCKED_STDIN,
+    LOCKED_STDOUT,
+    LOCKED_STDERR,
 };
 
 use crate::memory::{
@@ -83,7 +83,7 @@ pub struct ProcessControlBlockInner {
     pub utime: u64,
     pub parent: Option<Weak<ProcessControlBlock>>,
     pub children: Vec<Arc<ProcessControlBlock>>,
-    pub files: Vec<Option<Arc<dyn File + Send+ Sync>>>,
+    pub files: Vec<Option<Arc<dyn VirtFile + Send+ Sync>>>,
     pub path: String,
     pub exit_code: i32,
 }

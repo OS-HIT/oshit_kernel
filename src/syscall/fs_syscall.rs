@@ -1,5 +1,5 @@
 use super::super::fs::file::FILE;
-use crate::fs::{self, File, VirtFile, make_pipe};
+use crate::fs::{self, VirtFile, FileWithLock, make_pipe};
 use crate::memory::{VirtAddr};
 use crate::process::{current_process};
 // use alloc::vec::Vec;
@@ -35,7 +35,7 @@ pub fn sys_open(path: VirtAddr, mode: u32) -> isize {
     };
 
     let fd = arcpcb.alloc_fd();
-    arcpcb.files[fd] = Some(Arc::new(VirtFile::new(file)));
+    arcpcb.files[fd] = Some(Arc::new(FileWithLock::new(file)));
     return fd.try_into().unwrap();
 }
 
@@ -63,7 +63,7 @@ pub fn sys_openat(fd: i32, file_name: VirtAddr, flags: u32, mode: u32) -> isize 
             };
         
             let new_fd = arcpcb.alloc_fd();
-            arcpcb.files[new_fd] = Some(Arc::new(VirtFile::new(file)));
+            arcpcb.files[new_fd] = Some(Arc::new(FileWithLock::new(file)));
             return new_fd.try_into().unwrap();
         }
 
@@ -78,7 +78,7 @@ pub fn sys_openat(fd: i32, file_name: VirtAddr, flags: u32, mode: u32) -> isize 
                     match dir_file.open_file_from(path, flags) {
                         Ok(fs_file) => {
                             let new_fd = arcpcb.alloc_fd();
-                            arcpcb.files[new_fd] = Some(Arc::new(VirtFile::new(fs_file)));
+                            arcpcb.files[new_fd] = Some(Arc::new(FileWithLock::new(fs_file)));
                             return new_fd as isize;
                         }
                         Err(err_msg) => {

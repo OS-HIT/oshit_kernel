@@ -1,4 +1,4 @@
-/// alloc physical frame
+//! Physical frame allocator for oshit kernel memory management module.
 
 use crate::config::MEM_END;
 use super::{
@@ -9,28 +9,59 @@ use alloc::vec::Vec;
 use spin::Mutex;
 use lazy_static::*;
 
+/// The frame allocator trait. Anything implemented this trait can be our frame allocator
 trait FrameAllocator {
-    // no worry we got Copy trait for PPN
+
+    /// Construct a new frame allocator
+    /// # Description
+    /// Construct a new frame allocator, managing physical memory in [start, stop)
+    /// # Return
+    /// A frame allocator
     fn new(start: PhysPageNum, stop: PhysPageNum) -> Self;
+
+    /// Alloc a new physical frame in the managed area
+    /// # Description
+    /// Alloc a new physical frame in the managed area. If failed, return None.  
+    /// # Return
+    /// Return the physical page number on success, or None if OOM.
     fn alloc(&mut self) -> Option<PhysPageNum>;
+
+    /// Free the physical frame
+    /// # Description
+    /// Free the physical frame in the managed area, allow it to be alloced again in the future.
     fn free(&mut self, to_free: PhysPageNum);
 }
 
-// TODO: change to CLOCK algorithm
 lazy_static! {
+    /// Lazy initialized instance of the frame allocator implementation. Currently using StackFrameAllocator.
     pub static ref FRAME_ALLOCATOR: Mutex<StackFrameAllocator> = {
         debug!("Initializing page frame allocator...");
         extern "C" {
             fn ekernel();
         }
-        let start = PhysAddr::from(ekernel as usize).to_vpn_ceil();
-        let stop = PhysAddr::from(MEM_END).to_vpn();
+        let start = PhysAddr::from(ekernel as usize).to_ppn_ceil();
+        let stop = PhysAddr::from(MEM_END).to_ppn();
         Mutex::new(StackFrameAllocator::new(start, stop))
     };
 }
 
-// RAII, auto collect so no explicit free
-// if you want to free a frame, just drop frame tracker
+/// Alloc a frame.
+/// # Description
+/// Alloc a physical frame, return Some(FrameTracker) on success, and None on OOM.  
+/// Note that we don't need to free explicitly, the page will be automatically freed when the FrameTracker is dropped.  
+/// If you want to free a frame, just drop frame tracker
+/// # Example
+/// ```
+/// if let Some(ft) = alloc_frame() {
+///     // Do something with the FrameTracker
+///     do_something(ft);
+///     // The frame tracker is dropped, so the page is freed
+/// } else {
+///     error!("OOM!");
+/// }
+/// ```
+/// # Return
+/// Some(FrameTracker) on success, None on OOM
 pub fn alloc_frame() -> Option<FrameTracker> {
     FRAME_ALLOCATOR.lock().alloc().map(|ppn| FrameTracker::new(ppn))
 }
@@ -39,13 +70,14 @@ pub fn free_frame(ppn: PhysPageNum) {
     FRAME_ALLOCATOR.lock().free(ppn);
 }
 
-// Impl drop, to auto gc
-// TODO: Lock it maybe? To avoid race
+/// The frame tracker, representing a physical frame.  
+/// It's created alone the alloc process, and when it's dropped it automatically free the coresponding page.
 pub struct FrameTracker {
     pub ppn: PhysPageNum
 }
 
 impl FrameTracker {
+    /// Constructor
     pub fn new(ppn: PhysPageNum) -> Self {
         for i in ppn.page_ptr() {
             *i = 0;
@@ -54,12 +86,15 @@ impl FrameTracker {
     }
 }
 
+/// Implement drop, so that we can automatically collect used pages.
 impl Drop for FrameTracker {
     fn drop(&mut self) {
         FRAME_ALLOCATOR.lock().free(self.ppn)
     }
 }
 
+/// The Frame-Allocator-of-choice.
+/// A stack frame allocator, keeps records of current freed pages and unallocated pages.
 pub struct StackFrameAllocator {
     current : PhysPageNum,
     end     : PhysPageNum,
