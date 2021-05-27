@@ -5,9 +5,7 @@ const MAX_FILE_NAME_LENGTH: usize = 255;
 
 pub enum STATE {
         Start,
-        FNameInRoot,
         FName,
-        FExt,
         DirCur,
         DirParent,
 }
@@ -19,7 +17,6 @@ pub enum PathFormatError {
         EmptyFileName,
         FileNameTooLong,
         InvalidCharInFileName,
-        EmptyFileExt,
         InvalidCharInFileExt,
         EmptyPath,
         ReferingRootParent,
@@ -31,9 +28,8 @@ pub fn to_string(error: PathFormatError) -> &'static str {
                 PathFormatError::NotAbs => "Path should start with '/'",
                 PathFormatError::NotRel => "Processing non-relative path with relative parser",
                 PathFormatError::EmptyFileName => "File name is empty",
-                PathFormatError::FileNameTooLong => "File name longer than 8 bytes is not allowed",
+                PathFormatError::FileNameTooLong => "File name longer than 255 bytes is not allowed",
                 PathFormatError::InvalidCharInFileName => "Invalid char is found in file name",
-                PathFormatError::EmptyFileExt => "File name with no extend should not have '.'",
                 PathFormatError::InvalidCharInFileExt => "Invalid char is found in file extension",
                 PathFormatError::EmptyPath => "Path is empty",
                 PathFormatError::ReferingRootParent => "Path invalid because is refering parent of root",
@@ -59,14 +55,18 @@ impl Path {
         }
 
         pub fn purge(&mut self) -> Result<(), PathFormatError> {
-                for node in self.path.iter().enumerate() {
-                        if node.1.eq("..") {
-                                if node.0 == 0 && self.is_abs {
+                let mut idx = 0;
+                while idx < self.path.len() {
+                        if self.path[idx].eq("..") {
+                                if idx == 0 && self.is_abs {
                                         return Err(PathFormatError::ReferingRootParent);
                                 } else {
-                                        self.path.remove(node.0);
-                                        self.path.remove(node.0 -1);
+                                        self.path.remove(idx);
+                                        self.path.remove(idx -1);
+                                        idx -= 1;
                                 }
+                        } else {
+                                idx += 1;
                         }
                 }
                 return Ok(());
@@ -101,7 +101,7 @@ impl PathParser {
                 match self.state {
                         STATE::Start => {
                                 if c == '/' {
-                                        self.state = STATE::FNameInRoot;
+                                        self.state = STATE::FName;
                                         return None;
                                 } else {
                                         self.path.is_abs = false;
@@ -128,7 +128,7 @@ impl PathParser {
                         STATE::FName => {
                                 if c == '/' {
                                         if self.buf.len() > 0 {
-                                                self.path.path.push(self.buf);
+                                                self.path.path.push(self.buf.clone());
                                                 self.buf = String::with_capacity(MAX_FILE_NAME_LENGTH);
                                                 return None;
                                         } else {
@@ -140,7 +140,7 @@ impl PathParser {
                                         return None;
                                 } else {
                                         if valid_fname_char(c) {
-                                                if self.buf.len() < 8 {
+                                                if self.buf.len() < 255 {
                                                         self.buf.push(c);
                                                         return None;
                                                 } else {

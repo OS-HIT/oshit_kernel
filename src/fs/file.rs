@@ -2,6 +2,7 @@
 use core::{convert::TryInto, mem::size_of};
 
 use alloc::vec::Vec;
+use alloc::string::String;
 
 use super::dirent::DirEntry;
 use super::dirent::DIRENT_P_CLST;
@@ -23,10 +24,7 @@ use super::fat::append_chain;
 use super::path::Path;
 use super::path::PathFormatError;
 use super::path::parse_path;
-use super::path::parse_path_r;
 use super::path::to_string;
-use super::path::get_name;
-use super::path::get_ext;
 use super::fat::fat::get_file_chain;
 use super::fat::fat::clear_file_chain;
 use super::fat::fat::truncat_file_chain;
@@ -105,7 +103,7 @@ impl FILE {
         }
         
         fn open_file_path(path: Path, mode: u32) -> Result<FILE, &'static str> {
-                match find_entry(&path, false) {
+                match find_entry(&path) {
                         Ok(entry) => {
                                 if ! entry.is_file() {
                                         return Err("open_file:Not a file");
@@ -136,9 +134,10 @@ impl FILE {
                         Err(msg) => {
                                 if mode & FILE::FMOD_CREATE != 0 {
                                         let mut parent = path.clone();
-                                        parent.pop().unwrap();
-                                        if parent.len() != 0 {
-                                                if let Err(_) = find_entry(&parent, true) {
+                                        parent.path.pop().unwrap();
+                                        parent.must_dir = true;
+                                        if parent.path.len() != 0 {
+                                                if let Err(_) = find_entry(&parent) {
                                                         return Err("open_file: parent directory not exists");
                                                 }
                                         }
@@ -164,34 +163,23 @@ impl FILE {
                         return Err("open_file: Not implemented yet");
                 }
                 let path = match parse_path(path) {
-                        Ok((path, is_dir)) => {
-                                if is_dir {
+                        Ok(mut path) => {
+                                if path.must_dir {
                                         return Err("open_file_from: Cannot open dir");
+                                }
+                                if !path.is_abs {
+                                        if self.ftype == FTYPE::TDir {
+                                                let mut path_tmp = self.path.clone();
+                                                path_tmp.path.append(&mut path.path.clone());
+                                                path_tmp.must_dir = false;
+                                                path_tmp.purge();
+                                                path = path_tmp
+                                        } else {
+                                                return Err("open_file_from: Are you sure you are giving me a directory?");
+                                        }
                                 }
                                 path
                         },
-                        Err(PathFormatError::NotAbs) => {
-                                match parse_path_r(path) {
-                                        Ok((mut path, is_dir)) => {
-                                                if is_dir {
-                                                        return Err("open_file_from: Cannot open dir");
-                                                }
-                                                if self.ftype == FTYPE::TDir {
-                                                        let mut path_tmp = self.path.clone();
-                                                        path_tmp.append(&mut path.clone());
-                                                        path_tmp
-                                                } else {
-                                                        return Err("open_file_from: Are you sure you are giving me a directory?");
-                                                }
-                                        },
-                                        Err(err) => {
-                                                return Err(to_string(err));
-                                        }
-                                }
-                        },
-                        Err(e) => {
-                                return Err(to_string(e))
-                        }
                         Err(err) => {
                                 return Err(to_string(err));
                         }
@@ -204,8 +192,8 @@ impl FILE {
                         return Err("open_file: Not implemented yet");
                 }
                 let path = match parse_path(path) {
-                        Ok((path, is_dir)) => {
-                                if is_dir {
+                        Ok(path) => {
+                                if path.must_dir {
                                         return Err("open_file: Cannot open dir");
                                 }
                                 path
@@ -218,18 +206,18 @@ impl FILE {
         }
 
         pub fn delete_file(path: &str) -> Result<(), &str> {
-                let (path, is_dir) = match parse_path(path) {
-                        Ok((path, is_dir)) => {
-                                (path, is_dir)
+                let path = match parse_path(path) {
+                        Ok(path) => {
+                                path
                         },
                         Err(error) => {
                                 return Err(to_string(error));
                         }
                 };
-                if is_dir {
+                if path.must_dir {
                         return Err("delete_file: input path is referring a directory");
                 }
-                match find_entry(&path, false) {
+                match find_entry(&path) {
                         Ok(entry) => {
                                 if ! entry.is_file() {
                                         return Err("delete_file: Not a file");
@@ -249,15 +237,15 @@ impl FILE {
                 if mode != FILE::FMOD_READ {
                         return Err("open_dir: Not implemented yet");
                 }
-                let path = match parse_path(path) {
-                        Ok((path, _)) => {
+                let mut path = match parse_path(path) {
+                        Ok(path) => {
                                 path
                         },
                         Err(error) => {
                                 return Err(to_string(error));
                         }
                 };
-                if path.len() == 0 {
+                if path.path.len() == 0 {
                         return Ok(
                         FILE{
                                 path,
@@ -268,7 +256,8 @@ impl FILE {
                                 flag: mode,
                         })
                 }
-                match find_entry(&path, true) {
+                path.must_dir = true;
+                match find_entry(&path) {
                         Ok(entry) => {
                                 return Ok(
                                 FILE {
@@ -288,24 +277,29 @@ impl FILE {
 
         pub fn make_dir(path: &str) -> Result<(), &'static str> {
                 let mut path = match parse_path(path) {
-                        Ok((path, _)) => path,
+                        Ok(path) => path,
                         Err(error) => return Err(to_string(error)),
                 };
-                if path.len() == 0 {
+                path.must_dir = true;
+                if path.path.len() == 0 {
                         return Err("make_dir: Are you trying to make root directory?");
                 }
-                let dir = path.pop().unwrap();
-                let mut dir = vec![dir];
+                let dir = path.path.pop().unwrap();
+                let mut dir = Path {
+                        path: vec![dir],
+                        must_dir: false,
+                        is_abs: false,
+                };
                 let cluster: u32;
                 let dirent: DirEntry;
                 let mut pstart = *ROOT_DIR;
-                if path.len() == 0 {
-                        if let Err(_) = find_entry(&dir, false) {
-                                let dir = dir.pop().unwrap();
+                if path.path.len() == 0 {
+                        if let Err(_) = find_entry(&dir) {
+                                let dir = dir.path.pop().unwrap();
                                 let mut name = [0u8;8];
-                                name.clone_from_slice(get_name(&dir).as_bytes());
+                                name.clone_from_slice(dir.as_bytes());
                                 let mut ext = [0u8;3];
-                                ext.clone_from_slice(get_ext(&dir).as_bytes());
+                                ext.clone_from_slice(dir.as_bytes());
                                 cluster = get_free_cluster().unwrap();
                                 dirent = DirEntry{
                                         name, ext, attr: DirEntry::attr_dir(),
@@ -316,18 +310,18 @@ impl FILE {
                                         mod_sec: 0, mod_date: 0,
                                         start_l: (cluster & 0xff) as u16,
                                 };
-                                new_entry(&path, &dirent).unwrap();
+                                new_entry(&path, &dirent, dir).unwrap();
                         } else {
                                 return Err("make_dir: directory name occupied");
                         }
                 } else {
-                        if let Ok(mut parent) = find_entry(&path, true) {
-                                if let Err(_) = find_entry_from(parent.get_start(), &dir, false) {
-                                        let dir = dir.pop().unwrap();
+                        if let Ok(mut parent) = find_entry(&path) {
+                                if let Err(_) = find_entry_from(parent.get_start(), &dir) {
+                                        let dir = dir.path.pop().unwrap();
                                         let mut name = [0u8;8];
-                                        name.clone_from_slice(get_name(&dir).as_bytes());
+                                        name.clone_from_slice(dir.as_bytes());
                                         let mut ext = [0u8;3];
-                                        ext.clone_from_slice(get_ext(&dir).as_bytes());
+                                        ext.clone_from_slice(dir.as_bytes());
                                         cluster = get_free_cluster().unwrap();
                                         dirent = DirEntry{
                                                 name, ext, attr: DirEntry::attr_dir(),
@@ -338,10 +332,10 @@ impl FILE {
                                                 mod_sec: 0, mod_date: 0,
                                                 start_l: (cluster & 0xff) as u16,
                                         };
-                                        if let Ok(update_size) = new_entry_at(&parent, &dirent) {
-                                                if update_size {
-                                                        parent.size += size_of::<DirEntry>() as u32;
-                                                        update_entry(&path, true, &parent).unwrap();
+                                        if let Ok(update_size) = new_entry_at(&parent, &dirent, dir) {
+                                                if update_size != 0 {
+                                                        parent.size += update_size;
+                                                        update_entry(&path, &parent).unwrap();
                                                 }
                                         } else {
                                                 return Err("make_dir: failed to set new entry");
@@ -367,34 +361,33 @@ impl FILE {
                         mod_sec: 0, mod_date: 0,
                         start_l: (cluster & 0xff) as u16,
                 };
-                new_entry_at(&dirent, &dir_tmp).unwrap();
+                new_entry_at(&dirent, &dir_tmp, String::new()).unwrap();
                 dir_tmp.name[1] = '.' as u8;
-                if path.len() == 0 {
+                if path.path.len() == 0 {
                         dir_tmp.set_start(*ROOT_DIR);
                 } else {
                         dir_tmp.set_start(pstart);
                 }
-                new_entry_at(&dirent, &dir_tmp).unwrap();
+                new_entry_at(&dirent, &dir_tmp, String::new()).unwrap();
                 flush();
                 return Ok(());
         }
 
         fn is_empty_dir(entry: &DirEntry) -> bool {
                 let chain = entry.get_chain();
-                for clst in chain {
-                        for offset in 0..*DIRENT_P_CLST {
-                                if let Some(dirent) = read_dirent(clst, offset) {
-                                        if dirent.is_ext() || dirent.deleted() {
-                                                continue;
-                                        }
-                                        let name = dirent.get_name();
-                                        if "." == name || ".." == name {
-                                                continue;
-                                        }
-                                        return false;
-                                } else {
-                                        break;
+                let mut offset = 0;
+                loop {
+                        if let Some(dirent) = read_dirent(&chain, offset) {
+                                if dirent.is_ext() || dirent.deleted() {
+                                        continue;
                                 }
+                                let name = dirent.get_name();
+                                if "." == name || ".." == name {
+                                        continue;
+                                }
+                                return false;
+                        } else {
+                                break;
                         }
                 }
                 return true;
@@ -402,16 +395,21 @@ impl FILE {
 
         pub fn delete_dir(path: &str) -> Result<(), &'static str> {
                 let mut path = match parse_path(path) {
-                        Ok((path, _)) => path,
+                        Ok(path) => path,
                         Err(error) => return Err(to_string(error)),
                 };
-                if path.len() == 0 {
+                if path.path.len() == 0 {
                         return Err("delete_dir: deleting root directory is not allowed");
                 }
-                let dir = path.pop().unwrap();
-                let dir = vec![dir];
-                if path.len() == 0 {
-                        if let Ok(entry) = find_entry(&dir, true) {
+                let dir = path.path.pop().unwrap();
+                path.must_dir = true;
+                let mut dir = Path {
+                        path: vec![dir],
+                        must_dir: true,
+                        is_abs: false,
+                };
+                if path.path.len() == 0 {
+                        if let Ok(entry) = find_entry(&dir) {
                                 if FILE::is_empty_dir(&entry) {
                                         delete_entry(&dir, true).unwrap();
                                         clear_file_chain(entry.get_start()).unwrap();
@@ -424,8 +422,8 @@ impl FILE {
                                 return Err("delete_dir: directory not found");
                         }
                 } else {
-                        if let Ok(parent) = find_entry(&path, true) {
-                                if let Ok(entry) = find_entry_from(parent.get_start(), &dir, true) {
+                        if let Ok(parent) = find_entry(&path) {
+                                if let Ok(entry) = find_entry_from(parent.get_start(), &dir) {
                                         if FILE::is_empty_dir(&entry) {
                                                 clear_file_chain(entry.get_start()).unwrap();
                                                 delete_entry(&dir, true).unwrap();
@@ -612,7 +610,7 @@ impl FILE {
                         return Err((self, "FILE::close_file: not a file"));
                 }
                 if self.do_create() {
-                        if let Ok(mut entry) = find_entry(&self.path, false) {
+                        if let Ok(mut entry) = find_entry(&self.path) {
                                 if self.write_allowed() || self.append_allowed() {
                                         entry.size = self.fsize;
                                         let mut chain_len = self.fsize / *CLUSTER_SIZE;
@@ -629,15 +627,15 @@ impl FILE {
                                                         truncat_file_chain(self.fchain[chain_len as usize - 1]).unwrap();
                                                 }
                                         }
-                                        update_entry(&self.path, false, &entry).unwrap();
+                                        update_entry(&self.path, &entry).unwrap();
                                         flush();
                                 } 
                         } else {
-                                let file = self.path.pop().unwrap();
+                                let file = self.path.path.pop().unwrap();
                                 let mut name = [0u8;8];
-                                name.clone_from_slice(get_name(&file).as_bytes());
+                                name.clone_from_slice(file.as_bytes());
                                 let mut ext = [0u8;3];
-                                ext.clone_from_slice(get_ext(&file).as_bytes());
+                                ext.clone_from_slice(file.as_bytes());
                                 let start_h = (self.fchain[0] >> 16) as u16;
                                 let start_l = (self.fchain[0] & 0xff) as u16;
                                 let entry = DirEntry{
@@ -648,12 +646,12 @@ impl FILE {
                                         start_h, mod_sec: 0x0,
                                         mod_date: 0x0, start_l, size: self.fsize,
                                 };
-                                new_entry(&self.path, &entry).unwrap();
+                                new_entry(&self.path, &entry, file).unwrap();
                                 flush();
                         }
                 } else {
                         if self.write_allowed() || self.append_allowed() {
-                                if let Ok(mut entry) = find_entry(&self.path, false) {
+                                if let Ok(mut entry) = find_entry(&self.path) {
                                         entry.size = self.fsize;
                                         let mut chain_len = self.fsize / *CLUSTER_SIZE;
                                         if self.fsize % *CLUSTER_SIZE != 0 {
@@ -669,7 +667,7 @@ impl FILE {
                                                         truncat_file_chain(self.fchain[chain_len as usize - 1]).unwrap();
                                                 }
                                         }
-                                        update_entry(&self.path, false, &entry).unwrap();
+                                        update_entry(&self.path, &entry).unwrap();
                                         flush();
                                 } else {
                                         return Err((self, "file_close: file not exist, what up?"));
