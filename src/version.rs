@@ -1,7 +1,7 @@
 
 // NOTE: following line will be found and modified by build.rs.
 // DONT CHANGE THIS LINE MANUALLY!!!!
-pub const VERSION : &[u8] = b"Wed, 26 May 2021 17:24:20 +0000\0";
+pub const VERSION : &[u8] = b"Thu, 27 May 2021 13:14:33 +0000\0";
 
 
 

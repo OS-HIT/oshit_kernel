@@ -72,8 +72,8 @@ pub fn sdcard_test() {
 
 pub fn stat_file(path_s:& str) -> Result<DirEntry, &'static str> {
         match path::parse_path(path_s) {
-                Ok((path_v, is_dir)) => {
-                        match fat::find_entry(&path_v, is_dir) {
+                Ok(path_v) => {
+                        match fat::find_entry(&path_v) {
                                 Ok(dirent) => {
                                         return Ok(dirent.clone());
                                 },

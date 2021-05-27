@@ -5,9 +5,7 @@ const MAX_FILE_NAME_LENGTH: usize = 255;
 
 pub enum STATE {
         Start,
-        FNameInRoot,
         FName,
-        FExt,
         DirCur,
         DirParent,
 }
@@ -19,7 +17,6 @@ pub enum PathFormatError {
         EmptyFileName,
         FileNameTooLong,
         InvalidCharInFileName,
-        EmptyFileExt,
         InvalidCharInFileExt,
         EmptyPath,
         ReferingRootParent,
@@ -104,7 +101,7 @@ impl PathParser {
                 match self.state {
                         STATE::Start => {
                                 if c == '/' {
-                                        self.state = STATE::FNameInRoot;
+                                        self.state = STATE::FName;
                                         return None;
                                 } else {
                                         self.path.is_abs = false;
@@ -131,7 +128,7 @@ impl PathParser {
                         STATE::FName => {
                                 if c == '/' {
                                         if self.buf.len() > 0 {
-                                                self.path.path.push(self.buf);
+                                                self.path.path.push(self.buf.clone());
                                                 self.buf = String::with_capacity(MAX_FILE_NAME_LENGTH);
                                                 return None;
                                         } else {
@@ -143,7 +140,7 @@ impl PathParser {
                                         return None;
                                 } else {
                                         if valid_fname_char(c) {
-                                                if self.buf.len() < 8 {
+                                                if self.buf.len() < 255 {
                                                         self.buf.push(c);
                                                         return None;
                                                 } else {
