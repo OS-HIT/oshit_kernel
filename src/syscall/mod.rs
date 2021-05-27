@@ -63,6 +63,7 @@ pub use process_syscall::{
     sys_getppid,
     sys_getcwd,
     sys_chdir,
+    sys_sbrk,
 };
 pub use trivial_syscall::{
     sys_time, 
@@ -97,6 +98,7 @@ pub fn syscall(syscall_id: usize, args: [usize; 6]) -> isize {
         SYSCALL_CHDIR       => sys_chdir(args[0].into()),
         SYSCALL_GETDENTS64  => sys_getdents64(args[0], args[1].into(), args[2]),
         SYSCALL_NANOSLEEP   => sys_nanosleep(args[0].into(), args[1].into()),
+        SYSCALL_BRK         => sys_sbrk(args[0]),
         _ => {
             fatal!("Unsupported syscall_id: {}", syscall_id);
             -1

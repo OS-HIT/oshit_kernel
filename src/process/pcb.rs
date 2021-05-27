@@ -143,7 +143,7 @@ impl ProcessControlBlock {
     /// # Return
     /// Return the new process control block
     pub fn new(elf_data: &[u8], path: String) -> Self {
-        let (layout, mut user_stack_top, entry) = MemLayout::new_elf(elf_data);
+        let (layout, data_top, mut user_stack_top, entry) = MemLayout::new_elf(elf_data);
         let trap_context_ppn = layout.translate(VirtAddr::from(TRAP_CONTEXT).into()).unwrap().ppn();
         let pid = alloc_pid();
         let kernel_stack = KernelStack::new(&pid);
@@ -163,11 +163,11 @@ impl ProcessControlBlock {
                 status,
                 layout,
                 trap_context_ppn,
-                size: user_stack_top,
+                size: data_top,
                 up_since: get_time(),
                 last_start: 0,
                 utime: 0,
-                parent: None,       // FIXME: Isn't it PROC0?
+                parent: None,
                 children: Vec::new(),
                 files: vec![
                     Some(Arc::new(crate::fs::Stdin)), 
@@ -289,7 +289,7 @@ impl ProcessControlBlock {
     /// # Return
     /// Return the argc, for this will subtitude the syscall return value.
     pub fn exec(&self, elf_data: &[u8], path: String, argv: Vec<Vec<u8>>, envp: Vec<Vec<u8>>) -> isize {
-        let (layout, mut user_stack_top, entry) = MemLayout::new_elf(elf_data);
+        let (layout, data_top, mut user_stack_top, entry) = MemLayout::new_elf(elf_data);
         let trap_context_ppn = layout.translate(VirtAddr::from(TRAP_CONTEXT).into()).unwrap().ppn();
 
         // user_stack_top -= (argv.len() + 1) * core::mem::size_of::<usize>();
@@ -337,6 +337,8 @@ impl ProcessControlBlock {
         let mut arcpcb = self.get_inner_locked();
         arcpcb.layout = layout;     // original layout dropped, thus freed.
         arcpcb.trap_context_ppn = trap_context_ppn;
+        arcpcb.utime = 0;
+        arcpcb.size = data_top;
         arcpcb.utime = 0;
         arcpcb.up_since = get_time();
         arcpcb.path = path[..path.rfind('/').unwrap() + 1].to_string();

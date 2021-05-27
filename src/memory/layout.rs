@@ -97,6 +97,7 @@ impl Segment {
     /// # Return
     /// Returns a new, unmapped segment.
     pub fn new(start: VirtAddr, stop: VirtAddr, map_type: MapType, flags: SegmentFlags) -> Self {
+        verbose!("New Segment: {:?} <=> {:?}", start.to_vpn(), stop.to_vpn_ceil());
         Self {
             range   : VPNRange::new(start.to_vpn(), stop.to_vpn_ceil()),
             frames  : BTreeMap::new(),
@@ -130,6 +131,21 @@ impl Segment {
             }
         }
         pagetable.map(vpn, ppn, PTEFlags::from_bits(self.flags.bits).unwrap());
+    }
+    
+    pub fn adjust_end(&mut self, pagetable: &mut PageTable, new_end: VirtPageNum) {
+        // We need to align the end to the 4K border of the page
+        // let new_end = self.range.get_end() + (VirtAddr::from(sz)).0;
+        // self.range.set_end(new_end);
+        if new_end < self.range.get_end() {
+            for i in new_end.0..self.range.get_end().0 {
+                self.unmap_page(pagetable, i.into());
+            }
+        } else if new_end > self.range.get_end() {
+            for i in self.range.get_end().0..new_end.0 {
+                self.map_page(pagetable, i.into());
+            }
+        }
     }
 
     /// Free and unmap a page in the segment
@@ -258,6 +274,14 @@ impl MemLayout {
             }
         }
         return layout;
+    }
+
+    pub fn alter_segment(&mut self, old_end: VirtPageNum, new_end: VirtPageNum) {
+        if let Some((idx, segment)) = self.segments.iter_mut().enumerate().find(|(_, seg)| seg.range.get_end() == old_end) {
+            segment.adjust_end(&mut self.pagetable, new_end);
+        } else {
+            error!("No segment end with {:?}", old_end);
+        }
     }
     
     /// Activate the memory layout as kernel memory layout
@@ -400,10 +424,11 @@ impl MemLayout {
     /// # Description
     /// Construct a new user memory layout, including all elf segments, user stacks and trampoline.  
     /// Also can use bare bin file for compatbility.
-    pub fn new_elf(elf_data: &[u8]) -> (Self, usize, usize) {
+    pub fn new_elf(elf_data: &[u8]) -> (Self, usize, usize, usize) {
         let mut layout = Self::new();
         layout.map_trampoline();
         let mut end_vpn = VirtPageNum::from(0);
+        let mut data_top = 0;
         let mut entry_point: usize = 0;
         if let Ok(elf) = xmas_elf::ElfFile::new(elf_data) {
             // map segments
@@ -423,54 +448,59 @@ impl MemLayout {
                         segment_flags |= SegmentFlags::X;
                     }
                     let segment = Segment::new(start, stop, MapType::Framed, segment_flags);
+                    let ph_end = program_header.offset() + program_header.file_size();
                     end_vpn = segment.range.get_end();
                     layout.add_segment_with_source(
                         segment, 
                         &elf.input[
                         program_header.offset() as usize
                         ..
-                        (program_header.offset() + program_header.file_size()) as usize
+                        ph_end as usize
                         ]);
-                    verbose!("App segment mapped: {:0x} <-> {:0x}", program_header.offset() as usize, (program_header.offset() + program_header.file_size()) as usize)
+                    verbose!("App segment mapped: {:0x} <-> {:0x}", program_header.offset() as usize, ph_end as usize);
+                    
+                    if data_top < ph_end {
+                        data_top = ph_end
+                    }
                 }
             }
+            verbose!("Data Segment top should be at {:x}", data_top);
             entry_point = elf.header.pt2.entry_point() as usize;
-        } else {
-            // Maybe binary file, map the whole file directly to the memory
-            let segment_flags = SegmentFlags::U | SegmentFlags::R | SegmentFlags::W | SegmentFlags::X ;
-            let start = VirtAddr::from(0 as usize);
-            let stop = VirtAddr::from(elf_data.len() as usize);
-            let segment = Segment::new(start, stop, MapType::Framed, segment_flags);
-            end_vpn = segment.range.get_end();
-            layout.add_segment_with_source(
-                segment, 
-                &elf_data);
-            entry_point = 0 as usize;
-            verbose!("Binary segment mapped: {:0x} <-> {:0x}", 0 as usize, elf_data.len() as usize)
-        }
-        // map user stacks
-        let stack_bottom = VirtAddr::from(end_vpn) + PAGE_SIZE;
-        layout.add_segment(
-            Segment::new(
-                stack_bottom, 
-                stack_bottom + USER_STACK_SIZE, 
-                MapType::Framed, 
-                SegmentFlags::R |SegmentFlags::W |SegmentFlags::U
-            )
-        );
-        verbose!("stack mapped: {:0x} <-> {:0x}", stack_bottom.0, (stack_bottom + USER_STACK_SIZE).0);
-            
-        // map trapcontext
-        layout.add_segment(
-            Segment::new(
-                TRAP_CONTEXT.into(),
-                TRAMPOLINE.into(),
-                MapType::Framed,
-                SegmentFlags::R | SegmentFlags::W,
-            )
-        );
+            // map trapcontext
+            layout.add_segment(
+                Segment::new(
+                    TRAP_CONTEXT.into(),
+                    TRAMPOLINE.into(),
+                    MapType::Framed,
+                    SegmentFlags::R | SegmentFlags::W,
+                )
+            );
+            // map guard page
+            let guard_page_high_end = VirtAddr::from(TRAP_CONTEXT);
+            let guard_page_low_end = guard_page_high_end - PAGE_SIZE;
+            layout.add_segment(
+                Segment::new(
+                    guard_page_low_end,
+                    guard_page_high_end, 
+                    MapType::Framed, 
+                    SegmentFlags::R |SegmentFlags::W
+                )
+            );
+            // map user stacks
+            let stack_high_end = guard_page_low_end;
+            let stack_low_end = stack_high_end - USER_STACK_SIZE;
+            layout.add_segment(
+                Segment::new(
+                    stack_low_end, 
+                    stack_high_end,
+                    MapType::Framed, 
+                    SegmentFlags::R |SegmentFlags::W |SegmentFlags::U
+                )
+            );
 
-        return (layout, stack_bottom.0 + USER_STACK_SIZE, entry_point);
+            return (layout, data_top as usize, stack_high_end.0, elf.header.pt2.entry_point() as usize);
+        }
+        panic!("Invlid elf format.");
     }
 
     /// Map the trampoline code in the Memory layout

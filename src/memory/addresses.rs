@@ -105,6 +105,9 @@ impl VirtAddr {
     /// # Return
     /// Return the virtual page number of the virtual address, rounded up.
     pub fn to_vpn_ceil(&self) -> VirtPageNum {
+        if self.0 == 0 {
+            return 1.into();
+        }
         return VirtPageNum((self.0 - 1) / PAGE_SIZE + 1);
     }
 

@@ -198,3 +198,16 @@ pub fn sys_chdir(buf: VirtAddr) -> isize {
         return -1;
     }
 }
+
+pub fn sys_sbrk(sz: usize) -> isize {
+    verbose!("Brk sz: {}", sz);
+    if sz == 0 {
+        return current_process().unwrap().get_inner_locked().size as isize;
+    }
+    let proc = current_process().unwrap();
+    let mut arcpcb = proc.get_inner_locked();
+    let original_size = arcpcb.size;
+    arcpcb.layout.alter_segment(VirtAddr::from(original_size).to_vpn_ceil(), VirtAddr::from(sz).to_vpn_ceil());
+    arcpcb.size = sz as usize;
+    return 0;
+}
