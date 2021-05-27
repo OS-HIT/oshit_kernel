@@ -250,8 +250,8 @@ pub fn find_entry_from(from: u32, path: &Path) -> Result<DirEntry, &'static str>
                                 }
                                 if direntext.len() > 0 {
                                         let name = get_full_name(&mut direntext).unwrap();
-                                        debug!("find_entry_from:{} vs {}", *fname, name);
-                                        if name.eq(fname) {
+                                        // debug!("find_entry_from:{} vs {}", *fname, name);
+                                        if name.to_ascii_uppercase().eq(&fname.to_ascii_uppercase()) {
                                                 dirent = Some(item);
                                                 lname = Some(name);
                                                 depth += 1;
