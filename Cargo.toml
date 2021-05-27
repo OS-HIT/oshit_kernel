@@ -30,3 +30,29 @@ min_log_level_error = []
 min_log_level_fatal = []
 board_qemu = []
 board_k210 = []
+
+[source.crates-io]
+replace-with = "vendored-sources"
+
+[source."https://github.com/Bohan-Hu/k210-hal"]
+git = "https://github.com/Bohan-Hu/k210-hal"
+replace-with = "vendored-sources"
+
+[source."https://github.com/Bohan-Hu/k210-pac"]
+git = "https://github.com/Bohan-Hu/k210-pac"
+replace-with = "vendored-sources"
+
+[source."https://github.com/Bohan-Hu/k210-soc"]
+git = "https://github.com/Bohan-Hu/k210-soc"
+replace-with = "vendored-sources"
+
+[source."https://github.com/rcore-os/riscv"]
+git = "https://github.com/rcore-os/riscv"
+replace-with = "vendored-sources"
+
+[source."https://github.com/rcore-os/virtio-drivers"]
+git = "https://github.com/rcore-os/virtio-drivers"
+replace-with = "vendored-sources"
+
+[source.vendored-sources]
+directory = "../vendor"

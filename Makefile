@@ -1,5 +1,5 @@
 # Building args
-TARGET 			:= riscv64gc-unknown-none-elf
+TARGET 			:= riscv64imac-unknown-none-elf
 MODE 			:= debug
 KERNEL_ELF 		:= target/$(TARGET)/$(MODE)/oshit_kernel
 KERNEL_BIN 		:= $(KERNEL_ELF).bin
@@ -29,17 +29,20 @@ env:
 	rustup component add rust-src
 	rustup component add llvm-tools-preview
 	cargo install cargo-binutils
-	rustup target add riscv64gc-unknown-none-elf
+	rustup target add riscv64imac-unknown-none-elf
 
 $(KERNEL_BIN): kernel
 	@$(OBJCOPY) $(KERNEL_ELF) --strip-all -O binary $@
 
-kernel:
+all: $(KERNEL_BIN)
+	cp $(KERNEL_BIN) ../k210.bin
+
+kernel: env
 	@cp src/linker_$(BOARD).ld src/linker.ld
 ifeq ($(MODE), debug)
-	cargo build -vv --features "$(FEATURES)"
+	cargo build -vv --features "$(FEATURES)" --offline
 else
-	cargo build -vv --release --features "$(FEATURES)"
+	cargo build -vv --release --features "$(FEATURES)" --offline
 endif
 	@rm src/linker.ld
 
@@ -77,4 +80,4 @@ debug: build
 			-drive file=$(FS_IMG),if=none,format=raw,id=x0 \
 			-device virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0
 			
-.PHONY: build env kernel clean disasm run debug
+.PHONY: build env kernel clean disasm run debug all
