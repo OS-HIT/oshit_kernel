@@ -9,7 +9,10 @@ use super::{
     PageTableEntry,
     PTEFlags,
     alloc_frame,
+    get_user_buffer,
+    UserBuffer
 };
+use core::mem::size_of;
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
 use bitflags::*;
@@ -24,6 +27,10 @@ use core::fmt::{self, Debug, Formatter};
 
 lazy_static! {
     pub static ref KERNEL_MEM_LAYOUT: Arc<Mutex<MemLayout>> = Arc::new(Mutex::new(MemLayout::new_kernel()));
+}
+
+pub fn kernel_satp() -> usize {
+    return KERNEL_MEM_LAYOUT.lock().get_satp();
 }
 
 #[derive(PartialEq, Debug, Copy, Clone)]
@@ -57,6 +64,7 @@ impl Debug for Segment {
 
 impl Segment {
     pub fn new(start: VirtAddr, stop: VirtAddr, map_type: MapType, flags: SegmentFlags) -> Self {
+        verbose!("New Segment: {:?} <=> {:?}", start.to_vpn(), stop.to_vpn_ceil());
         Self {
             range   : VPNRange::new(start.to_vpn(), stop.to_vpn_ceil()),
             frames  : BTreeMap::new(),
@@ -287,6 +295,19 @@ impl MemLayout {
             )
         );
         debug!("Physical memory mapped @ 0x{:X} ~ 0x{:X} (identity), RW--.", ekernel as usize, MEM_END);
+
+        verbose!("Mapping MMIO...");
+        for pair in MMIO {
+            layout.add_segment(
+                Segment::new(
+                    (*pair).0.into(),
+                    ((*pair).0 + (*pair).1).into(),
+                    MapType::Identity,
+                    SegmentFlags::R | SegmentFlags::W,
+                )
+            );
+            debug!("MMIO mapped @ 0x{:X} ~ 0x{:X} (identity), RW--.", (*pair).0, (*pair).0 + (*pair).1);
+        }
         info!("Kernel memory layout initilized.");
 
         return layout;
@@ -296,74 +317,80 @@ impl MemLayout {
     pub fn new_elf(elf_data: &[u8]) -> (Self, usize, usize, usize) {
         let mut layout = Self::new();
         layout.map_trampoline();
-        let elf = xmas_elf::ElfFile::new(elf_data).unwrap();
-        assert_eq!(elf.header.pt1.magic, [0x7f, 0x45, 0x4c, 0x46], "invalid elf!");
         let mut end_vpn = VirtPageNum::from(0);
         let mut data_top = 0;
-        // map segments
-        for i in 0..elf.header.pt2.ph_count() {
-            let program_header = elf.program_header(i).unwrap();
-            if program_header.get_type().unwrap() == xmas_elf::program::Type::Load {
-                let start = VirtAddr::from(program_header.virtual_addr() as usize);
-                let stop = VirtAddr::from((program_header.virtual_addr() + program_header.mem_size()) as usize);
-                let mut segment_flags = SegmentFlags::U;
-                if program_header.flags().is_read() {
-                    segment_flags |= SegmentFlags::R;
-                }
-                if program_header.flags().is_write() {
-                    segment_flags |= SegmentFlags::W;
-                }
-                if program_header.flags().is_execute() {
-                    segment_flags |= SegmentFlags::X;
-                }
-                let segment = Segment::new(start, stop, MapType::Framed, segment_flags);
-                end_vpn = segment.range.get_end();
-                let ph_end = program_header.offset() + program_header.file_size();
-                layout.add_segment_with_source(
-                    segment, 
-                    &elf.input[
+        let mut entry_point: usize = 0;
+        if let Ok(elf) = xmas_elf::ElfFile::new(elf_data) {
+            // map segments
+            for i in 0..elf.header.pt2.ph_count() {
+                let program_header = elf.program_header(i).unwrap();
+                if program_header.get_type().unwrap() == xmas_elf::program::Type::Load {
+                    let start = VirtAddr::from(program_header.virtual_addr() as usize);
+                    let stop = VirtAddr::from((program_header.virtual_addr() + program_header.mem_size()) as usize);
+                    let mut segment_flags = SegmentFlags::U;
+                    if program_header.flags().is_read() {
+                        segment_flags |= SegmentFlags::R;
+                    }
+                    if program_header.flags().is_write() {
+                        segment_flags |= SegmentFlags::W;
+                    }
+                    if program_header.flags().is_execute() {
+                        segment_flags |= SegmentFlags::X;
+                    }
+                    let segment = Segment::new(start, stop, MapType::Framed, segment_flags);
+                    let ph_end = program_header.offset() + program_header.file_size();
+                    end_vpn = segment.range.get_end();
+                    layout.add_segment_with_source(
+                        segment, 
+                        &elf.input[
                         program_header.offset() as usize
                         ..
                         ph_end as usize
-                    ]);
-                if data_top < ph_end {
-                    data_top = ph_end
+                        ]);
+                    verbose!("App segment mapped: {:0x} <-> {:0x}", program_header.offset() as usize, ph_end as usize);
+                    
+                    if data_top < ph_end {
+                        data_top = ph_end
+                    }
                 }
             }
-        }
-        // map trapcontext
-        layout.add_segment(
-            Segment::new(
-                TRAP_CONTEXT.into(),
-                TRAMPOLINE.into(),
-                MapType::Framed,
-                SegmentFlags::R | SegmentFlags::W,
-            )
-        );
-        // map guard page
-        let guard_page_high_end = VirtAddr::from(TRAP_CONTEXT);
-        let guard_page_low_end = guard_page_high_end - PAGE_SIZE;
-        layout.add_segment(
-            Segment::new(
-                guard_page_low_end,
-                guard_page_high_end, 
-                MapType::Framed, 
-                SegmentFlags::R |SegmentFlags::W
-            )
-        );
-        // map user stacks
-        let stack_high_end = guard_page_low_end;
-        let stack_low_end = stack_high_end - USER_STACK_SIZE;
-        layout.add_segment(
-            Segment::new(
-                stack_low_end, 
-                stack_high_end,
-                MapType::Framed, 
-                SegmentFlags::R |SegmentFlags::W |SegmentFlags::U
-            )
-        );
+            verbose!("Data Segment top should be at {:x}", data_top);
+            entry_point = elf.header.pt2.entry_point() as usize;
+            // map trapcontext
+            layout.add_segment(
+                Segment::new(
+                    TRAP_CONTEXT.into(),
+                    TRAMPOLINE.into(),
+                    MapType::Framed,
+                    SegmentFlags::R | SegmentFlags::W,
+                )
+            );
+            // map guard page
+            let guard_page_high_end = VirtAddr::from(TRAP_CONTEXT);
+            let guard_page_low_end = guard_page_high_end - PAGE_SIZE;
+            layout.add_segment(
+                Segment::new(
+                    guard_page_low_end,
+                    guard_page_high_end, 
+                    MapType::Framed, 
+                    SegmentFlags::R |SegmentFlags::W
+                )
+            );
+            // map user stacks
+            let stack_high_end = guard_page_low_end;
+            let stack_low_end = stack_high_end - USER_STACK_SIZE;
+            layout.add_segment(
+                Segment::new(
+                    stack_low_end, 
+                    stack_high_end,
+                    MapType::Framed, 
+                    SegmentFlags::R |SegmentFlags::W |SegmentFlags::U
+                )
+            );
 
-        return (layout, data_top as usize, stack_high_end.0, elf.header.pt2.entry_point() as usize);
+            return (layout, data_top as usize, stack_high_end.0, elf.header.pt2.entry_point() as usize);
+        }
+        panic!("Invlid elf format.");
     }
 
     fn map_trampoline(&mut self) {
@@ -376,7 +403,7 @@ impl MemLayout {
             PhysAddr::from(strampoline as usize).into(),
             PTEFlags::R | PTEFlags::X
         );
-        debug!("Trampoline mapped {:?} <=> {:?}, R-X-", VirtAddr::from(TRAMPOLINE), PhysAddr::from(strampoline as usize))
+        verbose!("Trampoline mapped {:?} <=> {:?}, R-X-", VirtAddr::from(TRAMPOLINE), PhysAddr::from(strampoline as usize))
     }
 
     pub fn translate(&self, vpn: VirtPageNum) -> Option<PageTableEntry> {
@@ -398,6 +425,61 @@ impl MemLayout {
 
     pub fn drop_all(&mut self) {
         self.segments.clear();
+    }
+
+    pub fn get_user_data(&self, mut start: VirtAddr, len: usize) -> Vec<&'static mut [u8]> {
+        let end = start + len;
+        let mut pages = Vec::new();
+        while start < end {
+            let mut vpn = start.to_vpn();
+            let ppn = self.translate(vpn).unwrap().ppn();
+            vpn.step();
+            let copy_end = min(VirtAddr::from(vpn), end);    // page end or buf end
+            pages.push(&mut ppn.page_ptr()[
+                start.page_offset()
+                ..
+                if copy_end.page_offset() == 0 { PAGE_SIZE } else { copy_end.page_offset() }
+            ]);
+            start = copy_end;
+        }
+    
+        return pages;
+    }
+
+    // Get a CLONE of the cstring.
+    pub fn get_user_cstr(&self, start: VirtAddr) -> Vec<u8> {
+        let mut bytes: Vec<u8> = Vec::new();
+        let mut vpn = start.to_vpn();
+        let mut iter: usize = start.page_offset();
+        'outer: loop {
+            let ppn = self.translate(vpn).unwrap().ppn();
+            while iter < PAGE_SIZE {
+                bytes.push(ppn.page_ptr()[iter]);
+                if ppn.page_ptr()[iter] == 0 {
+                    break 'outer;
+                }
+                iter += 1;
+            }
+            vpn.step();
+            iter = 0;
+        }
+        bytes.push(0);
+        return bytes;
+    }
+
+    pub fn get_user_buffer(&self, start: VirtAddr, len: usize) -> UserBuffer {
+        return UserBuffer::new(self.get_user_data(start, len));
+    }
+
+    pub fn write_user_data<T>(&self, start: VirtAddr, obj: &T) {
+        let mut buf = UserBuffer::new(self.get_user_data(start, size_of::<T>()));
+        buf.write(0, obj);
+    }
+
+    // note: this returns a CLONE
+    pub fn read_user_data<T: Copy>(&self, start: VirtAddr) -> T {
+        let buf =UserBuffer::new(self.get_user_data(start, size_of::<T>()));
+        buf.read(0)
     }
 }
 

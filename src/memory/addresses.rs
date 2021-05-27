@@ -87,6 +87,9 @@ impl VirtAddr {
     }
 
     pub fn to_vpn_ceil(&self) -> VirtPageNum {
+        if self.0 == 0 {
+            return 1.into();
+        }
         return VirtPageNum((self.0 - 1) / PAGE_SIZE + 1);
     }
 
@@ -112,6 +115,13 @@ impl ops::Sub<usize> for VirtAddr {
     type Output = VirtAddr;
     fn sub(self, rhs: usize) -> VirtAddr {
         return VirtAddr(self.0 - rhs);
+    }
+}
+
+impl ops::Sub<VirtAddr> for VirtAddr {
+    type Output = usize;
+    fn sub(self, rhs: VirtAddr) -> usize {
+        return self.0 - rhs.0;
     }
 }
 
@@ -166,6 +176,13 @@ impl ops::Sub<usize> for PhysAddr {
     type Output = PhysAddr;
     fn sub(self, rhs: usize) -> PhysAddr {
         return PhysAddr(self.0 - rhs);
+    }
+}
+
+impl ops::Sub<PhysAddr> for PhysAddr {
+    type Output = usize;
+    fn sub(self, rhs: PhysAddr) -> usize {
+        return self.0 - rhs.0;
     }
 }
 

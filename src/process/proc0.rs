@@ -1,13 +1,36 @@
-use super::temp_app_loader::get_app;
 use super::ProcessControlBlock;
 use super::enqueue;
 use lazy_static::*;
 use alloc::sync::Arc;
+use crate::fs::FILE;
+use alloc::vec::Vec;
+use alloc::string::ToString;
 
 lazy_static! {
-    pub static ref PROC0: Arc<ProcessControlBlock> = Arc::new(
-        ProcessControlBlock::new(get_app("proc0").unwrap())
-    );
+    pub static ref PROC0: Arc<ProcessControlBlock> = {
+        let app_name = "/proc0";
+        verbose!("Exec {}", app_name);
+        match FILE::open_file(&app_name, FILE::FMOD_READ) {
+            Ok(mut file) => {
+                verbose!("File found {}", app_name);
+                let mut v: Vec<u8> = Vec::with_capacity(file.fsize as usize);
+                v.resize(file.fsize as usize, 0);
+    
+                match file.read_file(&mut v) {
+                    Ok(res) => {
+                        verbose!("Loaded App {}, size = {}", app_name, res);
+                        return Arc::new(ProcessControlBlock::new(&v, app_name.to_string()));
+                    },
+                    Err(msg) => {
+                        panic!("Failed to read file: {}", msg);
+                    }
+                }
+            } ,
+            Err(msg) =>{
+                panic!("Failed to open file: {}", msg);
+            }
+        }
+    };
 }
 
 pub fn init_proc0() {

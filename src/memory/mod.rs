@@ -70,6 +70,7 @@ mod pagetable;
 mod kernel_heap;
 mod frame_alloc;
 mod layout;
+mod userbuffer;
 
 use alloc::vec::Vec;
 
@@ -92,20 +93,25 @@ pub use pagetable::{
     get_user_cstr,
     write_user_data,
     translate_user_va,
+    get_user_buffer,
 };
 
 pub use frame_alloc::{
     FrameTracker,
     alloc_frame,
+    free_frame,
 };
 
 pub use layout::{
     KERNEL_MEM_LAYOUT,
+    kernel_satp,
     MemLayout,
     Segment,
     MapType,
     SegmentFlags
 };
+
+pub use userbuffer::UserBuffer;
 
 pub fn init() {
     debug!("Initilizing memory managment unit...");

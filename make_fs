@@ -1,0 +1,11 @@
+#!/bin/bash 
+
+sudo mkfs.vfat /dev/sdb
+sudo mount /dev/sdb /mnt 
+if [[ $? -ne 0 ]]; then
+        exit 
+fi
+sudo touch /mnt/test.txt 
+sudo mkdir /mnt/dir
+sudo touch /mnt/dir/abc
+sudo umount /mnt
