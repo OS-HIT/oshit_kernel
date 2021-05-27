@@ -332,8 +332,19 @@ impl MemLayout {
                 SegmentFlags::R | SegmentFlags::W,
             )
         );
+        // map guard page
+        let guard_page_high_end = VirtAddr::from(TRAP_CONTEXT);
+        let guard_page_low_end = guard_page_high_end - PAGE_SIZE;
+        layout.add_segment(
+            Segment::new(
+                guard_page_low_end,
+                guard_page_high_end, 
+                MapType::Framed, 
+                SegmentFlags::R |SegmentFlags::W
+            )
+        );
         // map user stacks
-        let stack_high_end = VirtAddr::from(TRAMPOLINE);
+        let stack_high_end = guard_page_low_end;
         let stack_low_end = stack_high_end - USER_STACK_SIZE;
         layout.add_segment(
             Segment::new(
@@ -344,7 +355,7 @@ impl MemLayout {
             )
         );
 
-        return (layout, stack_high_end, elf.header.pt2.entry_point() as usize);
+        return (layout, stack_high_end.0, elf.header.pt2.entry_point() as usize);
     }
 
     fn map_trampoline(&mut self) {
