@@ -1,3 +1,5 @@
+//! Syscall wrappers.
+
 #![allow(dead_code)]
 pub const SYSCALL_GETCWD        : usize = 17;
 pub const SYSCALL_DUP           : usize = 23;
@@ -71,6 +73,7 @@ pub use trivial_syscall::{
 
 use crate::memory::VirtAddr;
 
+/// Handle and dispatch the syscalls to corresponding module.
 pub fn syscall(syscall_id: usize, args: [usize; 6]) -> isize {
     match syscall_id {
         SYSCALL_READ        => sys_read(args[0], args[1].into(), args[2]),

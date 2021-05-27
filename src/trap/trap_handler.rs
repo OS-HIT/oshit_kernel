@@ -1,3 +1,4 @@
+//! Trap handler of oshit kernel
 use super::TrapContext;
 use crate::syscall::syscall;
 use riscv::register::{
@@ -20,7 +21,7 @@ use crate::process::{current_trap_context, current_satp};
 
 global_asm!(include_str!("./trap.asm"));
 
-// enable traps
+/// enable traps handling unit, by writing stvec and enable the timer interrupt
 pub fn init() {
     debug!("Initilizing traps...");
     unsafe {
@@ -36,26 +37,34 @@ pub fn init() {
     info!("Traps initialized.");
 }
 
+/// Set trap entry to kernel trap handling function.
 fn set_kernel_trap_entry() {
     unsafe {
         stvec::write(kernel_trap as usize, stvec::TrapMode::Direct);
     }
 }
 
+/// Set trap entry to user trap handling function.
 fn set_user_trap_entry() {
     unsafe {
         stvec::write(TRAMPOLINE as usize, stvec::TrapMode::Direct);
     }
 }
 
+/// Kernel trap handling function
+/// Currently, kernel trap only happen if severe problem has emerged.
 #[no_mangle]
 pub fn kernel_trap() -> ! {
     fatal!("unhandled trap {:?}.", scause::read().cause());
     panic!("Kernel trap not supported yet!");
 }
 
-// no mangle so that call user_trap in asm won't break
-// return cx for syscall res and new sepc.
+/// User trap handling function
+/// # Description
+/// After trampoline has successfully 
+/// no mangle so that call user_trap in asm won't break
+/// # Return 
+/// Do not return, for trap_return calls __restore, then it SRET to user.
 #[no_mangle]
 pub fn user_trap(_cx: &mut TrapContext) -> ! {
     set_kernel_trap_entry();
@@ -110,6 +119,9 @@ pub fn user_trap(_cx: &mut TrapContext) -> ! {
     trap_return();
 }
 
+/// Trap return function
+/// # Description
+/// Trap return funciton. Use jr for trampoline functions.
 #[no_mangle]
 pub fn trap_return() -> ! {
     set_user_trap_entry();

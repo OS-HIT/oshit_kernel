@@ -1,10 +1,7 @@
+//! Implementation of Process Control Block of oshit kernel
+
 use crate::fs::{
-    FILE,
-    FTYPE,
     VirtFile,
-    LOCKED_STDIN,
-    LOCKED_STDOUT,
-    LOCKED_STDERR,
 };
 
 use crate::memory::{
@@ -12,9 +9,6 @@ use crate::memory::{
     PhysAddr,
     PhysPageNum,
     VirtAddr,
-    Segment,
-    MapType,
-    SegmentFlags,
     KERNEL_MEM_LAYOUT
 };
 use crate::config::*;
@@ -28,7 +22,6 @@ use super::{
     Pid,
     KernelStack,
     alloc_pid,
-    kernel_stack_pos
 };
 use spin::{
     Mutex,
@@ -38,7 +31,8 @@ use alloc::sync::{Arc, Weak};
 use alloc::vec::Vec;
 use alloc::string::{String, ToString};
 
-// saved on top of the kernel stack of corresponding process.
+/// The process context used in `__switch` (kernel execution flow) 
+/// Saved on top of the kernel stack of corresponding process.
 #[repr(C)]
 pub struct ProcessContext {
     ra  : usize,
@@ -46,8 +40,9 @@ pub struct ProcessContext {
 }
 
 impl ProcessContext {
-    // constructor (?)
-    // load in __restore as ra
+    /// Construct a new ProcessContext.
+    /// # Description
+    /// Construct a new ProcessContext, and use `__restore` as return address, thus will go to sret and execute user program.
     pub fn init() -> Self {
         extern "C" { fn __restore(); }
         return Self {
@@ -57,48 +52,74 @@ impl ProcessContext {
     }
 }
 
-#[allow(dead_code)]
+/// Representing status of a process
 #[derive(Copy, Clone, PartialEq)]
 pub enum ProcessStatus {
+    /// A new process, and is not initialized.
     New,
+    /// A process that is ready to run.
     Ready,
+    /// A running process.
     Running,
+    /// A dead process, but it's resources are not collected yet.
     Zombie
 }
 
+/// The process control block
 pub struct ProcessControlBlock {
+    /// Pid of the process
     pub pid:            Pid,
+    /// The kernel stack of the process. PCB holds it so the resource is not dropped.
     pub kernel_stack:   KernelStack,
+    /// The mutable inner, protected by a Mutex
     inner:              Mutex<ProcessControlBlockInner>,
 }
 
+/// The mutable part of the process control block
 pub struct ProcessControlBlockInner {
+    /// The ProcessContext pointer
     pub context_ptr: usize,
+    /// Process status
     pub status: ProcessStatus,
+    /// user memory layout
     pub layout: MemLayout,
+    /// Physical page number of the trap context
     pub trap_context_ppn: PhysPageNum,
+    /// process data segment size
     pub size: usize,
+    /// time when the process started running
     pub up_since: u64,
+    /// last time the process started executing in u mode
     pub last_start: u64,
+    /// total process executed in u mode
     pub utime: u64,
+    /// Parent of the process. proc0 has no parent.
     pub parent: Option<Weak<ProcessControlBlock>>,
+    /// childres processes.
     pub children: Vec<Arc<ProcessControlBlock>>,
+    /// Opened file descriptors
+    /// TODO: Change to hash_map<Arc<dyn VirtFile + Send + Sync>>>
     pub files: Vec<Option<Arc<dyn VirtFile + Send+ Sync>>>,
+    /// Current working directory
     pub path: String,
+    /// Exit code of the process
     pub exit_code: i32,
 }
 
 impl ProcessControlBlockInner {
+    /// Read trap context from physical memory
     pub fn get_trap_context(&self) -> &'static mut TrapContext {
         unsafe {
             (PhysAddr::from(self.trap_context_ppn.clone()).0 as *mut TrapContext).as_mut().unwrap()
         }
     }
 
+    /// return SATP of the memory layout
     pub fn get_satp(&self) -> usize {
         return self.layout.get_satp();
     }
     
+    /// Alloc a new file descriptor.
     pub fn alloc_fd(&mut self) -> usize {
         let empty_slot = (0..self.files.len()).find(
             |i|
@@ -115,6 +136,12 @@ impl ProcessControlBlockInner {
 }
 
 impl ProcessControlBlock {
+    /// Create a new process from ELF.
+    /// # Description
+    /// Create a new process from ELF. This function will construct the memory layout from elf file, set the entry point,
+    /// as well as push the inital fds (stdios).
+    /// # Return
+    /// Return the new process control block
     pub fn new(elf_data: &[u8], path: String) -> Self {
         let (layout, mut user_stack_top, entry) = MemLayout::new_elf(elf_data);
         let trap_context_ppn = layout.translate(VirtAddr::from(TRAP_CONTEXT).into()).unwrap().ppn();
@@ -166,6 +193,11 @@ impl ProcessControlBlock {
         return pcb;
     }
 
+    /// Fork a new process from original.
+    /// # Description
+    /// Fork a process from original process, almost identical except for physical memory mapping.
+    /// # Return
+    /// Return the new process control block
     pub fn fork(self: &Arc<ProcessControlBlock>) -> Arc<ProcessControlBlock> {
         let mut parent_arcpcb = self.get_inner_locked();
         let layout = MemLayout::fork_from_user(&parent_arcpcb.layout);
@@ -251,6 +283,11 @@ impl ProcessControlBlock {
     //               |          align         |
     //               |------------------------| <- new user_stack_top
     //               |========== LO ==========|
+    /// Execute certain elf file in current process
+    /// # Description
+    /// Execute certain elf file in current process. This will reset the whole memory layout and regs.
+    /// # Return
+    /// Return the argc, for this will subtitude the syscall return value.
     pub fn exec(&self, elf_data: &[u8], path: String, argv: Vec<Vec<u8>>, envp: Vec<Vec<u8>>) -> isize {
         let (layout, mut user_stack_top, entry) = MemLayout::new_elf(elf_data);
         let trap_context_ppn = layout.translate(VirtAddr::from(TRAP_CONTEXT).into()).unwrap().ppn();
@@ -318,23 +355,44 @@ impl ProcessControlBlock {
         return (argv_ptrs.len() - 1) as isize;
     }
 
+    /// Get inner mutable part of the process control block.
+    /// # Description
+    /// Get inner mutable part of the process control block. The returned variable will held the lock until drop.
+    /// # Example
+    /// ```
+    /// let proc = current_process().unwrap();
+    /// let arcpcb = proc.get_inner_locked();
+    /// // lock is held by arcpcb
+    /// do_something();
+    /// drop(arcpcb);
+    /// suspend_switch();
+    /// ```
     pub fn get_inner_locked(&self) -> MutexGuard<ProcessControlBlockInner> {
         return self.inner.lock();
     }
 
+    /// Get the trap context of current process.
+    /// # Return
+    /// A mutable reference to the trap context
     pub fn get_trap_context(&self) -> &'static mut TrapContext {
         PhysAddr::from(self.get_inner_locked().trap_context_ppn).get_mut()
     }
 
+    /// get pid of the precess
     pub fn get_pid(&self) -> usize {
         self.pid.0
     }
 
+    /// get pid of the precess's parent.
+    /// will panic if proc0 calls this.
     pub fn get_ppid(&self) -> usize {
         let arcpcb = self.get_inner_locked();
         arcpcb.parent.as_ref().unwrap().upgrade().unwrap().get_pid()
     }
 
+    /// Alloc a file descriptor
+    /// # Description
+    /// Alloc a file descriptor. Note that this will require to lock the inner, might cause dead lock if the lock is already held.
     pub fn alloc_fd(&mut self) -> usize {
         let mut arcpcb = self.get_inner_locked();
         arcpcb.alloc_fd()

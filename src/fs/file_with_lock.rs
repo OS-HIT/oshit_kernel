@@ -1,3 +1,4 @@
+//! File system FILE, but with a mutex to protect it.
 use spin::{
     Mutex,
     MutexGuard
@@ -20,7 +21,7 @@ impl FileWithLock {
 }
 
 impl super::VirtFile for FileWithLock {
-    fn read(&self, mut buf: crate::memory::UserBuffer) -> isize {
+    fn read(&self, buf: crate::memory::UserBuffer) -> isize {
         let mut inner = self.inner.lock();
         let mut total_len = 0;
         for part in buf.parts {

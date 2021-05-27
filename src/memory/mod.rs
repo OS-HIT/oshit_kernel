@@ -115,6 +115,7 @@ pub use layout::{
 
 pub use userbuffer::UserBuffer;
 
+/// Initialize the whole memory managment module.
 pub fn init() {
     debug!("Initilizing memory managment unit...");
     extern "C" {
@@ -135,6 +136,7 @@ pub fn init() {
     info!("Memory managment initialized.");
 }
 
+/// Test for the frame allocator.
 fn frame_allocator_test() {
     verbose!("Testing frame allocator...");
     let mut v: Vec<FrameTracker> = Vec::new();

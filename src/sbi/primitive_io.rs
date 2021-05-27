@@ -1,10 +1,10 @@
+//! This handles kernel formatted output.
 #![allow(unused)]
 
 use super::{get_byte, put_byte, get_time_ms};
 use core::fmt::{self, Write};
 
-// ======================== color constants ========================
-
+/// Return the minimal log level of this build.
 fn min_log_level() -> LogLevel {
     if cfg!(feature = "min_log_level_fatal") {
         return LogLevel::Fatal;
@@ -21,6 +21,8 @@ fn min_log_level() -> LogLevel {
     }
 }
 
+
+// ======================== color constants ========================
 const FG_BLACK      :u8 = 30;
 const FG_RED        :u8 = 31;
 const FG_GREEN      :u8 = 32;
@@ -63,6 +65,14 @@ const BG_DEFAULT    :u8 = 49;
 
 // ======================== utf-8 handle ========================
 
+/// Put a single char to SBI
+/// # Description
+/// Put a single char to SBI. The char will be first decoded to UTF-8 byte sequence, then output to SBI.
+/// # Example
+/// ```
+/// putc('你');
+/// putc('好');
+/// ```
 pub fn putc(ch: char) {
     let mut buf = [0u8; 4];
     for code in ch.encode_utf8(&mut buf).as_bytes().iter() {
@@ -70,6 +80,10 @@ pub fn putc(ch: char) {
     }
 }
 
+/// Get a UTF-8 char from SBI
+/// # Description
+/// This function will try to accept a utf-8 byte sequence, then decode it into a UTF-8 char.  
+/// It will return an `'�'` when an invalid utf-8 sequence is encountered.
 pub fn getc() -> char { // utf-8 to char
     let mut buf : u32;
     let init : u8 = get_byte();
@@ -99,6 +113,11 @@ pub fn getc() -> char { // utf-8 to char
     }
 }
 
+/// print a &str to SBI
+/// # Example
+/// ```
+/// puts("Hello world!");
+/// ```
 pub fn puts(s: &str) {
     for c in s.chars() {
         putc(c);
@@ -107,6 +126,7 @@ pub fn puts(s: &str) {
 
 // ======================== print! and println! support ========================
 
+/// The zero-length struct OutputFormatter
 struct OutputFormatter;
 
 impl Write for OutputFormatter {
@@ -120,6 +140,7 @@ pub fn print(args: fmt::Arguments) {
     OutputFormatter.write_fmt(args).unwrap();
 }
 
+/// The great print! macro. Prints to the standard output.
 #[macro_export]
 macro_rules! print {
     ($($arg:tt)*) => {
@@ -127,6 +148,7 @@ macro_rules! print {
     }
 }
 
+/// The great println! macro. Prints to the standard output. Also prints a linefeed (`\\n`, or U+000A).
 #[macro_export]
 macro_rules! println {
     () => {
@@ -140,6 +162,7 @@ macro_rules! println {
 
 // ======================== log ========================
 
+/// kernel output log level
 #[derive(PartialOrd)]
 #[derive(PartialEq)]
 #[derive(Copy)]
@@ -152,6 +175,7 @@ pub enum LogLevel {
     Error   = 4,
     Fatal   = 5,
 }
+
 impl fmt::Display for LogLevel {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::result::Result<(), core::fmt::Error> { 
         let s = match *self {
@@ -166,6 +190,7 @@ impl fmt::Display for LogLevel {
     }
 }
 
+/// Set console color according to the log level
 pub fn set_log_color(ll: LogLevel) {
     match ll {
         LogLevel::Verbose   => set_color(FG_B_BLACK,    BG_DEFAULT),
@@ -177,14 +202,19 @@ pub fn set_log_color(ll: LogLevel) {
     }
 }
 
+/// Set foreground color and background color.  
+/// Foreground and background color codes are from [ANSI Escape Codes](https://en.wikipedia.org/wiki/ANSI_escape_code)
 pub fn set_color(fg: u8, bg: u8) {
     print!("\x1b[{};{}m", fg, bg);
 }
 
+/// Reset console color to default.
 pub fn reset_color() {
     set_color(FG_DEFAULT, BG_DEFAULT);
 }
 
+/// Print log info, alongside with log level, source file and line number.  
+/// *Don't call this function. Use marcos instead.*
 pub fn log(log_level: LogLevel, args: fmt::Arguments, file: &'static str, line: u32) {
     if log_level >= min_log_level() {
         set_log_color(log_level);
@@ -195,6 +225,11 @@ pub fn log(log_level: LogLevel, args: fmt::Arguments, file: &'static str, line: 
     }
 }
 
+/// Print log info, alongside with log level, source file and line number. Will not print if the log level is lower then the min_log_level.
+/// # Examples
+/// ```
+/// verbose!("This is a verbose message!");
+/// ```
 #[macro_export]
 macro_rules! verbose {
     ($fmt: literal $(, $($arg: tt)+)?) => {
@@ -202,6 +237,12 @@ macro_rules! verbose {
     };
 }
 
+
+/// Print log info, alongside with log level, source file and line number. Will not print if the log level is lower then the min_log_level.
+/// # Examples
+/// ```
+/// debug!("This is a debug message!");
+/// ```
 #[macro_export]
 macro_rules! debug {
     ($fmt: literal $(, $($arg: tt)+)?) => {
@@ -209,6 +250,12 @@ macro_rules! debug {
     };
 }
 
+
+/// Print log info, alongside with log level, source file and line number. Will not print if the log level is lower then the min_log_level.
+/// # Examples
+/// ```
+/// info!("This is an info message!");
+/// ```
 #[macro_export]
 macro_rules! info {
     ($fmt: literal $(, $($arg: tt)+)?) => {
@@ -216,6 +263,12 @@ macro_rules! info {
     };
 }
 
+
+/// Print log info, alongside with log level, source file and line number. Will not print if the log level is lower then the min_log_level.
+/// # Examples
+/// ```
+/// warning!("This is an warning message!");
+/// ```
 #[macro_export]
 macro_rules! warning {
     ($fmt: literal $(, $($arg: tt)+)?) => {
@@ -223,6 +276,12 @@ macro_rules! warning {
     };
 }
 
+
+/// Print log info, alongside with log level, source file and line number. Will not print if the log level is lower then the min_log_level.
+/// # Examples
+/// ```
+/// error!("This is an error message!");
+/// ```
 #[macro_export]
 macro_rules! error {
     ($fmt: literal $(, $($arg: tt)+)?) => {
@@ -230,6 +289,12 @@ macro_rules! error {
     };
 }
 
+
+/// Print log info, alongside with log level, source file and line number. Will not print if the log level is lower then the min_log_level.
+/// # Examples
+/// ```
+/// fatal!("This is a fatal message!");
+/// ```
 #[macro_export]
 macro_rules! fatal {
     ($fmt: literal $(, $($arg: tt)+)?) => {

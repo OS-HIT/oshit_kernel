@@ -520,7 +520,7 @@ impl MemLayout {
         self.segments.clear();
     }
 
-    /// Tranlate a user buffer into kernel space
+    /// Tranlate a chunk of user memory into kernel space
     /// # Description
     /// Tranlate a user buffer into kernel space. Note that due to paging, the result is not continuous.
     pub fn get_user_data(&self, mut start: VirtAddr, len: usize) -> Vec<&'static mut [u8]> {

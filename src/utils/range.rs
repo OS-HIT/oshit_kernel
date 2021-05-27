@@ -1,3 +1,4 @@
+//! Range objects, for iterating through addresses
 use core::fmt::Debug;
 
 pub trait StepByOne {

@@ -1,3 +1,4 @@
+//! Wrappers of file system related syscalls.
 use super::super::fs::file::FILE;
 use crate::fs::{self, VirtFile, FileWithLock, make_pipe};
 use crate::memory::{VirtAddr};
@@ -5,41 +6,12 @@ use crate::process::{current_process};
 // use alloc::vec::Vec;
 use alloc::sync::Arc;
 use core::{convert::TryInto, mem::size_of};
-use alloc::string::ToString;
 
+/// The special "file descriptor" indicating that the path is relative path to process's current working directory. 
 pub const AT_FDCWD: i32 =  -100;
 
-// #[inline]
-// fn find_free_fd() -> Option<usize> {
-//     let arcproc = current_process().unwrap();
-//     for i in 0..arcproc.get_inner_locked().files.len() {
-//         if arcproc.get_inner_locked().files[i].ftype == FTYPE::TFree {
-//             return Some(i);
-//         }
-//     }
-//     return None;
-// }
-
-// TODO: This does not comply with oscomp spec. Change it.
-pub fn sys_open(path: VirtAddr, mode: u32) -> isize {
-    let process = current_process().unwrap();
-    let mut arcpcb = process.get_inner_locked();
-    let buf = arcpcb.layout.get_user_cstr(path);
-
-    let file = match FILE::open_file(core::str::from_utf8(&buf).unwrap(), mode) {
-        Ok(file) => file,
-        Err(msg) => {
-            error!("{}", msg);
-            return -1;
-        }
-    };
-
-    let fd = arcpcb.alloc_fd();
-    arcpcb.files[fd] = Some(Arc::new(FileWithLock::new(file)));
-    return fd.try_into().unwrap();
-}
-
-pub fn sys_openat(fd: i32, file_name: VirtAddr, flags: u32, mode: u32) -> isize {
+/// Open a file at dir identified by `fd` and with name `file_name`, with `flags`. Mode is currently unsupported.
+pub fn sys_openat(fd: i32, file_name: VirtAddr, flags: u32, _: u32) -> isize {
     let process = current_process().unwrap();
     let mut arcpcb = process.get_inner_locked();
     let mut buf = arcpcb.layout.get_user_cstr(file_name);
@@ -104,6 +76,7 @@ pub fn sys_openat(fd: i32, file_name: VirtAddr, flags: u32, mode: u32) -> isize 
     }
 }
 
+/// Close the corresponing fd
 pub fn sys_close(fd: usize) -> isize {
     verbose!("Closing fd {}", fd);
     let process = current_process().unwrap();
@@ -136,6 +109,9 @@ pub fn sys_close(fd: usize) -> isize {
     return 0;
 }
 
+/// Write to spcific fd.
+/// # Returns
+/// How many bytes hace been really written to the fd.
 pub fn sys_write(fd: usize, buf: VirtAddr, len: usize) -> isize {
     let process = current_process().unwrap();
     let arcpcb = process.get_inner_locked();
@@ -159,6 +135,10 @@ pub fn sys_write(fd: usize, buf: VirtAddr, len: usize) -> isize {
     }
 }
 
+
+/// Read from spcific fd.
+/// # Returns
+/// How many bytes hace been really read from the fd.
 pub fn sys_read(fd: usize, buf: VirtAddr, len: usize) -> isize {
     let process = current_process().unwrap();
     let arcpcb = process.get_inner_locked();
@@ -182,6 +162,7 @@ pub fn sys_read(fd: usize, buf: VirtAddr, len: usize) -> isize {
     }
 }
 
+/// Create a pipe, and write the two FDs into the `pipe` array.
 pub fn sys_pipe(pipe: VirtAddr) -> isize {
     let process = current_process().unwrap();
     let mut arcpcb = process.get_inner_locked();
@@ -197,6 +178,7 @@ pub fn sys_pipe(pipe: VirtAddr) -> isize {
     0
 }
 
+/// Duplicate a file descriptor
 pub fn sys_dup(fd: usize) -> isize {
     let process = current_process().unwrap();
     let mut arcpcb = process.get_inner_locked();
@@ -216,6 +198,7 @@ pub fn sys_dup(fd: usize) -> isize {
     }
 }
 
+/// Duplicate a file descriptor, and place it into a specified fd.
 pub fn sys_dup3(old_fd: usize, new_fd: usize, _: usize) -> isize {
     let process = current_process().unwrap();
     let mut arcpcb = process.get_inner_locked();
@@ -239,6 +222,7 @@ pub fn sys_dup3(old_fd: usize, new_fd: usize, _: usize) -> isize {
     }
 }
 
+/// The Linux style dirent struct
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
 pub struct dirent {
@@ -249,6 +233,7 @@ pub struct dirent {
     d_name: [u8; 256],
 }
 
+/// Get dirents of a directory.
 pub fn sys_getdents64(fd: usize, buf: VirtAddr, len: usize) -> isize {
     let process = current_process().unwrap();
     let arcpcb = process.get_inner_locked();
