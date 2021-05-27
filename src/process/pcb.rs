@@ -300,6 +300,7 @@ impl ProcessControlBlock {
         let mut arcpcb = self.get_inner_locked();
         arcpcb.layout = layout;     // original layout dropped, thus freed.
         arcpcb.trap_context_ppn = trap_context_ppn;
+        arcpcb.utime = 0;
         arcpcb.size = data_top;
         arcpcb.utime = 0;
         arcpcb.up_since = get_time();
