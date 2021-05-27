@@ -15,10 +15,14 @@ use super::{
     UserBuffer
 };
 use core::mem::size_of;
+use _core::convert::TryInto;
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
 use bitflags::*;
 use crate::config::*;
+use crate::fs::FileWithLock;
+use crate::fs::VirtFile;
+use crate::fs::FSEEK;
 use core::cmp::min;
 use crate::utils::StepByOne;
 use lazy_static::*;
@@ -47,8 +51,9 @@ pub enum MapType {
     /// Identity mapping, means that the virtual address and the physical address is the same.
     Identity,
     /// Normal mapping, physical pages are from `alloc_frame()`
-    Framed, 
-    // vma,     // TODO: VMA here when working on mmap() syscall?
+    Framed,
+    /// Virtual memory layout 
+    VMA,
 }
 
 bitflags! {
@@ -65,18 +70,36 @@ bitflags! {
     }
 }
 
+bitflags! {
+    /// VMA flags indicaing privilege.
+    pub struct VMAFlags: u8 {
+        /// Can this segment be read?
+        const R = 1 << 1;
+        /// Can this segment be write?
+        const W = 1 << 2;
+        /// Can this segment be executed?
+        const X = 1 << 3;
+    }
+}
+
 /// Representing a continuous segment in the memroy layout.  
 /// For example, data segments/text segments in the user program.
 pub struct Segment {
     /// range of the Segment, [range.start()..range.end())
-    range   : VPNRange,
+    pub range   : VPNRange,
     /// allocated physical frames, aloneside with their virtual page number.  
     /// It holds the FrameTracker so that it's not dropped.
-    frames  : BTreeMap<VirtPageNum, FrameTracker>,
+    pub frames  : BTreeMap<VirtPageNum, FrameTracker>,
     /// the mapping type (identity or framed)
-    map_type: MapType,
+    pub map_type: MapType,
     /// the flags
-    flags   : SegmentFlags,
+    pub segFlags   : SegmentFlags,
+    /// vma flags
+    pub vmaFlags : VMAFlags,
+    /// the mmap file
+    pub file    : Option<Arc<dyn VirtFile + Send + Sync>>,
+    /// the mmap file offset
+    pub offset  : usize
 }
 
 impl Debug for Segment {
@@ -96,13 +119,16 @@ impl Segment {
     /// ```
     /// # Return
     /// Returns a new, unmapped segment.
-    pub fn new(start: VirtAddr, stop: VirtAddr, map_type: MapType, flags: SegmentFlags) -> Self {
+    pub fn new(start: VirtAddr, stop: VirtAddr, map_type: MapType, segFlags: SegmentFlags, vmaFlags: VMAFlags, file: Option<Arc<dyn VirtFile + Send + Sync>>, offset: usize) -> Self {
         verbose!("New Segment: {:?} <=> {:?}", start.to_vpn(), stop.to_vpn_ceil());
         Self {
             range   : VPNRange::new(start.to_vpn(), stop.to_vpn_ceil()),
             frames  : BTreeMap::new(),
             map_type,
-            flags
+            segFlags,
+            vmaFlags,
+            file,
+            offset
         }
     }
 
@@ -123,20 +149,61 @@ impl Segment {
         match self.map_type {
             MapType::Identity => {
                 ppn = PhysPageNum(vpn.0);
+                pagetable.map(vpn, ppn, PTEFlags::from_bits(self.segFlags.bits).unwrap());
             },
             MapType::Framed => {
                 let frame = alloc_frame().unwrap();
                 ppn = frame.ppn;
                 self.frames.insert(vpn, frame);
+                pagetable.map(vpn, ppn, PTEFlags::from_bits(self.segFlags.bits).unwrap());
+            },
+            MapType::VMA => {
+                // let frame = alloc_frame().unwrap();
+                // ppn = frame.ppn;
+                // self.frames.insert(vpn, frame);
+                // pagetable.map(vpn, ppn, PTEFlags::from_bits(self.segFlags.bits).unwrap());
+                verbose!("Lazy for vma");
             }
         }
-        pagetable.map(vpn, ppn, PTEFlags::from_bits(self.flags.bits).unwrap());
+    }
+
+    pub fn map_lazy_vma(&mut self, pagetable: &mut PageTable, va: VirtAddr) -> bool {
+        let vpn = va.to_vpn();
+        if vpn < self.range.get_start() || vpn >= self.range.get_end() {
+            error!("Trying to map a page that is not in this Segment.");
+            return false;
+        }
+        
+        let frame = alloc_frame().unwrap();
+        let ppn = frame.ppn;
+
+        let bytes = ppn.page_ptr();
+        let optfile = self.file.clone().unwrap();
+        let mut inner_file = optfile.to_fs_file_locked().unwrap();
+        let cur = inner_file.cursor;
+        let offset: i32 = (va - VirtAddr::from(self.range.get_start()) - self.offset).try_into().unwrap();
+        let offset = offset - offset % PAGE_SIZE as i32;
+        inner_file.seek_file(&FSEEK::SET(offset));
+        let res = inner_file.read_file(bytes);
+        inner_file.seek_file(&FSEEK::SET(cur as i32));
+
+        if let Err(msg) = res {
+            error!("{}", msg);
+            return false;
+        }
+
+        self.frames.insert(vpn, frame);
+        pagetable.map(vpn, ppn, PTEFlags::from_bits(self.vmaFlags.bits).unwrap() | PTEFlags::U);
+        true
     }
     
     pub fn adjust_end(&mut self, pagetable: &mut PageTable, new_end: VirtPageNum) {
         // We need to align the end to the 4K border of the page
         // let new_end = self.range.get_end() + (VirtAddr::from(sz)).0;
         // self.range.set_end(new_end);
+        if self.map_type != MapType::Framed {
+            panic!("Only framed segments can be adjusted.");
+        }
         if new_end < self.range.get_end() {
             for i in new_end.0..self.range.get_end().0 {
                 self.unmap_page(pagetable, i.into());
@@ -233,7 +300,10 @@ impl Segment {
             ),
             frames: BTreeMap::new(),
             map_type: src.map_type,
-            flags: src.flags,
+            segFlags: src.segFlags,
+            vmaFlags: src.vmaFlags,
+            file: src.file.clone(),
+            offset: src.offset
         }
     }
 }
@@ -354,7 +424,10 @@ impl MemLayout {
                 VirtAddr::from(stext as usize), 
                 VirtAddr::from(etext as usize),
                 MapType::Identity,
-                SegmentFlags::R | SegmentFlags::X
+                SegmentFlags::R | SegmentFlags::X,
+                VMAFlags::empty(),
+                None,
+                0
             )
         );
         debug!(".text mapped @ 0x{:X} ~ 0x{:X} (identity), R-X-.", stext as usize, etext as usize);
@@ -365,7 +438,10 @@ impl MemLayout {
                 VirtAddr::from(srodata as usize), 
                 VirtAddr::from(erodata as usize),
                 MapType::Identity,
-                SegmentFlags::R | SegmentFlags::X
+                SegmentFlags::R | SegmentFlags::X,
+                VMAFlags::empty(),
+                None,
+                0
             )
         );
         debug!(".rodata mapped @ 0x{:X} ~ 0x{:X} (identity), R-X-.", srodata as usize, erodata as usize);
@@ -376,7 +452,10 @@ impl MemLayout {
                 VirtAddr::from(sdata as usize), 
                 VirtAddr::from(edata as usize),
                 MapType::Identity,
-                SegmentFlags::R
+                SegmentFlags::R,
+                VMAFlags::empty(),
+                None,
+                0
             )
         );
         debug!(".data mapped @ 0x{:X} ~ 0x{:X} (identity), R---.", sdata as usize, edata as usize);
@@ -387,7 +466,10 @@ impl MemLayout {
                 VirtAddr::from(sbss_with_stack as usize), 
                 VirtAddr::from(ebss as usize),
                 MapType::Identity,
-                SegmentFlags::R | SegmentFlags::W
+                SegmentFlags::R | SegmentFlags::W,
+                VMAFlags::empty(),
+                None,
+                0
             )
         );
         debug!(".bss mapped @ 0x{:X} ~ 0x{:X} (identity), RW--.", sbss_with_stack as usize, sbss_with_stack as usize);
@@ -398,7 +480,10 @@ impl MemLayout {
                 VirtAddr::from(ekernel as usize), 
                 VirtAddr::from(MEM_END),
                 MapType::Identity,
-                SegmentFlags::R | SegmentFlags::W
+                SegmentFlags::R | SegmentFlags::W,
+                VMAFlags::empty(),
+                None,
+                0
             )
         );
         debug!("Physical memory mapped @ 0x{:X} ~ 0x{:X} (identity), RW--.", ekernel as usize, MEM_END);
@@ -411,6 +496,9 @@ impl MemLayout {
                     ((*pair).0 + (*pair).1).into(),
                     MapType::Identity,
                     SegmentFlags::R | SegmentFlags::W,
+                    VMAFlags::empty(),
+                    None,
+                    0
                 )
             );
             debug!("MMIO mapped @ 0x{:X} ~ 0x{:X} (identity), RW--.", (*pair).0, (*pair).0 + (*pair).1);
@@ -447,7 +535,7 @@ impl MemLayout {
                     if program_header.flags().is_execute() {
                         segment_flags |= SegmentFlags::X;
                     }
-                    let segment = Segment::new(start, stop, MapType::Framed, segment_flags);
+                    let segment = Segment::new(start, stop, MapType::Framed, segment_flags, VMAFlags::empty(), None, 0);
                     let ph_end = program_header.offset() + program_header.file_size();
                     end_vpn = segment.range.get_end();
                     layout.add_segment_with_source(
@@ -473,6 +561,9 @@ impl MemLayout {
                     TRAMPOLINE.into(),
                     MapType::Framed,
                     SegmentFlags::R | SegmentFlags::W,
+                    VMAFlags::empty(),
+                    None,
+                    0
                 )
             );
             // map guard page
@@ -483,7 +574,10 @@ impl MemLayout {
                     guard_page_low_end,
                     guard_page_high_end, 
                     MapType::Framed, 
-                    SegmentFlags::R |SegmentFlags::W
+                    SegmentFlags::R |SegmentFlags::W,
+                    VMAFlags::empty(),
+                    None,
+                    0
                 )
             );
             // map user stacks
@@ -494,7 +588,10 @@ impl MemLayout {
                     stack_low_end, 
                     stack_high_end,
                     MapType::Framed, 
-                    SegmentFlags::R |SegmentFlags::W |SegmentFlags::U
+                    SegmentFlags::R |SegmentFlags::W |SegmentFlags::U,
+                    VMAFlags::empty(),
+                    None,
+                    0
                 )
             );
 
@@ -629,6 +726,66 @@ impl MemLayout {
     pub fn read_user_data<T: Copy>(&self, start: VirtAddr) -> T {
         let buf =UserBuffer::new(self.get_user_data(start, size_of::<T>()));
         buf.read(0)
+    }
+
+    /// Add a VMA segment to the layout
+    pub fn add_vma(&mut self, file: Arc<dyn VirtFile + Send + Sync>, start: VirtAddr, flag: VMAFlags, offset: usize) -> bool {
+        let inner = file.to_fs_file_locked().unwrap();
+        let start_vpn = start.to_vpn();
+        let stop_vpn = (start + inner.fsize as usize).to_vpn_ceil();
+        // check overlap
+        for seg in self.segments.iter() {
+            if seg.range.get_start() <= start_vpn && start_vpn < seg.range.get_end() {
+                error!("Overlapped mmap segment");
+                return false;
+            } else if seg.range.get_start() < stop_vpn && stop_vpn < seg.range.get_end() {
+                error!("Overlapped mmap segment");
+                return false;
+            }
+        }
+        let segment = Segment::new(
+            start_vpn.into(), 
+            stop_vpn.into(), 
+            MapType::VMA, 
+            SegmentFlags::empty(), 
+            flag, 
+            Some(file.clone()),
+            0
+        );
+        self.add_segment(segment);
+        true
+    }
+
+    /// Add a VMA segment anywhere
+    pub fn add_vma_anywhere(&mut self, file: Arc<dyn VirtFile + Send + Sync>, flag: VMAFlags, offset: usize) {
+        let mut stop_vpn: VirtPageNum = VirtAddr::from(TRAP_CONTEXT - 4 * PAGE_SIZE).into();
+        let mut start_vpn: VirtPageNum = stop_vpn - file.to_fs_file_locked().unwrap().fsize as usize / PAGE_SIZE;
+        'outer: for i in stop_vpn.0..0 {
+            stop_vpn = i.into();
+            start_vpn = (i - file.to_fs_file_locked().unwrap().fsize as usize / PAGE_SIZE).into();
+            
+            // check overlap
+            for seg in self.segments.iter() {
+                if seg.range.get_start() <= start_vpn && start_vpn < seg.range.get_end() {
+                    continue 'outer;
+                } else if seg.range.get_start() < stop_vpn && stop_vpn < seg.range.get_end() {
+                    continue 'outer;
+                }
+            }
+            break;
+        }
+        self.add_vma(file, start_vpn.into(), flag, offset);
+    }
+
+    pub fn lazy_copy_vma(&mut self, address: VirtAddr, access_flag: VMAFlags) -> bool {
+        for seg in self.segments.iter_mut() {
+            if seg.map_type == MapType::VMA && seg.range.get_start() <= address.to_vpn() && address.to_vpn() < seg.range.get_end() {
+                if !(access_flag & seg.vmaFlags).is_empty() {
+                    return seg.map_lazy_vma(&mut self.pagetable, address);
+                }
+            }
+        }
+        false
     }
 }
 

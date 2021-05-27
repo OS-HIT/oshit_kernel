@@ -1,6 +1,6 @@
 //! Trap handler of oshit kernel
 use super::TrapContext;
-use crate::syscall::syscall;
+use crate::{process::current_process, syscall::syscall};
 use riscv::register::{
     stvec,      // s trap vector base address register
     scause::{   // s cause register
@@ -18,6 +18,7 @@ use crate::sbi::{
 use crate::process::{suspend_switch, exit_switch};
 use crate::config::*;
 use crate::process::{current_trap_context, current_satp};
+use crate::memory::VMAFlags;
 
 global_asm!(include_str!("./trap.asm"));
 
@@ -89,14 +90,38 @@ pub fn user_trap(_cx: &mut TrapContext) -> ! {
             reset_timer_trigger();
             suspend_switch();
         },
+        // Store page fault, check vma
+        Trap::Exception(Exception::StorePageFault) => {
+            let proc = current_process().unwrap();
+            let mut arcpcb = proc.get_inner_locked();
+            if !arcpcb.layout.lazy_copy_vma(stval.into(), VMAFlags::W) {
+                error!(
+                    "{:?} in application, bad addr = {:#x}, bad instruction = {:#x}, core dumped.",
+                    scause.cause(),
+                    stval,
+                    current_trap_context().sepc,
+                );
+                exit_switch(-2);
+            }
+        },
+        Trap::Exception(Exception::LoadPageFault) => {
+            let proc = current_process().unwrap();
+            let mut arcpcb = proc.get_inner_locked();
+            if !arcpcb.layout.lazy_copy_vma(stval.into(), VMAFlags::R) {
+                error!(
+                    "{:?} in application, bad addr = {:#x}, bad instruction = {:#x}, core dumped.",
+                    scause.cause(),
+                    stval,
+                    current_trap_context().sepc,
+                );
+                exit_switch(-2);
+            }
+        },
         // TODO: Core dump and/or terminate user program and continue
-        
         Trap::Exception(Exception::StoreFault) |
-        Trap::Exception(Exception::StorePageFault) |
         Trap::Exception(Exception::InstructionFault) |
         Trap::Exception(Exception::InstructionPageFault) |
-        Trap::Exception(Exception::LoadFault) |
-        Trap::Exception(Exception::LoadPageFault) => {
+        Trap::Exception(Exception::LoadFault) => {
             error!(
                 "{:?} in application, bad addr = {:#x}, bad instruction = {:#x}, core dumped.",
                 scause.cause(),

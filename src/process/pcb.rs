@@ -1,8 +1,6 @@
 //! Implementation of Process Control Block of oshit kernel
 
-use crate::fs::{
-    VirtFile,
-};
+use crate::fs::{FILE, FileWithLock, VirtFile};
 
 use crate::memory::{
     MemLayout,

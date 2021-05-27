@@ -4,7 +4,8 @@ use crate::memory::{
     KERNEL_MEM_LAYOUT,
     Segment,
     MapType,
-    SegmentFlags
+    SegmentFlags,
+    VMAFlags,
 };
 use crate::config::*;
 use super::Pid;
@@ -35,7 +36,10 @@ impl KernelStack {
                     kernel_stack_bottom, 
                     kernel_stack_top,
                     MapType::Framed,
-                    SegmentFlags::R | SegmentFlags::W
+                    SegmentFlags::R | SegmentFlags::W,
+                    VMAFlags::empty(),
+                    None,
+                    0
                 )
             );
         return KernelStack {

@@ -110,7 +110,8 @@ pub use layout::{
     MemLayout,
     Segment,
     MapType,
-    SegmentFlags
+    SegmentFlags,
+    VMAFlags
 };
 
 pub use userbuffer::UserBuffer;

@@ -4,7 +4,8 @@ use crate::process::{current_path, current_process, enqueue, exit_switch, suspen
 use crate::memory::{
     VirtAddr,
     get_user_cstr,
-    translate_user_va
+    translate_user_va,
+    VMAFlags
 };
 
 use crate::process::{
@@ -50,12 +51,15 @@ pub fn sys_fork() -> isize {
 
 /// Process fork a copyed version of itself as child, with more arguments
 /// TODO: Finish it.
-pub fn sys_clone() -> isize {
+pub fn sys_clone(_: usize, stack: usize, _: usize, _: usize, _: usize) -> isize {
     let current_proc = current_process().unwrap();
     let new_proc = current_proc.fork();
     let new_pid = new_proc.pid.0;
     // return 0 for child process in a0
     new_proc.get_inner_locked().get_trap_context().regs[10] = 0;
+    if stack != 0 {
+        new_proc.get_inner_locked().get_trap_context().regs[2] = stack;
+    }
     enqueue(new_proc);
     return new_pid as isize;
 }
@@ -210,4 +214,17 @@ pub fn sys_sbrk(sz: usize) -> isize {
     arcpcb.layout.alter_segment(VirtAddr::from(original_size).to_vpn_ceil(), VirtAddr::from(sz).to_vpn_ceil());
     arcpcb.size = sz as usize;
     return 0;
+}
+
+pub fn sys_mmap(start: VirtAddr, len: usize, prot: u8, _: usize, fd: usize, offset: usize) -> isize {
+    let proc = current_process().unwrap();
+    let mut arcpcb = proc.get_inner_locked();
+    if let Some(file) = arcpcb.files[fd].clone() {
+        if let Ok(_) = file.clone().to_fs_file_locked() {
+            if arcpcb.layout.add_vma(file, start, VMAFlags::from_bits(prot << 1).unwrap(), offset) {
+                return 0;
+            } 
+        }
+    }
+    -1
 }
