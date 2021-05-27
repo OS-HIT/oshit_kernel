@@ -19,6 +19,11 @@ use alloc::string::String;
 
 use crate::fs::FILE;
 
+pub const WNOHANG: isize = 1;
+pub const WUNTRACED: isize = 2;
+pub const WCONTINUED: isize = 4;
+
+
 pub fn sys_yield() -> isize {
     suspend_switch();
     0
@@ -31,6 +36,16 @@ pub fn sys_exit(code: i32) -> ! {
 }
 
 pub fn sys_fork() -> isize {
+    let current_proc = current_process().unwrap();
+    let new_proc = current_proc.fork();
+    let new_pid = new_proc.pid.0;
+    // return 0 for child process in a0
+    new_proc.get_inner_locked().get_trap_context().regs[10] = 0;
+    enqueue(new_proc);
+    return new_pid as isize;
+}
+
+pub fn sys_clone() -> isize {
     let current_proc = current_process().unwrap();
     let new_proc = current_proc.fork();
     let new_pid = new_proc.pid.0;
@@ -109,28 +124,33 @@ pub fn sys_exec(app_name: VirtAddr, argv: VirtAddr, envp: VirtAddr) -> isize {
     }
 }
 
-pub fn sys_waitpid(pid: isize, exit_code_ptr: VirtAddr) -> isize {
-    let proc = current_process().unwrap();
-    let mut arcpcb = proc.get_inner_locked();
-    let mut found: bool = false;
-    let mut cand_idx = 0;
-    for (idx, child) in arcpcb.children.iter().enumerate() {
-        if pid == -1 || pid as usize == child.get_pid() {
-            found = true;
-            cand_idx = idx;
+pub fn sys_waitpid(pid: isize, exit_code_ptr: VirtAddr, options: isize) -> isize {
+    loop {
+        let proc = current_process().unwrap();
+        let mut arcpcb = proc.get_inner_locked();
+        for (idx, child) in arcpcb.children.iter().enumerate() {
+            if pid == -1 || pid as usize == child.get_pid() {
+                if arcpcb.children[idx].get_inner_locked().status == ProcessStatus::Zombie {
+                    let child_proc = arcpcb.children.remove(idx);
+                    let child_arcpcb = child_proc.get_inner_locked();
+                    assert_eq!(Arc::strong_count(&child_proc), 1, "This child process seems to be referenced more then once.");
+                    if exit_code_ptr.0 != 0 {
+                        // unsafe {*translate_user_va(arcpcb.layout.get_satp(), exit_code_ptr) = child_arcpcb.exit_code;}
+                        // TODO: properly construct wstatus
+                        arcpcb.layout.write_user_data(exit_code_ptr, &((child_arcpcb.exit_code as i32) << 8));
+                    }
+                    debug!("Zombie {} was killed, exit status = {}", child_proc.get_pid(), child_arcpcb.exit_code);
+                    return child_proc.get_pid() as isize;
+                }
+            }
+        }
+        if options & WNOHANG != 0 {
+            return 0;
+        } else {
+            drop(arcpcb);
+            suspend_switch();
         }
     }
-    if found {
-        if arcpcb.children[cand_idx].get_inner_locked().status == ProcessStatus::Zombie {
-            let child_proc = arcpcb.children.remove(cand_idx);
-            let child_arcpcb = child_proc.get_inner_locked();
-            assert_eq!(Arc::strong_count(&child_proc), 1, "This child process seems to be referenced more then once.");
-            unsafe {*translate_user_va(arcpcb.layout.get_satp(), exit_code_ptr) = child_arcpcb.exit_code;}
-            debug!("Zombie {} was killed.", child_proc.get_pid());
-            return child_proc.get_pid() as isize;
-        }
-    }
-    return if found {-2} else {-1};
 }
 
 pub fn sys_getpid() -> isize {

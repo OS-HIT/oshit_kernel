@@ -143,9 +143,9 @@ impl ProcessControlBlock {
                 parent: None,       // FIXME: Isn't it PROC0?
                 children: Vec::new(),
                 files: vec![
-                    Some(STDIN.clone()), 
-                    Some(STDOUT.clone()), 
-                    Some(STDERR.clone())
+                    Some(Arc::new(crate::fs::Stdin)), 
+                    Some(Arc::new(crate::fs::Stdout)), 
+                    Some(Arc::new(crate::fs::Stderr))
                 ],
                 path: path[..path.rfind('/').unwrap() + 1].to_string(),
                 exit_code: 0

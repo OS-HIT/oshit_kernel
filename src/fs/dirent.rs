@@ -142,16 +142,16 @@ impl DirEntry {
                         if self.attr & DirEntry::ATTR_FILE != 0 {
                                 print!("F");
                         }
-                        print!("\t");
-                        let chain = self.get_chain();
-                        if chain.len() == 0 {
-                                print!("(null)");
-                        } else {
-                                for i in 0..(chain.len() - 1) {
-                                        print!("{}->", chain[i]);
-                                }
-                                print!("{}", chain[chain.len()-1]);
-                        }
+                        // print!("\t");
+                        // let chain = self.get_chain();
+                        // if chain.len() == 0 {
+                        //         print!("(null)");
+                        // } else {
+                        //         for i in 0..(chain.len() - 1) {
+                        //                 print!("{}->", chain[i]);
+                        //         }
+                        //         print!("{}", chain[chain.len()-1]);
+                        // }
                 }
                 println!();
         }

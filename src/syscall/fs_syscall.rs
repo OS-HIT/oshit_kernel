@@ -1,10 +1,13 @@
 use super::super::fs::file::FILE;
-use crate::{fs::{VirtFile, make_pipe, File}, memory::translate_user_va};
+use crate::fs::{self, File, VirtFile, make_pipe};
 use crate::memory::{VirtAddr};
 use crate::process::{current_process};
 // use alloc::vec::Vec;
 use alloc::sync::Arc;
 use core::{convert::TryInto, mem::size_of};
+use alloc::string::ToString;
+
+pub const AT_FDCWD: i32 =  -100;
 
 // #[inline]
 // fn find_free_fd() -> Option<usize> {
@@ -36,10 +39,81 @@ pub fn sys_open(path: VirtAddr, mode: u32) -> isize {
     return fd.try_into().unwrap();
 }
 
-pub fn sys_close(fd: usize) -> isize {
-    verbose!("Closing fd");
+pub fn sys_openat(fd: i32, file_name: VirtAddr, flags: u32, mode: u32) -> isize {
     let process = current_process().unwrap();
     let mut arcpcb = process.get_inner_locked();
+    let mut buf = arcpcb.layout.get_user_cstr(file_name);
+
+    if buf[0] == b'.' && buf[1] == b'/' {
+        buf.rotate_left(2);
+    }
+
+    if let Ok(path) = core::str::from_utf8(&buf) {
+        if fd == AT_FDCWD {
+            verbose!("openat found AT_FDCWD!");
+            let mut whole_path = arcpcb.path.clone();
+            whole_path.push_str(path);
+
+            let file = match FILE::open_file(whole_path.as_str(), flags) {
+                Ok(file) => file,
+                Err(msg) => {
+                    error!("{}", msg);
+                    return -1;
+                }
+            };
+        
+            let new_fd = arcpcb.alloc_fd();
+            arcpcb.files[new_fd] = Some(Arc::new(VirtFile::new(file)));
+            return new_fd.try_into().unwrap();
+        }
+
+        if fd as usize > arcpcb.files.len() {
+            error!("Invalid FD");
+            return -1;
+        }
+
+        if let Some(dir) = arcpcb.files[fd as usize].clone() {
+            if let Ok(dir_file) = dir.to_fs_file_locked() {
+                if dir_file.ftype == fs::FTYPE::TDir {
+                    match dir_file.open_file_from(path, flags) {
+                        Ok(fs_file) => {
+                            let new_fd = arcpcb.alloc_fd();
+                            arcpcb.files[new_fd] = Some(Arc::new(VirtFile::new(fs_file)));
+                            return new_fd as isize;
+                        }
+                        Err(err_msg) => {
+                            error!("{}", err_msg);
+                            return -1;
+                        }
+                    }
+                } else {
+                    error!("Not a directory!");
+                    -1
+                }
+            } else {
+                error!("Not a file!");
+                -1
+            }
+        } else {
+            error!("No such fd");
+            return -1;
+        }
+    } else {
+        error!("Invalid UTF-8 sequence in path");
+        -1
+    }
+}
+
+pub fn sys_close(fd: usize) -> isize {
+    verbose!("Closing fd {}", fd);
+    let process = current_process().unwrap();
+    let mut arcpcb = process.get_inner_locked();
+    
+    if fd as usize > arcpcb.files.len() {
+        error!("Invalid FD");
+        return -1;
+    }
+
     let file = &mut arcpcb.files[fd];
     if file.is_some() {
         file.take();
@@ -66,6 +140,12 @@ pub fn sys_write(fd: usize, buf: VirtAddr, len: usize) -> isize {
     let process = current_process().unwrap();
     let arcpcb = process.get_inner_locked();
     let buf = arcpcb.layout.get_user_buffer(buf, len);
+    
+    if fd as usize > arcpcb.files.len() {
+        error!("Invalid FD");
+        return -1;
+    }
+
     match &arcpcb.files[fd] {
         Some(file) => {
             let file = file.clone();
@@ -83,6 +163,12 @@ pub fn sys_read(fd: usize, buf: VirtAddr, len: usize) -> isize {
     let process = current_process().unwrap();
     let arcpcb = process.get_inner_locked();
     let buf = arcpcb.layout.get_user_buffer(buf, len);
+    
+    if fd as usize > arcpcb.files.len() {
+        error!("Invalid FD");
+        return -1;
+    }
+
     match &arcpcb.files[fd] {
         Some(file) => {
             let file = file.clone();
@@ -100,13 +186,13 @@ pub fn sys_pipe(pipe: VirtAddr) -> isize {
     let process = current_process().unwrap();
     let mut arcpcb = process.get_inner_locked();
     let (read, write) = make_pipe();
-    let rd = arcpcb.alloc_fd();
-    arcpcb.files[rd] = Some(read);
     let wd = arcpcb.alloc_fd();
     arcpcb.files[wd] = Some(write);
-    
-    arcpcb.layout.write_user_data(pipe, &rd);
-    arcpcb.layout.write_user_data(pipe + size_of::<usize>(), &wd);
+    let rd = arcpcb.alloc_fd();
+    arcpcb.files[rd] = Some(read);
+    verbose!("pipe fd: rd {}, wd {}", rd, wd);
+    arcpcb.layout.write_user_data(pipe, &(rd as i32));
+    arcpcb.layout.write_user_data(pipe + size_of::<i32>(), &(wd as i32));
 
     0
 }
@@ -114,6 +200,12 @@ pub fn sys_pipe(pipe: VirtAddr) -> isize {
 pub fn sys_dup(fd: usize) -> isize {
     let process = current_process().unwrap();
     let mut arcpcb = process.get_inner_locked();
+    
+    if fd as usize > arcpcb.files.len() {
+        error!("Invalid FD");
+        return -1;
+    }
+
     if let Some(src) = arcpcb.files[fd].clone() {
         let rd = arcpcb.alloc_fd();
         arcpcb.files[rd] = Some(src);
@@ -127,6 +219,12 @@ pub fn sys_dup(fd: usize) -> isize {
 pub fn sys_dup3(old_fd: usize, new_fd: usize, _: usize) -> isize {
     let process = current_process().unwrap();
     let mut arcpcb = process.get_inner_locked();
+    
+    if old_fd as usize > arcpcb.files.len() {
+        error!("Invalid FD");
+        return -1;
+    }
+
     if let Some(src) = arcpcb.files[old_fd].clone() {
         if arcpcb.files.len() <= new_fd {
             arcpcb.files.resize(new_fd + 1, None);
@@ -155,6 +253,12 @@ pub fn sys_getdents64(fd: usize, buf: VirtAddr, len: usize) -> isize {
     let process = current_process().unwrap();
     let arcpcb = process.get_inner_locked();
     let mut last_ptr = buf;
+    
+    if fd as usize > arcpcb.files.len() {
+        error!("Invalid FD");
+        return -1;
+    }
+    
     if let Some(file) = &arcpcb.files[fd] {
         if let Ok(mut dir) = file.to_fs_file_locked() {
             loop{

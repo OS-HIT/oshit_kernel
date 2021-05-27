@@ -22,6 +22,7 @@ pub const NODENAME      : &[u8] = b"Network currently unsupported\0";
 pub const RELEASE       : &[u8] = b"0.0.1-alpha\0";   // Semantic Versioning
 pub const MACHINE       : &[u8] = b"UNKNOWN MACHINE\0";
 pub const DOMAINNAME    : &[u8] = b"UNKNOWN DOMAIN NAME\0";
+pub const UTSNAME_LEN   : usize = 65;
 
 #[cfg(feature = "board_k210")]
 pub const MMIO: &[(usize, usize)] = &[
