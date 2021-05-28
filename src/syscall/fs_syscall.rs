@@ -6,6 +6,7 @@ use crate::process::{current_process};
 // use alloc::vec::Vec;
 use alloc::sync::Arc;
 use core::{convert::TryInto, mem::size_of};
+use alloc::string::ToString;
 
 /// The special "file descriptor" indicating that the path is relative path to process's current working directory. 
 pub const AT_FDCWD: i32 =  -100;
@@ -293,10 +294,10 @@ pub fn sys_getdents64(fd: usize, buf: VirtAddr, len: usize) -> isize {
 }
 
 /// just delete the file
-pub fn sys_unlink(dirfd: i32, file_name: VirtAddr, flags: usize) -> isize{
+pub fn sys_unlink(dirfd: i32, file_name: VirtAddr, _: usize) -> isize{
     let proc = current_process().unwrap();
     let arcpcb = proc.get_inner_locked();
-    let mut buf = arcpcb.layout.get_user_cstr(file_name);
+    let buf = arcpcb.layout.get_user_cstr(file_name);
     if let Ok(path) = core::str::from_utf8(&buf) {
         if dirfd == AT_FDCWD {
             verbose!("sys_unlink found AT_FDCWD!");
@@ -322,14 +323,67 @@ pub fn sys_unlink(dirfd: i32, file_name: VirtAddr, flags: usize) -> isize{
             };
         }
 
-        return -1;
-        // if let Some(dir) = &arcpcb.files[dirfd as usize] {
-        //     if let Ok(dir_file) = dir.to_fs_file_locked() {
-        //         if dir_file.ftype == FTYPE::TDir {
-                    
-        //         }
-        //     }
-        // }
+        if let Some(dir) = &arcpcb.files[dirfd as usize] {
+            if let Ok(dir_file) = dir.to_fs_file_locked() {
+                if dir_file.ftype == FTYPE::TDir {
+                    match dir_file.delete_file_from(path) {
+                        Ok(_) => return 0,
+                        Err(msg) => {
+                            error!("{}", msg);
+                            return -1;
+                        }
+                    }
+                }
+            }
+        }
     }
     return -1;
+}
+
+pub fn sys_mkdirat(dirfd: usize, path: VirtAddr, _: usize) -> isize {
+    verbose!("mkdir start");
+    let proc = current_process().unwrap();
+    let arcpcb = proc.get_inner_locked();
+    let buf = arcpcb.layout.get_user_cstr(path);
+    if let Ok(path) = core::str::from_utf8(&buf) {
+        if dirfd as i32 == AT_FDCWD {
+            verbose!("sys_mkdirat found AT_FDCWD!");
+            let mut whole_path = arcpcb.path.clone();
+            whole_path.push_str(path);
+            verbose!("Whole path = {}", whole_path);
+
+            match FILE::make_dir(whole_path.as_str()) {
+                Ok(_) => return 0,
+                Err(msg) => {
+                    error!("{}", msg);
+                    return -1;
+                }
+            };
+        }
+
+        if buf[0] == b'/' {
+            match FILE::make_dir(path) {
+                Ok(_) => return 0,
+                Err(msg) => {
+                    error!("{}", msg);
+                    return -1;
+                }
+            };
+        }
+
+        if let Some(dir) = &arcpcb.files[dirfd as usize] {
+            if let Ok(dir_file) = dir.to_fs_file_locked() {
+                if dir_file.ftype == FTYPE::TDir {
+                    match dir_file.make_dir_from(path) {
+                        Ok(_) => return 0,
+                        Err(msg) => {
+                            error!("{}", msg);
+                            return -1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    -1
 }

@@ -187,6 +187,7 @@ pub fn sys_getcwd(buf: VirtAddr, size: usize) -> isize {
 
 /// Change the current working directory.
 pub fn sys_chdir(buf: VirtAddr) -> isize {
+    verbose!("chdir start");
     let proc = current_process().unwrap();
     let mut arcpcb = proc.get_inner_locked();
     if let Ok (dir_str) = core::str::from_utf8(&arcpcb.layout.get_user_cstr(buf)) {

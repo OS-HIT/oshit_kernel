@@ -52,6 +52,7 @@ pub use fs_syscall::{
     sys_dup,
     sys_dup3,
     sys_getdents64,
+    sys_unlink,
 };
 pub use process_syscall::{
     sys_exit, 
@@ -75,6 +76,8 @@ pub use trivial_syscall::{
 };
 
 use crate::memory::VirtAddr;
+
+use self::fs_syscall::sys_mkdirat;
 
 /// Handle and dispatch the syscalls to corresponding module.
 pub fn syscall(syscall_id: usize, args: [usize; 6]) -> isize {
@@ -103,6 +106,8 @@ pub fn syscall(syscall_id: usize, args: [usize; 6]) -> isize {
         SYSCALL_NANOSLEEP   => sys_nanosleep(args[0].into(), args[1].into()),
         SYSCALL_BRK         => sys_sbrk(args[0]),
         SYSCALL_MMAP        => sys_mmap(args[0].into(), args[1], args[2] as u8, args[3], args[4], args[5]), 
+        SYSCALL_UNLINKAT    => sys_unlink(args[0] as i32, args[1].into(), args[2].into()),
+        SYSCALL_MKDIRAT     => sys_mkdirat(args[0], args[1].into(), args[2]),
         _ => {
             fatal!("Unsupported syscall_id: {}", syscall_id);
             -1

@@ -71,6 +71,18 @@ impl Path {
                 }
                 return Ok(());
         }
+
+        pub fn to_string(&self) -> String {
+                let mut res = String::new();
+                if !self.is_abs {
+                        res.push('.');
+                }
+                for part in self.path.iter() {
+                        res.push('/');
+                        res.push_str(part.as_str());
+                }
+                res
+        }
 }
 
 struct PathParser {

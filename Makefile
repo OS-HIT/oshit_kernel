@@ -26,10 +26,10 @@ endif
 build: env $(KERNEL_BIN)
 
 env:
-	rustup component add rust-src
-	rustup component add llvm-tools-preview
-	cargo install cargo-binutils
-	rustup target add riscv64gc-unknown-none-elf
+	# rustup component add rust-src
+	# rustup component add llvm-tools-preview
+	# cargo install cargo-binutils
+	# rustup target add riscv64gc-unknown-none-elf
 
 $(KERNEL_BIN): kernel
 	@$(OBJCOPY) $(KERNEL_ELF) --strip-all -O binary $@

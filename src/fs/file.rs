@@ -205,7 +205,7 @@ impl FILE {
                 FILE::open_file_path(path, mode)
         }
 
-        pub fn delete_file(path: &str) -> Result<(), &str> {
+        pub fn delete_file(path: &str) -> Result<(), &'static str> {
                 let path = match parse_path(path) {
                         Ok(path) => {
                                 path
@@ -214,6 +214,10 @@ impl FILE {
                                 return Err(to_string(error));
                         }
                 };
+                FILE::delete_file_path(path)
+        }
+
+        pub fn delete_file_path(path: Path) -> Result<(), &'static str> {
                 if path.must_dir {
                         return Err("delete_file: input path is referring a directory");
                 }
@@ -231,6 +235,32 @@ impl FILE {
                                 return Err(msg);
                         }
                 }
+        }
+
+        pub fn delete_file_from(&self, path: &str) -> Result<(), &'static str> {
+                let path = match parse_path(path) {
+                        Ok(mut path) => {
+                                if path.must_dir {
+                                        return Err("delete_file_from: Cannot delete dir");
+                                }
+                                if !path.is_abs {
+                                        if self.ftype == FTYPE::TDir {
+                                                let mut path_tmp = self.path.clone();
+                                                path_tmp.path.append(&mut path.path.clone());
+                                                path_tmp.must_dir = false;
+                                                path_tmp.purge();
+                                                path = path_tmp
+                                        } else {
+                                                return Err("open_file_from: Are you sure you are giving me a directory?");
+                                        }
+                                }
+                                path
+                        },
+                        Err(err) => {
+                                return Err(to_string(err));
+                        }
+                };
+                FILE::delete_file_path(path)
         }
 
         pub fn open_dir(path: &str, mode: u32) -> Result<FILE, &'static str> {
@@ -276,10 +306,41 @@ impl FILE {
         }
 
         pub fn make_dir(path: &str) -> Result<(), &'static str> {
-                let mut path = match parse_path(path) {
+                verbose!("make_dir!");
+                let path = match parse_path(path) {
                         Ok(path) => path,
                         Err(error) => return Err(to_string(error)),
                 };
+                FILE::make_dir_path(path)
+        }
+
+        // I can't wait any longer.
+        pub fn make_dir_from(&self, path: &str) -> Result<(), &'static str> {
+                verbose!("make_dir_from!");
+                let path = match parse_path(path) {
+                        Ok(mut path) => {
+                                if !path.is_abs {
+                                        if self.ftype == FTYPE::TDir {
+                                                let mut path_tmp = self.path.clone();
+                                                path_tmp.path.append(&mut path.path.clone());
+                                                path_tmp.must_dir = false;
+                                                path_tmp.purge();
+                                                path = path_tmp
+                                        } else {
+                                                return Err("open_file_from: Are you sure you are giving me a directory?");
+                                        }
+                                }
+                                path
+                        },
+                        Err(err) => {
+                                return Err(to_string(err));
+                        }
+                };
+                FILE::make_dir_path(path)
+        }
+
+        pub fn make_dir_path(mut path: Path) -> Result<(), &'static str> {
+                verbose!("make_dir_path!");
                 path.must_dir = true;
                 if path.path.len() == 0 {
                         return Err("make_dir: Are you trying to make root directory?");

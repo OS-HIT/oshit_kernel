@@ -3,7 +3,7 @@
 pub mod block_cache;
 pub mod fat;
 mod dirent;
-mod path;
+pub mod path;
 pub mod file;
 mod stdio;
 mod file_with_lock;
@@ -32,6 +32,7 @@ pub use file::FILE;
 pub use file::FTYPE;
 pub use file::FSEEK;
 pub use dirent::DirEntry;
+
 // pub use stdio::{Stdin, Stdout};
 
 // FILE::open_file(path: &str, mode: u32) -> Result<FILE, &str> 
