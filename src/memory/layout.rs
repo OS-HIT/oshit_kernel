@@ -167,11 +167,11 @@ impl Segment {
         }
     }
 
-    pub fn map_lazy_vma(&mut self, pagetable: &mut PageTable, va: VirtAddr) -> bool {
+    pub fn map_lazy_vma(&mut self, pagetable: &mut PageTable, va: VirtAddr) -> Result<(), &'static str> {
         let vpn = va.to_vpn();
         if vpn < self.range.get_start() || vpn >= self.range.get_end() {
             error!("Trying to map a page that is not in this Segment.");
-            return false;
+            return Err("Trying to map a page that is not in this Segment.")
         }
         
         let frame = alloc_frame().unwrap();
@@ -189,12 +189,12 @@ impl Segment {
 
         if let Err(msg) = res {
             error!("{}", msg);
-            return false;
+            return Err(msg);
         }
 
         self.frames.insert(vpn, frame);
         pagetable.map(vpn, ppn, PTEFlags::from_bits(self.vmaFlags.bits).unwrap() | PTEFlags::U);
-        true
+        Ok(())
     }
     
     pub fn adjust_end(&mut self, pagetable: &mut PageTable, new_end: VirtPageNum) {
@@ -729,7 +729,10 @@ impl MemLayout {
     }
 
     /// Add a VMA segment to the layout
-    pub fn add_vma(&mut self, file: Arc<dyn VirtFile + Send + Sync>, start: VirtAddr, flag: VMAFlags, offset: usize) -> bool {
+    pub fn add_vma(&mut self, file: Arc<dyn VirtFile + Send + Sync>, start: VirtAddr, flag: VMAFlags, offset: usize) -> Result<(), &'static str> {
+        if start.0 == 0 {
+            return self.add_vma_anywhere(file, flag, offset);
+        }
         let inner = file.to_fs_file_locked().unwrap();
         let start_vpn = start.to_vpn();
         let stop_vpn = (start + inner.fsize as usize).to_vpn_ceil();
@@ -737,10 +740,10 @@ impl MemLayout {
         for seg in self.segments.iter() {
             if seg.range.get_start() <= start_vpn && start_vpn < seg.range.get_end() {
                 error!("Overlapped mmap segment");
-                return false;
+                return Err("Overlapped mmap segment");
             } else if seg.range.get_start() < stop_vpn && stop_vpn < seg.range.get_end() {
                 error!("Overlapped mmap segment");
-                return false;
+                return Err("Overlapped mmap segment");
             }
         }
         let segment = Segment::new(
@@ -750,14 +753,14 @@ impl MemLayout {
             SegmentFlags::empty(), 
             flag, 
             Some(file.clone()),
-            0
+            offset
         );
         self.add_segment(segment);
-        true
+        Ok(())
     }
 
     /// Add a VMA segment anywhere
-    pub fn add_vma_anywhere(&mut self, file: Arc<dyn VirtFile + Send + Sync>, flag: VMAFlags, offset: usize) {
+    pub fn add_vma_anywhere(&mut self, file: Arc<dyn VirtFile + Send + Sync>, flag: VMAFlags, offset: usize) -> Result<(), &'static str> {
         let mut stop_vpn: VirtPageNum = VirtAddr::from(TRAP_CONTEXT - 4 * PAGE_SIZE).into();
         let mut start_vpn: VirtPageNum = stop_vpn - file.to_fs_file_locked().unwrap().fsize as usize / PAGE_SIZE;
         'outer: for i in stop_vpn.0..0 {
@@ -774,10 +777,10 @@ impl MemLayout {
             }
             break;
         }
-        self.add_vma(file, start_vpn.into(), flag, offset);
+        self.add_vma(file, start_vpn.into(), flag, offset)
     }
 
-    pub fn lazy_copy_vma(&mut self, address: VirtAddr, access_flag: VMAFlags) -> bool {
+    pub fn lazy_copy_vma(&mut self, address: VirtAddr, access_flag: VMAFlags) -> Result<(), &'static str> {
         for seg in self.segments.iter_mut() {
             if seg.map_type == MapType::VMA && seg.range.get_start() <= address.to_vpn() && address.to_vpn() < seg.range.get_end() {
                 if !(access_flag & seg.vmaFlags).is_empty() {
@@ -785,7 +788,7 @@ impl MemLayout {
                 }
             }
         }
-        false
+        Err("No such vma segment!")
     }
 }
 
