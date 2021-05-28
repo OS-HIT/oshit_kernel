@@ -1,9 +1,11 @@
+//! Process related syscalls.
 use crate::process::{current_path, current_process, enqueue, exit_switch, suspend_switch};
 
 use crate::memory::{
     VirtAddr,
     get_user_cstr,
-    translate_user_va
+    translate_user_va,
+    VMAFlags
 };
 
 use crate::process::{
@@ -23,18 +25,20 @@ pub const WNOHANG: isize = 1;
 pub const WUNTRACED: isize = 2;
 pub const WCONTINUED: isize = 4;
 
-
+/// Give up CPU.
 pub fn sys_yield() -> isize {
     suspend_switch();
     0
 }
 
+/// Process exit.
 pub fn sys_exit(code: i32) -> ! {
     debug!("Application {} exited with code {:}", current_process().unwrap().pid.0, code);
     exit_switch(code);
     unreachable!("This part should be unreachable. Go check __switch.")
 }
 
+/// Process fork a copyed version of itself as child 
 pub fn sys_fork() -> isize {
     let current_proc = current_process().unwrap();
     let new_proc = current_proc.fork();
@@ -45,17 +49,22 @@ pub fn sys_fork() -> isize {
     return new_pid as isize;
 }
 
-pub fn sys_clone() -> isize {
+/// Process fork a copyed version of itself as child, with more arguments
+/// TODO: Finish it.
+pub fn sys_clone(_: usize, stack: usize, _: usize, _: usize, _: usize) -> isize {
     let current_proc = current_process().unwrap();
     let new_proc = current_proc.fork();
     let new_pid = new_proc.pid.0;
     // return 0 for child process in a0
     new_proc.get_inner_locked().get_trap_context().regs[10] = 0;
+    if stack != 0 {
+        new_proc.get_inner_locked().get_trap_context().regs[2] = stack;
+    }
     enqueue(new_proc);
     return new_pid as isize;
 }
 
-// TODO: add argc and argv support
+/// Execute a program in the process
 pub fn sys_exec(app_name: VirtAddr, argv: VirtAddr, envp: VirtAddr) -> isize {
     let mut app_name = get_user_cstr(current_satp(), app_name);
     if !app_name.starts_with("/") {
@@ -124,6 +133,7 @@ pub fn sys_exec(app_name: VirtAddr, argv: VirtAddr, envp: VirtAddr) -> isize {
     }
 }
 
+/// Wait for a pid to end, then return it's exit status.
 pub fn sys_waitpid(pid: isize, exit_code_ptr: VirtAddr, options: isize) -> isize {
     loop {
         let proc = current_process().unwrap();
@@ -135,7 +145,6 @@ pub fn sys_waitpid(pid: isize, exit_code_ptr: VirtAddr, options: isize) -> isize
                     let child_arcpcb = child_proc.get_inner_locked();
                     assert_eq!(Arc::strong_count(&child_proc), 1, "This child process seems to be referenced more then once.");
                     if exit_code_ptr.0 != 0 {
-                        // unsafe {*translate_user_va(arcpcb.layout.get_satp(), exit_code_ptr) = child_arcpcb.exit_code;}
                         // TODO: properly construct wstatus
                         arcpcb.layout.write_user_data(exit_code_ptr, &((child_arcpcb.exit_code as i32) << 8));
                     }
@@ -153,14 +162,17 @@ pub fn sys_waitpid(pid: isize, exit_code_ptr: VirtAddr, options: isize) -> isize
     }
 }
 
+/// Get pid of itself.
 pub fn sys_getpid() -> isize {
     return current_process().unwrap().get_pid() as isize;
 }
 
+/// Get pid of it's parent
 pub fn sys_getppid() -> isize {
     return current_process().unwrap().get_ppid() as isize;
 }
 
+/// Get current working directory of the process.
 pub fn sys_getcwd(buf: VirtAddr, size: usize) -> isize {
     if buf.0 == 0 {
         return 0;
@@ -173,8 +185,9 @@ pub fn sys_getcwd(buf: VirtAddr, size: usize) -> isize {
     return buf.0 as isize;
 }
 
-
+/// Change the current working directory.
 pub fn sys_chdir(buf: VirtAddr) -> isize {
+    verbose!("chdir start");
     let proc = current_process().unwrap();
     let mut arcpcb = proc.get_inner_locked();
     if let Ok (dir_str) = core::str::from_utf8(&arcpcb.layout.get_user_cstr(buf)) {
@@ -189,4 +202,30 @@ pub fn sys_chdir(buf: VirtAddr) -> isize {
         error!("Invalid charactor in chdir");
         return -1;
     }
+}
+
+pub fn sys_sbrk(sz: usize) -> isize {
+    verbose!("Brk sz: {}", sz);
+    if sz == 0 {
+        return current_process().unwrap().get_inner_locked().size as isize;
+    }
+    let proc = current_process().unwrap();
+    let mut arcpcb = proc.get_inner_locked();
+    let original_size = arcpcb.size;
+    arcpcb.layout.alter_segment(VirtAddr::from(original_size).to_vpn_ceil(), VirtAddr::from(sz).to_vpn_ceil());
+    arcpcb.size = sz as usize;
+    return 0;
+}
+
+pub fn sys_mmap(start: VirtAddr, len: usize, prot: u8, _: usize, fd: usize, offset: usize) -> isize {
+    let proc = current_process().unwrap();
+    let mut arcpcb = proc.get_inner_locked();
+    if let Some(file) = arcpcb.files[fd].clone() {
+        if let Ok(_) = file.clone().to_fs_file_locked() {
+            if arcpcb.layout.add_vma(file, start, VMAFlags::from_bits(prot << 1).unwrap(), offset) {
+                return 0;
+            } 
+        }
+    }
+    -1
 }

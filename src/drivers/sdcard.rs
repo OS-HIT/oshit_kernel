@@ -1,3 +1,5 @@
+//! SPI SD Card driver for K210 SPI SD Card Slot
+
 #![allow(non_snake_case)]
 #![allow(non_camel_case_types)]
 
@@ -22,8 +24,10 @@ pub const SD_START_DATA_SINGLE_BLOCK_WRITE: u8 = 0xFE;
 
 pub const SD_START_DATA_MULTIPLE_BLOCK_WRITE: u8 = 0xFC;
 
+/// Sector length
 pub const SEC_LEN: usize = 512;
 
+/// Commands for SPI SD Cards
 #[repr(u8)]
 #[derive(Debug, Copy, Clone)]
 #[allow(unused)]
@@ -45,15 +49,14 @@ pub enum CMD {
         CMD59 = 59,     //** Enable/disable CRC check */
 }
 
+/// Initialization error type
 #[derive(Debug, Copy, Clone)]
 pub enum InitError {
         CMDFailed(CMD, u8),
         CannotGetCardInfo,
 }
 
-/**
- * Card Identification Data: CID Register
- */
+/// Card Identification Data: CID Register
 #[derive(Debug, Copy, Clone)]
 pub struct SDCardCID {
     pub ManufacturerID: u8, /* ManufacturerID */
@@ -68,55 +71,88 @@ pub struct SDCardCID {
     pub Reserved2: u8,      /* always 1 */
 }
 
-/**
- * Card Specific Data: CSD Register
- */
+/// Card Specific Data: CSD Register
 #[derive(Debug, Copy, Clone)]
 pub struct SDCardCSD {
-    pub CSDStruct: u8,        /* CSD structure */
-    pub SysSpecVersion: u8,   /* System specification version */
-    pub Reserved1: u8,        /* Reserved */
-    pub TAAC: u8,             /* Data read access-time 1 */
-    pub NSAC: u8,             /* Data read access-time 2 in CLK cycles */
-    pub MaxBusClkFrec: u8,    /* Max. bus clock frequency */
-    pub CardComdClasses: u16, /* Card command classes */
-    pub RdBlockLen: u8,       /* Max. read data block length */
-    pub PartBlockRead: u8,    /* Partial blocks for read allowed */
-    pub WrBlockMisalign: u8,  /* Write block misalignment */
-    pub RdBlockMisalign: u8,  /* Read block misalignment */
-    pub DSRImpl: u8,          /* DSR implemented */
-    pub Reserved2: u8,        /* Reserved */
-    pub DeviceSize: u32,      /* Device Size */
+    /// CSD structure
+    pub CSDStruct: u8,       
+    /// System specification version
+    pub SysSpecVersion: u8,  
+    /// Reserved
+    pub Reserved1: u8,       
+    /// Data read access-time 1
+    pub TAAC: u8,            
+    /// Data read access-time 2 in CLK cycles
+    pub NSAC: u8,            
+    /// Max. bus clock frequency
+    pub MaxBusClkFrec: u8,   
+    /// Card command classes
+    pub CardComdClasses: u16,
+    /// Max. read data block length
+    pub RdBlockLen: u8,      
+    /// Partial blocks for read allowed
+    pub PartBlockRead: u8,   
+    /// Write block misalignment
+    pub WrBlockMisalign: u8, 
+    /// Read block misalignment
+    pub RdBlockMisalign: u8, 
+    /// DSR implemented
+    pub DSRImpl: u8,         
+    /// Reserved
+    pub Reserved2: u8,       
+    /// Device Size
+    pub DeviceSize: u32,     
     pub DeviceSizeMult: u8,
-    pub EraseGrSize: u8,         /* Erase group size */
-    pub EraseGrMul: u8,          /* Erase group size multiplier */
-    pub WrProtectGrSize: u8,     /* Write protect group size */
-    pub WrProtectGrEnable: u8,   /* Write protect group enable */
-    pub ManDeflECC: u8,          /* Manufacturer default ECC */
-    pub WrSpeedFact: u8,         /* Write speed factor */
-    pub MaxWrBlockLen: u8,       /* Max. write data block length */
-    pub WriteBlockPaPartial: u8, /* Partial blocks for write allowed */
-    pub Reserved3: u8,           /* Reserded */
-    pub ContentProtectAppli: u8, /* Content protection application */
-    pub FileFormatGroup: u8,     /* File format group */
-    pub CopyFlag: u8,            /* Copy flag (OTP) */
-    pub PermWrProtect: u8,       /* Permanent write protection */
-    pub TempWrProtect: u8,       /* Temporary write protection */
-    pub FileFormat: u8,          /* File Format */
-    pub ECC: u8,                 /* ECC code */
-    pub CSD_CRC: u8,             /* CSD CRC */
-    pub Reserved4: u8,           /* always 1*/
+    /// Erase group size 
+    pub EraseGrSize: u8,         
+    /// Erase group size multiplier 
+    pub EraseGrMul: u8,          
+    /// Write protect group size 
+    pub WrProtectGrSize: u8,     
+    /// Write protect group enable 
+    pub WrProtectGrEnable: u8,   
+    /// Manufacturer default ECC 
+    pub ManDeflECC: u8,          
+    /// Write speed factor 
+    pub WrSpeedFact: u8,         
+    /// Max. write data block length 
+    pub MaxWrBlockLen: u8,       
+    /// Partial blocks for write allowed 
+    pub WriteBlockPaPartial: u8, 
+    /// Reserded 
+    pub Reserved3: u8,           
+    /// Content protection application 
+    pub ContentProtectAppli: u8, 
+    /// File format group 
+    pub FileFormatGroup: u8,     
+    /// Copy flag (OTP) 
+    pub CopyFlag: u8,            
+    /// Permanent write protection 
+    pub PermWrProtect: u8,       
+    /// Temporary write protection 
+    pub TempWrProtect: u8,       
+    /// File Format 
+    pub FileFormat: u8,          
+    /// ECC code 
+    pub ECC: u8,                 
+    /// CSD CRC 
+    pub CSD_CRC: u8,             
+    /// always 1
+    pub Reserved4: u8,           
 }
 
 #[derive(Debug, Copy, Clone)]
 pub struct SDCardInfo {
     pub SD_csd: SDCardCSD,
     pub SD_cid: SDCardCID,
-    pub CardCapacity: u64,  /* Card Capacity */
+    /// Card capacity
+    pub CardCapacity: u64,
     pub CardBlockCnt: u64,
-    pub CardBlockSize: u64, /* Card Block Size */
+     /// Card Block Size
+    pub CardBlockSize: u64,
 }
 
+/// Representation of a SD Card
 struct SDCard0 {
         spi:            SPIImpl<SPI0>,
         spi_cs:         u32,
@@ -126,24 +162,28 @@ struct SDCard0 {
 }
 
 impl SDCard0 {
-
+        /// Low level initialize a SD Card
         fn lowlevel_init(&self) {
                 gpiohs::set_direction(self.cs_gpionum, gpio::direction::OUTPUT);
                 self.spi.set_clk_rate(200000);
         }
 
+        /// Set CS pin to high
         fn CS_HIGH(&self) {
                 gpiohs::set_pin(self.cs_gpionum, true);
         }
 
+        /// Set CS pin to low
         fn CS_LOW(&self) {
                 gpiohs::set_pin(self.cs_gpionum, false);
         }
 
+        /// Change spi clk rate to 8000000 for a higher speed
         fn HIGH_SPEED_ENABLE(&self) {
                 self.spi.set_clk_rate(8000000);
         }
 
+        /// write raw data to SD Card
         fn write_data(&self, data: &[u8]) {
                 self.spi.configure(
                     work_mode::MODE0,
@@ -159,6 +199,7 @@ impl SDCard0 {
                 self.spi.send_data(self.spi_cs, data);
         }
 
+        /// read raw data from SD Card
         fn read_data(&self, data: &mut [u8]) {
                 self.spi.configure(
                         work_mode::MODE0,
@@ -174,6 +215,7 @@ impl SDCard0 {
                 self.spi.recv_data(self.spi_cs, data);
         }
 
+        /// send commands to SD Card
         fn send_cmd(&self, cmd: CMD, arg: u32, crc: u8) {
                 /* SD chip select low */
                 self.CS_LOW();
@@ -194,6 +236,7 @@ impl SDCard0 {
                 ]);
         }
 
+        /// end SD Card command sequence
         fn end_cmd(&self) {
                 /* SD chip select high */
                 self.CS_HIGH();
@@ -201,6 +244,7 @@ impl SDCard0 {
                 self.write_data(&[0xff]);
         }
 
+        /// get respond from SD Card
         fn get_response(&self) -> u8 {
                 let result = &mut [0u8];
                 let mut timeout = 0x0FFF;
@@ -217,6 +261,7 @@ impl SDCard0 {
                 return 0xFF;
         }
 
+        /// get SD Card CSD register
         fn get_csdregister(&self) -> Result<SDCardCSD, ()> {
                 let mut csd_tab = [0u8; 18];
                 /* Send CMD9 (CSD register) */
@@ -333,6 +378,7 @@ impl SDCard0 {
                 }
         }
 
+        /// get SD Card CID register
         fn get_cidregister(&self) -> Result<SDCardCID, ()> {
                 let mut cid_tab = [0u8; 18];
                 /* Send CMD10 (CID register) */
@@ -378,6 +424,7 @@ impl SDCard0 {
                 });
         }
 
+        /// Get SD Card info
         fn get_cardinfo(&self) -> Result<SDCardInfo, ()> {
                 let mut info = SDCardInfo {
                     SD_csd: self.get_csdregister()?,
@@ -400,6 +447,7 @@ impl SDCard0 {
                 Ok(info)
         }
 
+        /// wait and get data from SD Card
         fn get_dataresponse(&self) -> u8 {
                 let response = &mut [0u8];
                 /* Read resonse */
@@ -419,6 +467,7 @@ impl SDCard0 {
         }
         
 
+        /// Initialize an SD Card
         fn init(&mut self) -> Result<SDCardInfo, InitError> {
                 self.lowlevel_init();
                 self.CS_HIGH();
@@ -480,6 +529,7 @@ impl SDCard0 {
                 self.get_cardinfo().map_err(|_| InitError::CannotGetCardInfo)
         }
 
+        /// read a sector in the SD Card
         pub fn read_sector(&self, data_buf: &mut [u8], sector: u32) -> Result<(), ()> {
                 if data_buf.len() < SEC_LEN || (data_buf.len() % SEC_LEN) != 0 {
                         return Err(());
@@ -543,6 +593,7 @@ impl SDCard0 {
                 }
         }
 
+        /// write data to a sector on SD Card
         pub fn write_sector(&self, data_buf: &[u8], sector: u32) -> Result<(), ()> {
                 if data_buf.len() < SEC_LEN || (data_buf.len() % SEC_LEN) != 0 {
                         return Err(());
@@ -598,14 +649,19 @@ impl SDCard0 {
         }
 }
 
+/// SD Card SPI interface CS pin gpio
 const SD_CS_GPIONUM: u8 = 7;
+
+/// SD Card SPI interface CS pin
 const SD_CS: u32 = 3;
 
 lazy_static! {
+        /// Lazy initialized k210 peripherals
         static ref PERIPHERALS: Mutex<Peripherals> = Mutex::new(Peripherals::take().unwrap());
         // pub static ref sdcard_inst: SDCard0WithLock = SDCard0WithLock::new();
 }
 
+/// initialize io
 fn io_init() {
         fpioa::set_function(io::SPI0_SCLK, fpioa::function::SPI0_SCLK);
         fpioa::set_function(io::SPI0_MOSI, fpioa::function::SPI0_D0);
@@ -614,6 +670,7 @@ fn io_init() {
         fpioa::set_io_pull(io::SPI0_CS0, fpioa::pull::DOWN); // GPIO output=pull down
 }
 
+/// initialized SD Card
 fn init_sdcard() -> SDCard0 {
         usleep(100000);
         let peripherals = unsafe { Peripherals::steal() };
@@ -642,9 +699,11 @@ fn init_sdcard() -> SDCard0 {
         sd
 }
 
+/// SD Card with lock to prevent data racing
 pub struct SDCard0WithLock(Mutex<SDCard0>);
 
 impl SDCard0WithLock {
+        /// constructor
         pub fn new() -> Self {
                 Self(Mutex::new(init_sdcard()))
         }

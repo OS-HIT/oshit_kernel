@@ -1,3 +1,4 @@
+//! Abstract of the Processor, for future multi-core support.
 // use super::ProcessContext;
 use super::ProcessControlBlock;
 use super::ProcessStatus;
@@ -6,10 +7,8 @@ use crate::trap::TrapContext;
 // use crate::config::*;
 use core::cell::RefCell;
 use lazy_static::*;
-use alloc::vec::Vec;
 use crate::sbi::get_time;
 use alloc::sync::Arc;
-use crate::memory::VirtAddr;
 use super::{
     dequeue,
     enqueue,
@@ -19,29 +18,39 @@ use super::{
 global_asm!(include_str!("switch.asm"));
 
 extern "C" {
+    /// The `__switch()` function for switching kernel execution flow.
     pub fn __switch(
         current_task_cx_ptr2: *const usize,
         next_task_cx_ptr2: *const usize
     );
 }
 
+/// Processor struct, Abstract representation of a Processor
 pub struct Processor {
+    /// Mutable member of the processor.
     inner: RefCell<ProcessorInner>,
 }
 
+
+/// Mutable member of the processor.
 struct ProcessorInner {
+    /// The current process that is being execute.
     current: Option<Arc<ProcessControlBlock>>,
+    /// Idel ProcessContext work flow context pointer, used to determin next process.
     idle_context_ptr: usize,
 }
 
 unsafe impl Sync for Processor {}
 
-// we need to initialize pcbs
 lazy_static! {
+    /// The singleton of hart0. Multi-core in the future.
     pub static ref PROCESSOR0: Processor = Processor::new();
 }
 
 impl Processor {
+    /// Constructor for the processor
+    /// # Returns
+    /// A empty processor struct.
     pub fn new() -> Self {
         Self {
             inner: RefCell::new(ProcessorInner {
@@ -51,10 +60,12 @@ impl Processor {
         }
     }
 
+    /// Take out current process, leaving a None inside.
     pub fn take_current(&self) -> Option<Arc<ProcessControlBlock>> {
         return self.inner.borrow_mut().current.take();
     }
 
+    /// get a reference of the current process's pcb.
     pub fn current(&self) -> Option<Arc<ProcessControlBlock>> {
         return self.inner.borrow().current.as_ref().map(
             |process| {
@@ -63,11 +74,17 @@ impl Processor {
         );
     }
 
+    /// Get the pointer pointing at the context ptr.
+    /// By manipulating the contextn ptr, we can switch work flow.
     pub fn get_idle_context_ptr2(&self) -> *const usize {
         let inner = self.inner.borrow();
         return &inner.idle_context_ptr as *const usize;
     }
 
+    /// Get current process's user memory space pagetable SATP
+    /// # Description
+    /// Get current process's user memory space pagetable SATP.  
+    /// Note that this function trys to lock current process, so can cause dead lock if the lock is already held.
     pub fn current_satp(&self) -> usize {
         if let Some(arcpcb) = self.current() {
             return arcpcb.get_inner_locked().get_satp();
@@ -76,6 +93,9 @@ impl Processor {
         }
     }
 
+    /// Switch executing process.  
+    /// # Description
+    /// By switching to the idle work flow, we can find what process to run next.
     pub fn switch_proc(&self, proc_context2: *const usize) {
         let idle_context_ptr2 = self.get_idle_context_ptr2();
         unsafe {
@@ -83,6 +103,11 @@ impl Processor {
         }
     }
 
+        
+    /// suspend current process and switch.
+    /// # Description
+    /// Suspend current process and switch to another.  
+    /// Note that we need to drop locks before calling this method, to avoid potential dead lock on shared resources.
     pub fn suspend_switch(&self) {
         let process = self.take_current().unwrap();
         let mut arcpcb = process.get_inner_locked();
@@ -97,6 +122,9 @@ impl Processor {
         }
     }
 
+    /// Exit current process and switch
+    /// # Description
+    /// Exit current process and switch, can be used to terminate process in kernel.
     pub fn exit_switch(&self, exit_code: i32) {
         let process = self.take_current().unwrap();
         let mut arcpcb = process.get_inner_locked();
@@ -122,6 +150,9 @@ impl Processor {
         }
     }
 
+    /// Find next process to run.
+    /// # description
+    /// Find next process to run. The idle work flow will run this function indefinitly.
     pub fn run(&self) {
         loop {
             if let Some(process) = dequeue() {
@@ -136,11 +167,12 @@ impl Processor {
                     __switch(idle_context_ptr2, next_context_ptr2);
                 }
             } else {
-                warning!("No process to run!");
+                warning!("No process to run! Check if the proc0 is dead?");
             }
         }
     }
 
+    /// Get current process's execution time
     pub fn current_up_since(&self) -> u64 {
         let inner = self.inner.borrow();
         if let Some(current) = &inner.current {
@@ -150,6 +182,7 @@ impl Processor {
         }
     }
 
+    /// Get current process's execution utime
     pub fn current_utime(&self) -> u64 {
         let inner = self.inner.borrow();
         if let Some(current) = &inner.current {
@@ -160,6 +193,10 @@ impl Processor {
         }
     }
 
+    /// Get current process's TrapContext
+    /// # Description
+    /// Get current process's TrapContext
+    /// Note that this function trys to lock current process, so can cause dead lock if the lock is already held.
     pub fn current_trap_context(&self) -> &'static mut TrapContext {
         self.current().unwrap().get_inner_locked().get_trap_context()
     }

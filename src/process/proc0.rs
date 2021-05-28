@@ -1,3 +1,4 @@
+//! Load the proc0 (init process)
 use super::ProcessControlBlock;
 use super::enqueue;
 use lazy_static::*;
@@ -7,6 +8,8 @@ use alloc::vec::Vec;
 use alloc::string::ToString;
 
 lazy_static! {
+    /// Lazy initalized proc0. Read from the file system.  
+    /// Panic if proc0 was not found.
     pub static ref PROC0: Arc<ProcessControlBlock> = {
         let app_name = "/proc0";
         verbose!("Exec {}", app_name);
@@ -33,6 +36,7 @@ lazy_static! {
     };
 }
 
+/// Add proc0 to the process queue.
 pub fn init_proc0() {
     verbose!("init_proc0");
     enqueue(PROC0.clone());

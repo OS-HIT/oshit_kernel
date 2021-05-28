@@ -1,8 +1,6 @@
-use std::io::{Result, Write, prelude::*, SeekFrom};
-use std::fs::{File, read_dir, OpenOptions};
+use std::io::{Result, Write};
+use std::fs::OpenOptions;
 use chrono::{DateTime, Utc};
-use std::io::{Error, ErrorKind};
-// use std::time::SystemTime;
 
 fn main() {
     println!("cargo:rerun-if-changed=./src/");
@@ -16,11 +14,9 @@ fn updata_version_number() -> Result<()> {
         .open("src/version.rs")
         .unwrap();
     
-    let ni = format!(r#"
-// NOTE: following line will be found and modified by build.rs.
-// DONT CHANGE THIS LINE MANUALLY!!!!
-pub const VERSION : &[u8] = b"{}\0";
-"#, now.to_rfc2822());
+    let ni = format!(r#"//! This is a uname constant, and will be update automatically on building.
+/// NOTE: following line will be found and modified by build.rs. ***DONT CHANGE THIS LINE MANUALLY!!!!***
+pub const VERSION : &[u8] = b"{}\0";"#, now.to_rfc2822());
     writeln!(fo, "{}", ni)?;
     Ok(())
 }

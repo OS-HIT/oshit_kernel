@@ -1,3 +1,4 @@
+//! Trivial system calls.
 use crate::{process::{current_process, suspend_switch}, sbi::get_time};
 use crate::process::{current_up_since, current_utime, current_satp};
 use crate::memory::{VirtAddr, translate_user_va};
@@ -6,6 +7,7 @@ use crate::utils::strcpy;
 use crate::version::*;
 use core::{borrow::Borrow, convert::TryInto};
 
+/// Linux style tms
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
 pub struct TMS {
@@ -15,6 +17,7 @@ pub struct TMS {
     tms_cstime: u64,
 }
 
+/// Return execution time of current process and it's children
 pub fn sys_time(tms_va: VirtAddr) -> isize {
     let process = current_process().unwrap();
     let arcpcb = process.get_inner_locked();
@@ -35,6 +38,7 @@ pub fn sys_time(tms_va: VirtAddr) -> isize {
     return get_time().try_into().unwrap();
 }
 
+/// Linux Style timespec
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
 pub struct TimeSPEC {
@@ -42,6 +46,7 @@ pub struct TimeSPEC {
     pub tvnsec: u32,
 }
 
+/// Since we don't have RTC, we return seconds and nanoseconds since boot.
 pub fn sys_gettimeofday(ts: VirtAddr) -> isize {
     let time = TimeSPEC {
         tvsec: crate::sbi::get_time_ms()/1000,
@@ -52,6 +57,7 @@ pub fn sys_gettimeofday(ts: VirtAddr) -> isize {
 }
 
 
+/// Linux style uts_name
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
 pub struct UTSName {
@@ -63,6 +69,7 @@ pub struct UTSName {
     domainname  : [u8; UTSNAME_LEN],
 }
 
+/// Rsturn system informations.
 pub fn sys_uname(uts_va: VirtAddr) -> isize {
     let mut uts: UTSName = UTSName {
         sysname    : [0u8; UTSNAME_LEN] ,
@@ -83,6 +90,7 @@ pub fn sys_uname(uts_va: VirtAddr) -> isize {
     0
 }
 
+/// Sleep for a specified time.
 pub fn sys_nanosleep(req: VirtAddr, _: VirtAddr) -> isize{
     let req: TimeSPEC = current_process().unwrap().get_inner_locked().layout.read_user_data(req);
     while get_time() / CLOCK_FREQ < req.tvsec {

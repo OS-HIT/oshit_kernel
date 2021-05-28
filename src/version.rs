@@ -1,8 +1,3 @@
-
-// NOTE: following line will be found and modified by build.rs.
-// DONT CHANGE THIS LINE MANUALLY!!!!
-pub const VERSION : &[u8] = b"Wed, 26 May 2021 17:24:20 +0000\0";
-
-
-
-
+//! This is a uname constant, and will be update automatically on building.
+/// NOTE: following line will be found and modified by build.rs. ***DONT CHANGE THIS LINE MANUALLY!!!!***
+pub const VERSION : &[u8] = b"Fri, 28 May 2021 07:56:33 +0000\0";

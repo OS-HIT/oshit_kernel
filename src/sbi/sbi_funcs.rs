@@ -1,3 +1,4 @@
+//! SBI function wrappers.
 #![allow(unused)]
 
 const SBI_SET_TIMER: usize = 0;
@@ -12,6 +13,13 @@ const SBI_SHUTDOWN: usize = 8;
 
 use core::convert::TryInto;
 
+/// Make a sbi call.
+/// # Description 
+/// Select a sbi call, and execute with three arguments.
+/// # Examples
+/// ```
+/// let res: usize = res = sbi_call(SBI_CONSOLE_GETCHAR, 0, 0, 0);
+/// ```
 #[inline(always)]
 pub fn sbi_call(which: usize, mut arg0: usize, arg1: usize, arg2: usize) -> usize{
     unsafe {
@@ -26,6 +34,15 @@ pub fn sbi_call(which: usize, mut arg0: usize, arg1: usize, arg2: usize) -> usiz
     arg0
 }
 
+/// Make a complete sbi call, with eid and fid.
+/// # Description 
+/// Select a sbi call, and execute with three arguments.
+/// # Returns
+/// Two results, packed together.
+/// # Examples
+/// ```
+/// let (res1, res2) = sbi_call_all(0x10, 0x4, 0, 0, 0);
+/// ```
 #[inline(always)]
 pub fn sbi_call_all(eid: i32, fid: i32, mut arg0: usize, mut arg1: usize, arg2: usize) -> (usize, usize){
     unsafe {
@@ -41,14 +58,17 @@ pub fn sbi_call_all(eid: i32, fid: i32, mut arg0: usize, mut arg1: usize, arg2: 
     (arg0, arg1)
 }
 
+/// Set timer interrupt
 pub fn set_timer(timer: u64) {
     sbi_call(SBI_SET_TIMER, timer as usize, 0, 0);
 }
 
+/// Put a single byte to SBI I/O module
 pub fn put_byte(ch: u8) {
     sbi_call(SBI_CONSOLE_PUTCHAR, ch as usize, 0, 0);
 }
 
+/// Get a single byte from SBI I/O module
 pub fn get_byte() -> u8 {
     let mut res;
     loop {
@@ -58,11 +78,13 @@ pub fn get_byte() -> u8 {
     return res.try_into().unwrap();
 }
 
+/// Shutdown the machine
 pub fn shutdown() -> ! {
     sbi_call(SBI_SHUTDOWN, 0, 0, 0);
     unreachable!()
 }
 
+/// get the vendor id
 pub fn get_vendor_id() -> i32 {
     sbi_call_all(0x10, 0x4, 0, 0, 0).1 as i32
 }

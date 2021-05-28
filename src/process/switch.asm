@@ -47,29 +47,29 @@
     .globl __switch
 __switch:
     # __switch(
-    #     current_task_cx_ptr: &*const TaskContext,
-    #     next_task_cx_ptr: &*const TaskContext
+    #     current_process_cx_ptr: &*const ProcessContext,
+    #     next_process_cx_ptr: &*const ProcessContext
     # )
-    # push TaskContext to current sp and save its address to where a0 points to
+    # push ProcessContext to current sp and save its address to where a0 points to
     addi sp, sp, -13*8
     sd sp, 0(a0)
-    # fill TaskContext with ra & s0-s11
+    # fill ProcessContext with ra & s0-s11
     sd ra, 0(sp)
     .set n, 0
     .rept 12
         SAVE_SN %n
         .set n, n + 1
     .endr
-    # ready for loading TaskContext a1 points to
+    # ready for loading ProcessContext a1 points to
     ld sp, 0(a1)
-    # load registers in the TaskContext
+    # load registers in the ProcessContext
     ld ra, 0(sp)
     .set n, 0
     .rept 12
         LOAD_SN %n
         .set n, n + 1
     .endr
-    # pop TaskContext
+    # pop ProcessContext
     addi sp, sp, 13*8
     ret
 

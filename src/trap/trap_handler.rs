@@ -1,5 +1,6 @@
+//! Trap handler of oshit kernel
 use super::TrapContext;
-use crate::syscall::syscall;
+use crate::{process::current_process, syscall::syscall};
 use riscv::register::{
     stvec,      // s trap vector base address register
     scause::{   // s cause register
@@ -17,10 +18,11 @@ use crate::sbi::{
 use crate::process::{suspend_switch, exit_switch};
 use crate::config::*;
 use crate::process::{current_trap_context, current_satp};
+use crate::memory::VMAFlags;
 
 global_asm!(include_str!("./trap.asm"));
 
-// enable traps
+/// enable traps handling unit, by writing stvec and enable the timer interrupt
 pub fn init() {
     debug!("Initilizing traps...");
     unsafe {
@@ -36,26 +38,34 @@ pub fn init() {
     info!("Traps initialized.");
 }
 
+/// Set trap entry to kernel trap handling function.
 fn set_kernel_trap_entry() {
     unsafe {
         stvec::write(kernel_trap as usize, stvec::TrapMode::Direct);
     }
 }
 
+/// Set trap entry to user trap handling function.
 fn set_user_trap_entry() {
     unsafe {
         stvec::write(TRAMPOLINE as usize, stvec::TrapMode::Direct);
     }
 }
 
+/// Kernel trap handling function
+/// Currently, kernel trap only happen if severe problem has emerged.
 #[no_mangle]
 pub fn kernel_trap() -> ! {
     fatal!("unhandled trap {:?}.", scause::read().cause());
     panic!("Kernel trap not supported yet!");
 }
 
-// no mangle so that call user_trap in asm won't break
-// return cx for syscall res and new sepc.
+/// User trap handling function
+/// # Description
+/// After trampoline has successfully 
+/// no mangle so that call user_trap in asm won't break
+/// # Return 
+/// Do not return, for trap_return calls __restore, then it SRET to user.
 #[no_mangle]
 pub fn user_trap(_cx: &mut TrapContext) -> ! {
     set_kernel_trap_entry();
@@ -80,14 +90,38 @@ pub fn user_trap(_cx: &mut TrapContext) -> ! {
             reset_timer_trigger();
             suspend_switch();
         },
+        // Store page fault, check vma
+        Trap::Exception(Exception::StorePageFault) => {
+            let proc = current_process().unwrap();
+            let mut arcpcb = proc.get_inner_locked();
+            if !arcpcb.layout.lazy_copy_vma(stval.into(), VMAFlags::W) {
+                error!(
+                    "{:?} in application, bad addr = {:#x}, bad instruction = {:#x}, core dumped.",
+                    scause.cause(),
+                    stval,
+                    current_trap_context().sepc,
+                );
+                exit_switch(-2);
+            }
+        },
+        Trap::Exception(Exception::LoadPageFault) => {
+            let proc = current_process().unwrap();
+            let mut arcpcb = proc.get_inner_locked();
+            if !arcpcb.layout.lazy_copy_vma(stval.into(), VMAFlags::R) {
+                error!(
+                    "{:?} in application, bad addr = {:#x}, bad instruction = {:#x}, core dumped.",
+                    scause.cause(),
+                    stval,
+                    current_trap_context().sepc,
+                );
+                exit_switch(-2);
+            }
+        },
         // TODO: Core dump and/or terminate user program and continue
-        
         Trap::Exception(Exception::StoreFault) |
-        Trap::Exception(Exception::StorePageFault) |
         Trap::Exception(Exception::InstructionFault) |
         Trap::Exception(Exception::InstructionPageFault) |
-        Trap::Exception(Exception::LoadFault) |
-        Trap::Exception(Exception::LoadPageFault) => {
+        Trap::Exception(Exception::LoadFault) => {
             error!(
                 "{:?} in application, bad addr = {:#x}, bad instruction = {:#x}, core dumped.",
                 scause.cause(),
@@ -110,6 +144,9 @@ pub fn user_trap(_cx: &mut TrapContext) -> ! {
     trap_return();
 }
 
+/// Trap return function
+/// # Description
+/// Trap return funciton. Use jr for trampoline functions.
 #[no_mangle]
 pub fn trap_return() -> ! {
     set_user_trap_entry();

@@ -1,3 +1,4 @@
+//! Range objects, for iterating through addresses
 use core::fmt::Debug;
 
 pub trait StepByOne {
@@ -18,6 +19,7 @@ impl<T> SimpleRange<T> where
     }
     pub fn get_start(&self) -> T { self.l }
     pub fn get_end(&self) -> T { self.r }
+    pub fn set_end(&mut self, r: T) { self.r = r }
 }
 impl<T> IntoIterator for SimpleRange<T> where
     T: StepByOne + Copy + PartialEq + PartialOrd + Debug, {

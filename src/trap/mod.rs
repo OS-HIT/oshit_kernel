@@ -1,3 +1,4 @@
+//! OSHIT Trap Handle unit.
 mod trap_context;
 mod trap_handler;
 

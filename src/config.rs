@@ -1,29 +1,56 @@
-pub const KERNEL_STACK_SIZE : usize = 4096 * 4;
-pub const USER_STACK_SIZE   : usize = 4096 * 2;
-pub const KERNEL_HEAP_SIZE  : usize = 0x40000;
-// pub const MAX_APP_NUM       : usize = 10;
-// pub const APP_BASE_ADDRESS  : usize = 0x80400000;
-// pub const APP_SIZE_LIMIT    : usize = 0x20000;
-pub const PAGE_OFFSET       : usize = 12;
-pub const PAGE_SIZE         : usize = 1 << PAGE_OFFSET;
-pub const MEM_END           : usize = 0x80800000;   // ref: https://github.com/laanwj/k210-sdk-stuff/blob/master/doc/memory_map.md
-pub const TRAMPOLINE        : usize = usize::MAX - PAGE_SIZE + 1;
-pub const TRAP_CONTEXT      : usize = TRAMPOLINE - PAGE_SIZE;
-pub const PIP_BUF_MAX       : usize = 65536;    // same as linux
+//! Config file for the kernel. 
+//! Changing some value might have unexpected consequences, proceed with causion!
 
+/// Default kernel stack size for each process
+pub const KERNEL_STACK_SIZE : usize = 4096 * 4;
+
+/// Default user stack size. Will be override by `sys_clone()` arguments
+pub const USER_STACK_SIZE   : usize = 4096 * 2;
+
+/// Kernel heap size, used in dynamic memory allocation (like vec and String)
+pub const KERNEL_HEAP_SIZE  : usize = 0x40000;
+
+/// Bits reperensenting page offset
+pub const PAGE_OFFSET       : usize = 12;
+
+/// 4KiB per page
+pub const PAGE_SIZE         : usize = 1 << PAGE_OFFSET;
+
+/// This is where the physical memory ends.
+/// ref: [k210-sdk-stuff/memory_map.md](https://github.com/laanwj/k210-sdk-stuff/blob/master/doc/memory_map.md)
+pub const MEM_END           : usize = 0x80800000;  
+
+/// Position of Trampoline, which is a piece of code use for context switching when we switch priviledge levels (`ecall`/`sret`)
+pub const TRAMPOLINE        : usize = usize::MAX - PAGE_SIZE + 1;
+
+/// Position of TrapContext, which is just below the trampoline and takes up an entire page.
+pub const TRAP_CONTEXT      : usize = TRAMPOLINE - PAGE_SIZE;
+
+/// Max pipe ring buffer size. Same as linux.
+pub const PIP_BUF_MAX       : usize = 65536;
+
+/// Clock freqency on k210
 #[cfg(feature = "board_k210")]
 pub const CLOCK_FREQ: u64 = 403000000 / 62;
 
+/// Clock frequency on qemu
 #[cfg(feature = "board_qemu")]
 pub const CLOCK_FREQ: u64 = 12500000;
 
+/// UName constants, name of our OS
 pub const SYSNAME       : &[u8] = b"OSHIT Kernel (Pre-Alpha)\0";
+/// UName constants
 pub const NODENAME      : &[u8] = b"Network currently unsupported\0";
-pub const RELEASE       : &[u8] = b"0.0.1-alpha\0";   // Semantic Versioning
+/// UName constants, OS version
+pub const RELEASE       : &[u8] = b"0.0.1-alpha\0";
+/// UName constants
 pub const MACHINE       : &[u8] = b"UNKNOWN MACHINE\0";
+/// UName constants
 pub const DOMAINNAME    : &[u8] = b"UNKNOWN DOMAIN NAME\0";
+/// Length of each field in `struct uname`
 pub const UTSNAME_LEN   : usize = 65;
 
+/// Device memory mapped IO for K210
 #[cfg(feature = "board_k210")]
 pub const MMIO: &[(usize, usize)] = &[
     (0x0C00_0000, 0x3000),      /* PLIC      */
@@ -42,11 +69,13 @@ pub const MMIO: &[(usize, usize)] = &[
     (0x5400_0000, 0x1000),      /* SPI2      */
 ];
 
+/// Device memory mapped IO for qemu
 #[cfg(feature = "board_qemu")]
 pub const MMIO: &[(usize, usize)] = &[
     (0x10000000, 0x10000),
 ];
 
+/// An ASCII art logo
 pub const logo: &str = r#"
  ██████╗ ███████╗      ██╗  ██╗██╗████████╗
 ██╔═══██╗██╔════╝      ██║  ██║██║╚══██╔══╝

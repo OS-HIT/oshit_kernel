@@ -1,3 +1,5 @@
+//! # OSHIT-Kernel
+//! This is OSHIT Kernel, a RISC-V rust based operating system kernel.
 #![no_std]
 #![no_main]
 #![feature(global_asm)]
@@ -35,6 +37,14 @@ mod drivers;
 #[cfg(not(any(feature="board_qemu", feature="board_k210")))]
 compile_error!("At least one of the board_* feature should be active!");
 
+/// Main function for boot sequence
+/// # Description
+/// This is the main function, which is used during the boot sequence.
+/// Will be called by `__start()` in entry.asm, after CRT setup.
+/// # Examples
+/// **DO NOT CALL THIS FUNCTION!**
+/// # Returns
+/// never returns.
 #[no_mangle]
 pub extern "C" fn rust_main() -> !{
     print!("{}", config::logo);

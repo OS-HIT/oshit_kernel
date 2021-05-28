@@ -1,3 +1,5 @@
+//! Syscall wrappers.
+
 #![allow(dead_code)]
 pub const SYSCALL_GETCWD        : usize = 17;
 pub const SYSCALL_DUP           : usize = 23;
@@ -50,17 +52,21 @@ pub use fs_syscall::{
     sys_dup,
     sys_dup3,
     sys_getdents64,
+    sys_unlink,
 };
 pub use process_syscall::{
     sys_exit, 
     sys_yield,
     sys_fork,
+    sys_clone,
     sys_exec,
     sys_waitpid,
     sys_getpid,
     sys_getppid,
     sys_getcwd,
     sys_chdir,
+    sys_sbrk,
+    sys_mmap
 };
 pub use trivial_syscall::{
     sys_time, 
@@ -71,13 +77,17 @@ pub use trivial_syscall::{
 
 use crate::memory::VirtAddr;
 
+use self::fs_syscall::sys_mkdirat;
+
+/// Handle and dispatch the syscalls to corresponding module.
 pub fn syscall(syscall_id: usize, args: [usize; 6]) -> isize {
     match syscall_id {
         SYSCALL_READ        => sys_read(args[0], args[1].into(), args[2]),
         SYSCALL_WRITE       => sys_write(args[0], VirtAddr(args[1]), args[2]),
         SYSCALL_EXIT        => sys_exit(args[0] as i32),
         SYSCALL_SCHED_YIELD => sys_yield(),
-        SYSCALL_FORK        => sys_fork(),
+        // SYSCALL_FORK        => sys_fork(),
+        SYSCALL_CLONE       => sys_clone(args[0], args[1], args[2], args[3], args[4]),
         SYSCALL_EXEC        => sys_exec(args[0].into(), args[1].into(), args[2].into()),
         SYSCALL_WAITPID     => sys_waitpid(args[0] as isize, args[1].into(), args[2] as isize),
         SYSCALL_GETPID      => sys_getpid(),
@@ -94,6 +104,10 @@ pub fn syscall(syscall_id: usize, args: [usize; 6]) -> isize {
         SYSCALL_CHDIR       => sys_chdir(args[0].into()),
         SYSCALL_GETDENTS64  => sys_getdents64(args[0], args[1].into(), args[2]),
         SYSCALL_NANOSLEEP   => sys_nanosleep(args[0].into(), args[1].into()),
+        SYSCALL_BRK         => sys_sbrk(args[0]),
+        SYSCALL_MMAP        => sys_mmap(args[0].into(), args[1], args[2] as u8, args[3], args[4], args[5]), 
+        SYSCALL_UNLINKAT    => sys_unlink(args[0] as i32, args[1].into(), args[2].into()),
+        SYSCALL_MKDIRAT     => sys_mkdirat(args[0], args[1].into(), args[2]),
         _ => {
             fatal!("Unsupported syscall_id: {}", syscall_id);
             -1

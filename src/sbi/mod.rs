@@ -1,3 +1,5 @@
+//! Wrappers of the sbi functions.
+
 #[macro_use]
 mod primitive_io;
 mod sbi_funcs;

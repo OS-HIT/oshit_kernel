@@ -1,13 +1,15 @@
+//! File system implementation for oshit. Currently, only FAT32 is supported
+
 pub mod block_cache;
 pub mod fat;
 mod dirent;
-mod path;
+pub mod path;
 pub mod file;
 mod stdio;
-mod virt_file;
+mod file_with_lock;
 mod pipe;
 
-pub use virt_file::VirtFile;
+pub use file_with_lock::FileWithLock;
 pub use pipe::{
         make_pipe,
         Pipe,
@@ -16,9 +18,9 @@ pub use pipe::{
 };
 
 pub use stdio::{
-        STDIN,
-        STDOUT,
-        STDERR,
+        LOCKED_STDIN,
+        LOCKED_STDOUT,
+        LOCKED_STDERR,
         Stdin,
         Stdout,
         Stderr
@@ -30,6 +32,7 @@ pub use file::FILE;
 pub use file::FTYPE;
 pub use file::FSEEK;
 pub use dirent::DirEntry;
+
 // pub use stdio::{Stdin, Stdout};
 
 // FILE::open_file(path: &str, mode: u32) -> Result<FILE, &str> 
@@ -48,12 +51,66 @@ pub use dirent::DirEntry;
 use crate::drivers::BLOCK_DEVICE;
 use crate::memory::UserBuffer;
 use spin::MutexGuard;
-pub trait File: Send + Sync {
+
+/// Trait for VirtFile. Pipe/sd card file/block device all implements VirtFile, and is stored in the PCB
+pub trait VirtFile: Send + Sync {
+
+        /// Read from a VirtFile into a buffer in user memory space
+        /// # Description
+        /// Read the file from the beginning to `buf.len()` or EOF and store it in `buf`, which is a memory buffer in user memory space
+        /// Note that there is no offset, for pipe like object is VirtFile too.
+        /// # Examples
+        /// ```
+        /// let file: dyn VirtFile = STDIN;
+        /// let ptr: VirtAddr = 0x00100000.into();
+        /// let mut buf: UserBuffer = current_process().unwrap().get_inner_locked().layout.get_user_buffer(ptr, 1000);
+        /// file.read(buf);
+        /// ```
+        /// # Return
+        /// Returns how many bytes have been read.
         fn read(&self, buf: UserBuffer) -> isize;
+        
+
+        /// Write to a VirtFile from a buffer in user memory space
+        /// # Description
+        /// Write the file from the beginning to `buf.len()` with content from `buf` which is a memory buffer in user memory space
+        /// Note that there is no offset, for pipe like object is VirtFile too.
+        /// # Examples
+        /// ```
+        /// let file: dyn VirtFile = STDOUT;
+        /// let ptr: VirtAddr = 0x00100000.into();
+        /// let mut buf: UserBuffer = current_process().unwrap().get_inner_locked().layout.get_user_buffer(ptr, 1000);
+        /// file.write(buf);
+        /// ```
+        /// # Return
+        /// Returns how many bytes have been write.
         fn write(&self, buf: UserBuffer) -> isize;
+
+        /// Downgrade trait object to concret type FileWithLock, held lock and expose FILE for FILE manipulation
+        /// # Description
+        /// Calling this function will return FILE if the concret type of trait object is in fact FileWithLock, or Err otherwise.  
+        /// Note: The MutexGuard will held the lock for FileWithLock, use with caution and remember to drop in case of context switching (i.e. `suspend_switch()`)
+        /// # Examples
+        /// ```
+        /// let proc = current_process().unwrap();
+        /// let arcpcb = proc.get_inner_locked();
+        /// match arcpcb.files[3].to_fs_file_locked()  {
+        ///     Ok(file) => {
+        ///          // FILE manipulation
+        ///     },
+        ///     Err(msg) => {
+        ///         error!("{}", msg);
+        ///     }
+        /// }
+        /// ```
+        /// # Returns
+        /// On success, return `Ok(FILE)`, otherwise `Err(err_msg)`
         fn to_fs_file_locked(&self) -> Result<MutexGuard<FILE>, &str>;
 }
 
+/// Test function for SD Card.
+/// # Description
+/// Test SD Card by writing and reading the SD Card.
 #[allow(unused)]
 pub fn sdcard_test() {
         for i in 0..10 as u8 {
@@ -72,8 +129,8 @@ pub fn sdcard_test() {
 
 pub fn stat_file(path_s:& str) -> Result<DirEntry, &'static str> {
         match path::parse_path(path_s) {
-                Ok((path_v, is_dir)) => {
-                        match fat::find_entry(&path_v, is_dir) {
+                Ok(path_v) => {
+                        match fat::find_entry(&path_v) {
                                 Ok(dirent) => {
                                         return Ok(dirent.clone());
                                 },
@@ -143,7 +200,9 @@ pub fn list_tree(path: &str, level: u32) -> Result<(), &'static str> {
         }
 }
 
-
+/// A test for File System
+/// # Description
+/// Test File System by creating/reading/writing Files and Folders
 #[allow(unused)]
 pub fn fs_test() {
         debug!("writing to test.txt");
