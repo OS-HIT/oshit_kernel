@@ -151,8 +151,9 @@ pub fn list(path: &str) -> Result<(), &'static str> {
                 Ok(mut dir) => {
                         loop{
                                 match dir.get_dirent() {
-                                        Ok(dirent) => {
-                                                dirent.print();
+                                        Ok((dirent, name)) => {
+                                                println!("{}", name);
+                                                // dirent.print();
                                         },
                                         Err(_) => {
                                                 return Ok(());
@@ -168,27 +169,32 @@ pub fn list(path: &str) -> Result<(), &'static str> {
 
 pub fn list_tree(path: &str, level: u32) -> Result<(), &'static str> {
         const INDENT: &str = "|   ";
-        match FILE::open_dir(path, FILE::FMOD_READ) {
+        let path = String::from(path);
+        match FILE::open_dir(&path, FILE::FMOD_READ) {
                 Ok(mut dir) => {
                         loop{
                                 match dir.get_dirent() {
-                                        Ok(dirent) => {
+                                        Ok((dirent, name)) => {
                                                 if dirent.get_name() == "." || dirent.get_name() == ".." {
                                                         continue;
                                                 }
                                                 for _i in 0..level{
                                                         print!("{}", INDENT);
                                                 }
-                                                dirent.print();
+                                                // dirent.print();
+                                                println!("{:11}--- {}", dirent.get_name(), name);
                                                 if dirent.is_dir() {
-                                                        let mut subdir = String::from(path);
-                                                        subdir += &dirent.get_name();
+                                                        let mut subdir = path.clone();
+                                                        subdir += &name;
+                                                        subdir.push('/');
+                                                        // debug!("calling list_tree: {}", subdir);
                                                         if let Err(msg) = list_tree(&subdir, level + 1) {
                                                                 return Err(msg);
                                                         }
                                                 }
                                         },
                                         Err(_) => {
+                                                // debug!("finished");
                                                 return Ok(());
                                         }
                                 }
@@ -282,8 +288,9 @@ pub fn fs_test() {
         let mut dir = FILE::open_dir("/new_dir", FILE::FMOD_READ).unwrap();
         loop{
             match dir.get_dirent() {
-                Ok(dirent) => {
-                    dirent.print();
+                Ok((dirent, name)) => {
+                //     dirent.print();
+                        println!("{}", name);
                 },
                 Err(msg) => {
                     debug!("{}", msg);
@@ -316,8 +323,9 @@ pub fn fs_test() {
         let mut dir = FILE::open_dir("/new_dir", FILE::FMOD_READ).unwrap();
         loop{
             match dir.get_dirent() {
-                Ok(dirent) => {
-                    dirent.print();
+                Ok((dirent, name)) => {
+                //     dirent.print();
+                        println!("{}", name);
                 },
                 Err(msg) => {
                     debug!("{}", msg);

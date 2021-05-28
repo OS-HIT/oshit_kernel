@@ -83,6 +83,21 @@ impl Path {
                 }
                 res
         }
+
+        pub fn pop(&mut self) -> Option<Path> {
+                if self.path.len() != 0 {
+                        let vt = vec![self.path.pop().unwrap()];
+                        let p = Path {
+                                path: vt,
+                                must_dir: self.must_dir,
+                                is_abs: false,
+                        };
+                        self.must_dir = true;
+                        return Some(p);
+                } else {
+                        return None;
+                }
+        }
 }
 
 struct PathParser {
@@ -120,10 +135,12 @@ impl PathParser {
                                         if c == '.' {
                                                 self.buf.push('.');
                                                 self.state = STATE::DirCur;
+                                                return None;
                                         } else {
                                                 if valid_fname_char(c) {
                                                         if self.buf.len() < 255 {
                                                                 self.buf.push(c);
+                                                                self.state = STATE::FName;
                                                                 return None;
                                                         } else {
                                                                 self.result = Some(Err(PathFormatError::FileNameTooLong));
@@ -134,7 +151,6 @@ impl PathParser {
                                                         return Some(Err(PathFormatError::InvalidCharInFileName));
                                                 }
                                         }
-                                        return None;
                                 }
                         },
                         STATE::FName => {
@@ -231,9 +247,13 @@ impl PathParser {
 }
 
 pub fn parse_path(path: &str) -> Result<Path, PathFormatError> {
+        // debug!("parse_path: path {}", path);
         let mut parser = PathParser::new();
         let chars = path.chars();
         for c in chars {
+                if c == 0 as char {
+                        break;
+                }
                 if let Some(error) = parser.read(c) {
                         return error;
                 }

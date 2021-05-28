@@ -202,6 +202,7 @@ pub fn get_free_cluster() -> Result<u32, &'static str> {
         match FAT_INST.get_free_cluster() {
                 Ok(new) => {
                         FAT_INST_2.write_next(new, 0x0FFF_FFFF).unwrap();
+                        clear_cluster(new);
                         return Ok(new);
                 },
                 Err(msg) => {

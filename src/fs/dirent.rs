@@ -45,9 +45,12 @@ pub struct DirEntryExt {
 impl DirEntryExt {
         const EXT_END: u8 = 0x40;
 
-        pub fn new(name: String, chksum: u8) -> Vec<DirEntryExt> {
+        pub fn new(name: &String, chksum: u8) -> Vec<DirEntryExt> {
                 let mut result = Vec::<DirEntryExt>::new();
                 let mut name:Vec<u16> = name.encode_utf16().collect();
+                while name[name.len() - 1] == 0 {
+                        name.pop();
+                }
                 if name.len() % 13 != 0 {
                         name.push(0);
                 }
@@ -72,11 +75,11 @@ impl DirEntryExt {
                         let mut name2 = [0u8;4];
                         let base = base + 6;
                         for j in 0..2 {
-                                name1[2*j] = (name[base + j] & 0xff) as u8;
-                                name1[2*j+1] = (name[base + j] >> 8) as u8;
+                                name2[2*j] = (name[base + j] & 0xff) as u8;
+                                name2[2*j+1] = (name[base + j] >> 8) as u8;
                         }
                         let dex = DirEntryExt{
-                                ext_attr: i as u8,
+                                ext_attr: (i+1) as u8,
                                 name0,
                                 attr: DirEntry::ATTR_LFN,
                                 reserved: 0,
@@ -90,6 +93,7 @@ impl DirEntryExt {
                 }
                 let last = cnt -1;
                 result[last].ext_attr |= DirEntryExt::EXT_END;
+                // debug!("DirEntryExt::new return with len{} {:x}", result.len(), result[last].ext_attr);
                 return result;
         }
 
@@ -205,23 +209,107 @@ impl DirEntry {
                 let mut name = String::new();
                 name += from_utf8(&self.name).unwrap().trim();
                 // println!("{}: {}", name.len(), name);
-                let ext = from_utf8(&self.ext).unwrap().trim();
+                let mut ext = String::new();
+                ext += from_utf8(&self.ext).unwrap().trim();
+                // debug!("ext len:{} ext: {} {} {}", ext.len(), self.ext[0], self.ext[1], self.ext[2]);
                 if ext.len() > 0 {
                         name += ".";
-                        name += ext;
+                        name += &ext;
                 }
                 return name;
+        }
+
+        pub fn set_name(&mut self, name: &String) {
+                let b:Vec<u8> = name.bytes().collect();
+                for i in (0..b.len()).rev() {
+                        if b[i] == '.' as u8 {
+                                let name_len = i;
+                                let ext_len = b.len() - i - 1;
+                                let mut name_ok = true;
+                                if name_len > 0 && name_len <= 8 {
+                                        for j in 0..name_len {
+                                                self.name[j] = b[j].to_ascii_uppercase();
+                                        }
+                                        for j in name_len..8 {
+                                                self.name[j] = ' ' as u8;
+                                        }
+                                } else if name_len == 8 {
+                                        for j in 0..6 {
+                                                self.name[j] = b[j].to_ascii_uppercase();
+                                        }
+                                        self.name[6] = '~' as u8;
+                                        self.name[7] = '1' as u8;
+                                } else {
+                                        name_ok = false;
+                                }
+                                if name_ok {
+                                        if ext_len > 0 && ext_len <= 3 {
+                                                for j in 0..ext_len {
+                                                        self.ext[j] = b[i+1+j].to_ascii_uppercase();
+                                                }
+                                                for j in ext_len..3 {
+                                                        self.ext[j] = ' ' as u8;
+                                                }
+                                                return;
+                                        } else if ext_len > 3 {
+                                                for j in 0..3 {
+                                                        self.ext[j] = b[i+1+j].to_ascii_uppercase();
+                                                }
+                                                return;
+                                        } 
+
+                                }
+                        }
+                }
+                if b.len() <= 8 {
+                        let name_len = b.len();
+                        for j in 0..name_len {
+                                self.name[j] = b[j].to_ascii_uppercase();
+                        }
+                        for j in name_len..8 {
+                                self.name[j] = ' ' as u8;
+                        }
+                        for j in 0..3 {
+                                self.ext[j] = ' ' as u8;
+                        }
+                } else {
+                        for j in 0..6 {
+                                self.name[j] = b[j].to_ascii_uppercase();
+                        }
+                        self.name[6] = '~' as u8;
+                        self.name[7] = '1' as u8;
+                        for j in 0..3 {
+                                self.ext[j] = ' ' as u8;
+                        }
+                }
         }
 
         pub fn chksum(&self) -> u8 {
                 let mut sum:u8 = 0;
                 for i in 0..8 {
-                        sum = (if sum & 1 != 0 {0x80} else {0}) + (sum >> 1) + self.name[i];
+                        sum = (if sum & 1 != 0 {0x80u8} else {0}).wrapping_add(sum >> 1).wrapping_add(self.name[i]);
                 }
                 for i in 0..3 {
-                        sum = (if sum & 1 != 0 {0x80} else {0}) + (sum >> 1) + self.ext[i];
+                        sum = (if sum & 1 != 0 {0x80u8} else {0}).wrapping_add(sum >> 1).wrapping_add(self.ext[i]);
                 }
                 return sum;
+        }
+
+        pub fn print_raw(&self) {
+                print!("name:");
+                for i in 0..8 {
+                        print!("{} ", self.name[i]);
+                }
+                print!("| ");
+                for i in 0..3 {
+                        print!("{} ", self.ext[i]);
+                }
+                println!();
+                println!("attr:{}", self.attr);
+                println!("start_h:{}", self.start_h);
+                println!("start_l:{}", self.start_l);
+                println!("size: {}", self.size);
+                println!("-------");
         }
         
         pub fn print(&self) {
@@ -265,4 +353,6 @@ impl DirEntry {
                 }
                 println!();
         }
+
+        
 }

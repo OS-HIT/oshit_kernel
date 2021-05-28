@@ -259,7 +259,7 @@ pub fn sys_getdents64(fd: usize, buf: VirtAddr, len: usize) -> isize {
         if let Ok(mut dir) = file.to_fs_file_locked() {
             loop{
                 match dir.get_dirent() {
-                    Ok(dirent) => {
+                    Ok((dirent, name)) => {
                         if last_ptr - buf > len {
                             error!("Memory out of bound");
                             return -1;

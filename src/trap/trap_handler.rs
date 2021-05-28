@@ -94,7 +94,7 @@ pub fn user_trap(_cx: &mut TrapContext) -> ! {
         Trap::Exception(Exception::StorePageFault) => {
             let proc = current_process().unwrap();
             let mut arcpcb = proc.get_inner_locked();
-            if !arcpcb.layout.lazy_copy_vma(stval.into(), VMAFlags::W) {
+            if let Ok(_) = arcpcb.layout.lazy_copy_vma(stval.into(), VMAFlags::W) {
                 error!(
                     "{:?} in application, bad addr = {:#x}, bad instruction = {:#x}, core dumped.",
                     scause.cause(),
@@ -107,7 +107,7 @@ pub fn user_trap(_cx: &mut TrapContext) -> ! {
         Trap::Exception(Exception::LoadPageFault) => {
             let proc = current_process().unwrap();
             let mut arcpcb = proc.get_inner_locked();
-            if !arcpcb.layout.lazy_copy_vma(stval.into(), VMAFlags::R) {
+            if let Ok(_) = arcpcb.layout.lazy_copy_vma(stval.into(), VMAFlags::R) {
                 error!(
                     "{:?} in application, bad addr = {:#x}, bad instruction = {:#x}, core dumped.",
                     scause.cause(),

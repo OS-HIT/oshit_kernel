@@ -125,6 +125,48 @@ pub fn read_dirent(chain: &Vec<u32>, offset: u32) -> Option<DirEntry> {
         return read_dirent_c(chain[chain_i as usize], off);
 }
 
+pub fn read_dirent_lfn(chain: &Vec<u32>, offset: u32) -> Result<Option<(DirEntry, usize, String)>,()> {
+        let mut direntext = Vec::<DirEntryExt>::new();
+        let mut do_push = false;
+        let mut offset = offset;
+        loop {
+                if let Some(item) = read_dirent(chain, offset) {
+                        if item.deleted() || item.is_vol() {
+                                return Ok(None);
+                        } 
+                        if item.is_ext() {
+                                unsafe {
+                                        let dex = *((&item as *const _) as *const DirEntryExt);
+                                        if dex.is_end() {
+                                                direntext.push(*((&item as *const _) as *const DirEntryExt));
+                                                do_push = true;
+                                        } else if do_push {
+                                                direntext.push(*((&item as *const _) as *const DirEntryExt));
+                                        } else {
+                                                return Ok(None);
+                                        }
+                                }
+                                offset += 1;
+                                continue;
+                        }
+                        if item.is_dir() || item.is_file() {
+                                if direntext.len() > 0 {
+                                        let cnt = direntext.len() + 1;
+                                        let name = get_full_name(&mut direntext).unwrap();
+                                        return Ok(Some((item, cnt, name)));
+                                } else {
+                                        return Ok(Some((item, 1, item.get_name())));
+                                }
+                        }
+                        // debug!("read_dirent_lfn: I get some weird stuff:{} {}",chain[0], offset);
+                        item.print_raw();
+                        offset += 1;
+                } else {
+                        return Err(());
+                }
+        }
+}
+
 pub fn read_dirent_c(cluster: u32, offset: u32) -> Option<DirEntry> {
         if cluster > *CLUSTER_CNT {
                 return None;
@@ -218,7 +260,7 @@ fn get_full_name(dex: &mut Vec::<DirEntryExt>) -> Result<String, &'static str> {
 }
 
 pub fn find_entry_from(from: u32, path: &Path) -> Result<DirEntry, &'static str> {
-        debug!("find_entry_from:{}",path.path[0]);
+        // debug!("find_entry_from:{} {}", from, path.path[0]);
         if path.path.len() == 0 {
                 if path.is_abs {
                         return Err("find_entry_from: no entry for root directory");
@@ -236,44 +278,27 @@ pub fn find_entry_from(from: u32, path: &Path) -> Result<DirEntry, &'static str>
         let mut depth = 0;
         for fname in &path.path {
                 let mut i = 0;
+                let fname = fname.to_ascii_uppercase();
+                // debug!("find_entry_from:{} {}", fname, dir[0]);
                 loop {
-                        if let Some(item) = read_dirent(&dir, i) {
-                                if item.deleted() || item.is_vol() {
-                                        i += 1;
-                                        continue;
-                                } 
-                                if item.is_ext() {
-                                        unsafe {
-                                                direntext.push(*((&item as *const _) as *const DirEntryExt));
-                                        }
-                                        i += 1;
-                                        continue;
-                                }
-                                if direntext.len() > 0 {
-                                        let name = get_full_name(&mut direntext).unwrap();
-                                        // debug!("find_entry_from:{} vs {}", *fname, name);
-                                        if name.to_ascii_uppercase().eq(&fname.to_ascii_uppercase()) {
+                        match read_dirent_lfn(&dir, i) {
+                                Ok(Some((item, cnt, name))) => {
+                                        if name.to_ascii_uppercase() == fname {
                                                 dirent = Some(item);
                                                 lname = Some(name);
                                                 depth += 1;
                                                 dir = if item.is_dir() {item.get_chain()} else {Vec::new()};
                                                 break;       
                                         }
-                                        
-                                } else {
-                                        if *fname == item.get_name() {
-                                                dirent = Some(item);
-                                                lname = Some(item.get_name());
-                                                depth += 1;
-                                                dir = if item.is_dir() {item.get_chain()} else {Vec::new()};
-                                                break;
-                                        }
-
+                                        i += cnt as u32;
+                                },
+                                Ok(None) => {
+                                        i += 1;
+                                },
+                                Err(_) => {
+                                        return Err("find_entry_from: file not found");
                                 }
-                        } else {
-                                return Err("find_entry_from: file not found");
-                        }
-                        i += 1;
+                        };
                 }
         }
         if depth == path.path.len() {
@@ -352,7 +377,7 @@ pub fn update_entry(path: &Path, new: &DirEntry) -> Result<(), &'static str> {
                 return Err("update_entry: no entry for root directory");
         }
         let mut parent_path = path.clone();
-        let file = parent_path.path.pop().unwrap();
+        let file = parent_path.path.pop().unwrap().to_ascii_uppercase();
         let fisdir = parent_path.must_dir;
         parent_path.must_dir = true;
         let chain = if parent_path.path.len() == 0 {
@@ -364,40 +389,27 @@ pub fn update_entry(path: &Path, new: &DirEntry) -> Result<(), &'static str> {
         let mut offset = 0;
         let mut dex = Vec::<DirEntryExt>::new();
         loop {
-                if let Some(dirent) = read_dirent(&chain, offset) {
-                        if dirent.deleted() {
-                                continue;
-                        }
-                        if dirent.is_ext() {
-                                unsafe {
-                                        dex.push(*((&dirent as *const _) as *const DirEntryExt));
-                                }
-                                continue;
-                        }
-                        if dex.len() != 0 {
-                                let flen = dex.len() as u32 + 1;
-                                if file == get_full_name(&mut dex).unwrap() {
-                                        if path.must_dir && !dirent.is_dir() {
-                                                return Err("delete entry: not a directory");
-                                        }
-                                        write_dirent(&chain, offset, new).unwrap();
-                                }
-                        } else {
-                                if file == dirent.get_name() {
+                match read_dirent_lfn(&chain, offset) {
+                        Ok(Some((dirent, cnt, name))) => {
+                                if name.to_ascii_uppercase() == file {
                                         if fisdir && !dirent.is_dir() {
                                                 return Err("delete_entry: not a directory");
                                         }
+                                        offset += cnt as u32;
+                                        offset -= 1;
                                         write_dirent(&chain, offset, new).unwrap();
                                         return Ok(());
-                                }
+                                } 
+                                offset += cnt as u32;
+                        },
+                        Ok(None) => {
+                                offset += 1;
+                        },
+                        Err(_) => {
+                                return Err("update_entry: entry not found");
                         }
-
-                } else {
-                        break;
                 }
-                offset += 1;
         }
-        return Err("update_entry: entry not found");
 }
 
 // #[inline]
@@ -430,7 +442,8 @@ fn get_free_entry(chain: &Vec<u32>) -> u32 {
         
 }
 
-pub fn new_entry(parent: &Path, new: &DirEntry, name: String) -> Result<(), &'static str> {
+pub fn new_entry(parent: &Path, new: &DirEntry, name: &String) -> Result<(), &'static str> {
+        // debug!("new_entry: name {}", name);
         let mut fchain = get_file_chain(*ROOT_DIR);
         let mut entry: Option<DirEntry> = None;
         let mut parent = parent.clone();
@@ -451,10 +464,12 @@ pub fn new_entry(parent: &Path, new: &DirEntry, name: String) -> Result<(), &'st
                 if let Some(de) = dex.pop() {
                         unsafe {
                                 let d = *((&de as *const _) as *const DirEntry);
+                                // debug!("writing to {}", offset);
                                 if let Err(_) = write_dirent(&fchain, offset, &d) {
                                         append_chain(fchain[fchain.len() -1]).unwrap();
                                         write_dirent(&fchain, offset, &d).unwrap();
                                 }
+
                                 offset += 1;
                         }
                 } else {
@@ -470,6 +485,7 @@ pub fn new_entry(parent: &Path, new: &DirEntry, name: String) -> Result<(), &'st
                         return Err("new_entry: what happened to my entry?");
                 }
         }
+        // debug!("writing short to {}", offset);
         if let Err(_) = write_dirent(&fchain, offset, new) {
                 append_chain(fchain[fchain.len() -1]).unwrap();
                 write_dirent(&fchain, offset, new).unwrap();
@@ -477,30 +493,37 @@ pub fn new_entry(parent: &Path, new: &DirEntry, name: String) -> Result<(), &'st
         return Ok(());
 }
 
-pub fn new_entry_at(parent: &DirEntry, new: &DirEntry, name: String) -> Result<u32, &'static str> {
+pub fn new_entry_at(parent: &DirEntry, new: &DirEntry, name: &String) -> Result<u32, &'static str> {
+        // debug!("new_entry_at: name {} {}",new.get_name(), name);
         let fchain = get_file_chain(parent.get_start());
         let mut offset = get_free_entry(&fchain);
-        let mut dex = DirEntryExt::new(name, new.chksum());
-        let size = size_of::<DirEntryExt>() * dex.len() + size_of::<DirEntry>();
-        loop {
-                if let Some(de) = dex.pop() {
-                        unsafe {
-                                let d = *((&de as *const _) as *const DirEntry);
-                                if let Err(_) = write_dirent(&fchain, offset, &d) {
-                                        append_chain(fchain[fchain.len() -1]).unwrap();
-                                        write_dirent(&fchain, offset, &d).unwrap();
+        let mut size = 0;
+        if name.len() != 0 {
+                let mut dex = DirEntryExt::new(name, new.chksum());
+                size += size_of::<DirEntryExt>() * dex.len();
+                loop {
+                        if let Some(de) = dex.pop() {
+                                unsafe {
+                                        let d = *((&de as *const _) as *const DirEntry);
+                                        if let Err(_) = write_dirent(&fchain, offset, &d) {
+                                                append_chain(fchain[fchain.len() -1]).unwrap();
+                                                write_dirent(&fchain, offset, &d).unwrap();
+                                        }
+                                        // debug!("new_entry_at: writed ext at {} {}", fchain[0], offset);
+                                        offset += 1;
                                 }
-                                offset += 1;
+                        } else {
+                                break;
                         }
-                } else {
-                        break;
                 }
         }
-        
+
+        size += size_of::<DirEntry>();
         if let Err(_) = write_dirent(&fchain, offset, new) {
                 append_chain(fchain[fchain.len() -1]).unwrap();
                 write_dirent(&fchain, offset, new).unwrap();
         }
+        // debug!("new_entry_at: writed at {} {}", fchain[0], offset);
         return Ok(size as u32);
 }
 
