@@ -19,14 +19,16 @@ pub fn sys_openat(fd: i32, file_name: VirtAddr, flags: u32, _: u32) -> isize {
     let mut buf = arcpcb.layout.get_user_cstr(file_name);
 
     if buf[0] == b'.' && buf[1] == b'/' {
-        buf.rotate_left(2);
+        buf = buf[2..].iter().cloned().collect();
     }
 
     if let Ok(path) = core::str::from_utf8(&buf) {
+        verbose!("Path: {}", path);
         if fd == AT_FDCWD {
             verbose!("openat found AT_FDCWD!");
             let mut whole_path = arcpcb.path.clone();
             whole_path.push_str(path);
+            verbose!("Openat path: {} + {}", arcpcb.path.clone(), path);
             let fs_flags: u32 = match flags {
                 0x000 => FILE::FMOD_READ,
                 0x001 => FILE::FMOD_WRITE,
@@ -34,6 +36,7 @@ pub fn sys_openat(fd: i32, file_name: VirtAddr, flags: u32, _: u32) -> isize {
                 0x040 => FILE::FMOD_CREATE,
                 0x041 => FILE::FMOD_CREATE | FILE::FMOD_WRITE,
                 0x042 => FILE::FMOD_READ | FILE::FMOD_WRITE | FILE::FMOD_CREATE,
+                0x200000 => FILE::FMOD_READ,
                 // 0x0200000 => FILE::FMOD_READ,
                 _ => {
                     error!("Not supported combination： {:x}", flags);
@@ -306,8 +309,8 @@ pub fn sys_unlink(dirfd: i32, file_name: VirtAddr, _: usize) -> isize{
             verbose!("sys_unlink found AT_FDCWD!");
             let mut whole_path = arcpcb.path.clone();
             whole_path.push_str(path);
-
-            match FILE::delete_dir(whole_path.as_str()) {
+            verbose!("Deleting at_fdcwd path {}", whole_path);
+            match FILE::delete_file(whole_path.as_str()) {
                 Ok(_) => return 0,
                 Err(msg) => {
                     error!("{}", msg);
@@ -317,7 +320,7 @@ pub fn sys_unlink(dirfd: i32, file_name: VirtAddr, _: usize) -> isize{
         }
 
         if buf[0] == b'/' {
-            match FILE::delete_dir(path) {
+            match FILE::delete_file(path) {
                 Ok(_) => return 0,
                 Err(msg) => {
                     error!("{}", msg);
@@ -329,6 +332,7 @@ pub fn sys_unlink(dirfd: i32, file_name: VirtAddr, _: usize) -> isize{
         if let Some(dir) = &arcpcb.files[dirfd as usize] {
             if let Ok(dir_file) = dir.to_fs_file_locked() {
                 if dir_file.ftype == FTYPE::TDir {
+                    verbose!("Deleting file at {}", path);
                     match dir_file.delete_file_from(path) {
                         Ok(_) => return 0,
                         Err(msg) => {
