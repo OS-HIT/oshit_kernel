@@ -6,6 +6,7 @@ mod pid;
 mod kernel_stack;
 mod processor;
 mod proc0;
+pub mod kernel_stored_app_loader;
 
 pub use pcb::ProcessContext;
 pub use pcb::ProcessControlBlock;

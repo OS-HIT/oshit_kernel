@@ -127,7 +127,7 @@ pub fn sys_exec(app_name: VirtAddr, argv: VirtAddr, envp: VirtAddr) -> isize {
             }
         } ,
         Err(msg) =>{
-            error!("Failed to open file: {}", msg);
+            error!("Failed to open file {}: {}", app_name, msg);
             -1
         }
     }

@@ -375,7 +375,7 @@ impl FILE {
                                 read_cluster(cluster, 0, &mut tmp);
                                 assert_eq!(tmp[0], 0);
                                 dirent.set_name(&dir.path[0]);
-                                dirent.print();
+                                // dirent.print();
                                 new_entry(&path, &dirent, &dir.path[0]).unwrap();
                         } else {
                                 return Err("make_dir: directory name occupied");
