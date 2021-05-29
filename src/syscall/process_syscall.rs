@@ -218,14 +218,13 @@ pub fn sys_sbrk(sz: usize) -> isize {
 }
 
 pub fn sys_mmap(start: VirtAddr, len: usize, prot: u8, _: usize, fd: usize, offset: usize) -> isize {
+    verbose!("sys_mmap");
     let proc = current_process().unwrap();
     let mut arcpcb = proc.get_inner_locked();
     if let Some(file) = arcpcb.files[fd].clone() {
-        if let Ok(_) = file.clone().to_fs_file_locked() {
-            if let Ok(_) = arcpcb.layout.add_vma(file, start, VMAFlags::from_bits(prot << 1).unwrap(), offset) {
-                return 0;
-            } 
-        }
+        if let Ok(_) = arcpcb.layout.add_vma(file, start, VMAFlags::from_bits(prot << 1).unwrap(), offset, len) {
+            return 0;
+        } 
     }
     -1
 }

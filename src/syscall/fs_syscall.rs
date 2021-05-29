@@ -1,5 +1,6 @@
 //! Wrappers of file system related syscalls.
 use super::super::fs::file::FILE;
+use crate::fs::block_cache::BLOCK_SZ;
 use crate::fs::{self, FTYPE, FileWithLock, VirtFile, make_pipe};
 use crate::memory::{VirtAddr};
 use crate::process::{current_process};
@@ -32,8 +33,9 @@ pub fn sys_openat(fd: i32, file_name: VirtAddr, flags: u32, _: u32) -> isize {
                 0x002 => FILE::FMOD_READ | FILE::FMOD_WRITE,
                 0x040 => FILE::FMOD_CREATE,
                 0x042 => FILE::FMOD_READ | FILE::FMOD_WRITE | FILE::FMOD_CREATE,
+                // 0x0200000 => FILE::FMOD_READ,
                 _ => {
-                    error!("Not supported combination");
+                    error!("Not supported combination： {:x}", flags);
                     return -1;
                 }
             };
@@ -382,6 +384,64 @@ pub fn sys_mkdirat(dirfd: usize, path: VirtAddr, _: usize) -> isize {
                         }
                     }
                 }
+            }
+        }
+    }
+    -1
+}
+
+#[repr(C)]
+pub struct FStat {
+    pub st_dev: u64,
+    pub st_ino: u64,
+    pub st_mode: u32,
+    pub st_nlink: u32,
+    pub st_uid: u32,
+    pub st_gid: u32,
+    pub st_rdev: u64,
+    pub __pad: u32,
+    pub st_size: u32,
+    pub st_blksize: u32,
+    pub __pad2: i32,
+    pub st_blocks: u64,
+    pub st_atime_sec: u32,
+    pub st_atime_nsec: u32,
+    pub st_mtime_sec: u32,
+    pub st_mtime_nsec: u32,
+    pub st_ctime_sec: u32,
+    pub st_ctime_nsec: u32,
+    pub __unused: [u8; 2],
+}
+
+pub fn sys_fstat(fd: usize, ptr: VirtAddr) -> isize {
+    let proc = current_process().unwrap();
+    let arcpcb = proc.get_inner_locked();
+    if let Some(op_file) = arcpcb.files.get(fd) {
+        if let Some(file) = op_file {
+            if let Ok(fs_file) = file.to_fs_file_locked() {
+                let stat = FStat {
+                    st_dev: 0,
+                    st_ino: 0,
+                    st_mode: 0,
+                    st_nlink: 0,
+                    st_uid: 0,
+                    st_gid: 0,
+                    st_rdev: 0,
+                    __pad: 0,
+                    st_size: fs_file.fsize,
+                    st_blksize: BLOCK_SZ as u32,
+                    __pad2: 0,
+                    st_blocks: fs_file.fsize as u64 / BLOCK_SZ as u64,
+                    st_atime_sec: 0,
+                    st_atime_nsec: 0,
+                    st_mtime_sec: 0,
+                    st_mtime_nsec: 0,
+                    st_ctime_sec: 0,
+                    st_ctime_nsec: 0,
+                    __unused: [0u8; 2],
+                };
+                arcpcb.layout.write_user_data(ptr, &stat);
+                return 0; 
             }
         }
     }

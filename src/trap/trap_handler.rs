@@ -92,6 +92,7 @@ pub fn user_trap(_cx: &mut TrapContext) -> ! {
         },
         // Store page fault, check vma
         Trap::Exception(Exception::StorePageFault) => {
+            verbose!("Store Page Fault!");
             let proc = current_process().unwrap();
             let mut arcpcb = proc.get_inner_locked();
             if let Ok(_) = arcpcb.layout.lazy_copy_vma(stval.into(), VMAFlags::W) {
@@ -105,6 +106,7 @@ pub fn user_trap(_cx: &mut TrapContext) -> ! {
             }
         },
         Trap::Exception(Exception::LoadPageFault) => {
+            verbose!("Load Page Fault");
             let proc = current_process().unwrap();
             let mut arcpcb = proc.get_inner_locked();
             if let Ok(_) = arcpcb.layout.lazy_copy_vma(stval.into(), VMAFlags::R) {

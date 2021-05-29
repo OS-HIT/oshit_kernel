@@ -77,7 +77,7 @@ pub use trivial_syscall::{
 
 use crate::memory::VirtAddr;
 
-use self::fs_syscall::sys_mkdirat;
+use self::fs_syscall::{sys_fstat, sys_mkdirat};
 
 /// Handle and dispatch the syscalls to corresponding module.
 pub fn syscall(syscall_id: usize, args: [usize; 6]) -> isize {
@@ -108,6 +108,7 @@ pub fn syscall(syscall_id: usize, args: [usize; 6]) -> isize {
         SYSCALL_MMAP        => sys_mmap(args[0].into(), args[1], args[2] as u8, args[3], args[4], args[5]), 
         SYSCALL_UNLINKAT    => sys_unlink(args[0] as i32, args[1].into(), args[2].into()),
         SYSCALL_MKDIRAT     => sys_mkdirat(args[0], args[1].into(), args[2]),
+        SYSCALL_FSTAT       => sys_fstat(args[0], args[1].into()),
         _ => {
             fatal!("Unsupported syscall_id: {}", syscall_id);
             -1

@@ -55,12 +55,15 @@ pub extern "C" fn rust_main() -> !{
     trap::init();
         
     fs::list_tree("/", 0).unwrap();
-    if let Ok(mut file) = fs::FILE::open_file("/mydir/new_file_test.rs", fs::FILE::FMOD_CREATE | fs::FILE::FMOD_WRITE) {
-        file.write_file("hello_world\n".as_bytes());
-    } else {
-        error!("Create file failed");
-    }
-    fs::list_tree("/", 0).unwrap();
+    // match fs::FILE::open_file("/mydir/new_file_test.rs", fs::FILE::FMOD_CREATE | fs::FILE::FMOD_WRITE) {
+    //     Ok(mut file) => {
+    //         file.write_file("hello_world\n".as_bytes());
+    //     }
+    //     Err(msg) => {
+    //         error!("Create file failed: {}", msg);
+    //     }
+    // }
+    // fs::list_tree("/", 0).unwrap();
     // fs::fs_test();
     process::init();
     panic!("drop off from bottom!");
