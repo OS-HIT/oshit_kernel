@@ -163,7 +163,7 @@ impl Segment {
                 // ppn = frame.ppn;
                 // self.frames.insert(vpn, frame);
                 // pagetable.map(vpn, ppn, PTEFlags::from_bits(self.segFlags.bits).unwrap());
-                verbose!("Lazy for vma");
+                verbose!("Lazy map, not mapping");
             }
         }
     }
@@ -194,6 +194,7 @@ impl Segment {
         }
 
         self.frames.insert(vpn, frame);
+        verbose!("Lazy mapped: {:?} <=> {:?}", vpn, ppn);
         pagetable.map(vpn, ppn, PTEFlags::from_bits(self.vmaFlags.bits).unwrap() | PTEFlags::U);
         Ok(())
     }
@@ -226,21 +227,34 @@ impl Segment {
     /// ```
     #[allow(dead_code)]
     pub fn unmap_page(&mut self, pagetable: &mut PageTable, vpn: VirtPageNum) {
+        verbose!("Unmapping {:?}", vpn);
         if self.map_type == MapType::Framed {
             self.frames.remove(&vpn);
         } else if self.map_type == MapType::VMA {
-            if self.vmaFlags.contains(VMAFlags::W) {
-                let file = self.file.clone().unwrap();
-                let mut fs_file = file.to_fs_file_locked().unwrap();
-                let cur = fs_file.cursor;
-                let offset = (vpn - self.range.get_start()) * PAGE_SIZE + self.offset;
-                fs_file.seek_file(&FSEEK::SET(offset as i32)); 
-                if let Err(msg) = fs_file.write_file(pagetable.translate(vpn).unwrap().ppn().page_ptr()) {
-                    error!("Failed to write to file: {}", msg);
+            verbose!("Unmapping vma");
+            if let Some(pte) = pagetable.walk(vpn) {
+                verbose!("pte find: valid: {}, ditry: {}", pte.valid(), pte.dirty());
+                if self.vmaFlags.contains(VMAFlags::W) && pte.dirty() && pte.valid() {
+                    let file = self.file.clone().unwrap();
+                    let mut fs_file = file.to_fs_file_locked().unwrap();
+                    let cur = fs_file.cursor;
+                    let offset = (vpn - self.range.get_start()) * PAGE_SIZE + self.offset;
+                    fs_file.seek_file(&FSEEK::SET(offset as i32)); 
+                    verbose!("Unmap page VMA write back, from {:?}({:?})", vpn, PhysPageNum::from(pagetable.translate_va(vpn.into()).unwrap()));
+                    let page_ptr = PhysPageNum::from(pagetable.translate_va(vpn.into()).unwrap()).page_ptr();
+                    if let Err(msg) = fs_file.write_file(page_ptr) {
+                        error!("Failed to write to file: {}", msg);
+                    }
+                    fs_file.seek_file(&FSEEK::SET(cur as i32));
+                    self.frames.remove(&vpn);
+                } else {
+                    verbose!("Lazy page detected, not unmapping");
+                    return;
                 }
-                fs_file.seek_file(&FSEEK::SET(cur as i32));
+            } else {
+                verbose!("Lazy page detected, not unmapping");
+                return;
             }
-            self.frames.remove(&vpn);
         }
         pagetable.unmap(vpn);
     }
@@ -743,10 +757,11 @@ impl MemLayout {
     }
 
     /// Add a VMA segment to the layout
-    pub fn add_vma(&mut self, file: Arc<dyn VirtFile + Send + Sync>, start: VirtAddr, flag: VMAFlags, offset: usize, length: usize) -> Result<(), &'static str> {
+    pub fn add_vma(&mut self, file: Arc<dyn VirtFile + Send + Sync>, start: VirtAddr, flag: VMAFlags, offset: usize, length: usize) -> Result<VirtAddr, &'static str> {
         if start.0 == 0 {
             return self.add_vma_anywhere(file, flag, offset, length);
         }
+        verbose!("Mapping VMA: [{:?}, {:?}), length = {}", VirtPageNum::from(start), (start + length).to_vpn_ceil(), length);
         let inner = file.to_fs_file_locked().unwrap();
         let start_vpn = start.to_vpn();
         let stop_vpn = (min(start + inner.fsize as usize, start + length)).to_vpn_ceil();
@@ -770,11 +785,11 @@ impl MemLayout {
             offset
         );
         self.add_segment(segment);
-        Ok(())
+        Ok(start)
     }
 
     /// Add a VMA segment anywhere
-    pub fn add_vma_anywhere(&mut self, file: Arc<dyn VirtFile + Send + Sync>, flag: VMAFlags, offset: usize, len: usize) -> Result<(), &'static str> {
+    pub fn add_vma_anywhere(&mut self, file: Arc<dyn VirtFile + Send + Sync>, flag: VMAFlags, offset: usize, len: usize) -> Result<VirtAddr, &'static str> {
         let mut stop_vpn: VirtPageNum = VirtAddr::from(TRAP_CONTEXT - 4 * PAGE_SIZE).into();
         let mut start_vpn: VirtPageNum = stop_vpn - file.to_fs_file_locked().unwrap().fsize as usize / PAGE_SIZE;
         'outer: for i in stop_vpn.0..0 {
@@ -783,9 +798,9 @@ impl MemLayout {
             
             // check overlap
             for seg in self.segments.iter() {
-                if seg.range.get_start() <= start_vpn && start_vpn < seg.range.get_end() {
+                if seg.range.get_start() - 1 <= start_vpn && start_vpn < seg.range.get_end() + 1 {
                     continue 'outer;
-                } else if seg.range.get_start() < stop_vpn && stop_vpn < seg.range.get_end() {
+                } else if seg.range.get_start() - 1 < stop_vpn && stop_vpn < seg.range.get_end() + 1 {
                     continue 'outer;
                 }
             }
@@ -795,6 +810,7 @@ impl MemLayout {
     }
 
     pub fn lazy_copy_vma(&mut self, address: VirtAddr, access_flag: VMAFlags) -> Result<(), &'static str> {
+        verbose!("Lazy copy triggered for {:?}", address);
         for seg in self.segments.iter_mut() {
             if seg.map_type == MapType::VMA && seg.range.get_start() <= address.to_vpn() && address.to_vpn() < seg.range.get_end() {
                 if !(access_flag & seg.vmaFlags).is_empty() {
@@ -805,18 +821,48 @@ impl MemLayout {
         Err("No such vma segment!")
     }
 
-    pub fn drop_vma(&mut self, drop_start: VirtPageNum, drop_end: VirtPageNum) {
-        for seg in self.segments.iter() {
+    pub fn drop_vma(&mut self, drop_start: VirtPageNum, drop_end: VirtPageNum) -> Result<(), &'static str> {
+        verbose!("munmapping [{:?}, {:?})", drop_start, drop_end);
+        let mut hit_idx = 0;
+        let mut found = false;
+        for (idx, seg) in self.segments.iter().enumerate() {
             let seg_start = seg.range.get_start();
             let seg_end = seg.range.get_end();
             let start_ok = seg_start <= drop_start && drop_start < seg_end;
             let end_ok = seg_start < drop_end && drop_start <= seg_end;            
             if start_ok && end_ok {
-                
+                hit_idx = idx;
+                found = true;
+                break;
             } else if start_ok || end_ok {
-                error!("Bad Drop VMA Region.");
+                return Err("Bad Drop VMA Region.");
             }
         }
+        if !found {
+            return Err("No such VMA Region");
+        }
+        let seg = &self.segments[hit_idx];
+        let file = seg.file.clone().unwrap();
+        let offset = seg.offset;
+        let seg_start = seg.range.get_start();
+        let seg_end = seg.range.get_end();
+        let flags = seg.vmaFlags;
+        self.drop_segment(seg_start);
+        
+        // map leading part
+        if seg_start < drop_start {
+            if let Err(msg) = self.add_vma(file.clone(), seg_start.into(), flags, offset, (drop_start - seg_start) * PAGE_SIZE) {
+                return Err(msg);
+            }
+        }
+
+        // map trailing part
+        if drop_end < seg_end {
+            if let Err(msg) = self.add_vma(file.clone(), drop_end.into(), flags, offset + (drop_end - seg_start) * PAGE_SIZE, (seg_end - drop_end) * PAGE_SIZE) {
+                return Err(msg);
+            }
+        }
+        Ok(())
     }
 }
 

@@ -85,6 +85,10 @@ impl PageTableEntry {
     pub fn executable(&self) -> bool {
         (self.flags() & PTEFlags::X) != PTEFlags::empty()
     }
+    
+    pub fn dirty(&self) -> bool {
+        self.flags().contains(PTEFlags::D)
+    }
 
     /// Check if the corresponding physical page is writbale
     pub fn writable(&self) -> bool {
@@ -152,7 +156,7 @@ impl PageTable {
     /// Get the page table entry from the pagetable. Return None if not mapped.
     /// # Return
     /// Return a reference to the corrersponding page table entry, or None if not found.
-    fn walk(&self, vpn: VirtPageNum) -> Option<&PageTableEntry> {
+    pub fn walk(&self, vpn: VirtPageNum) -> Option<&PageTableEntry> {
         let indexes = vpn.indexes();
         let mut ppn = self.root_ppn;
         for i in 0..3 {

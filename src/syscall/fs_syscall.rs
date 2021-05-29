@@ -32,6 +32,7 @@ pub fn sys_openat(fd: i32, file_name: VirtAddr, flags: u32, _: u32) -> isize {
                 0x001 => FILE::FMOD_WRITE,
                 0x002 => FILE::FMOD_READ | FILE::FMOD_WRITE,
                 0x040 => FILE::FMOD_CREATE,
+                0x041 => FILE::FMOD_CREATE | FILE::FMOD_WRITE,
                 0x042 => FILE::FMOD_READ | FILE::FMOD_WRITE | FILE::FMOD_CREATE,
                 // 0x0200000 => FILE::FMOD_READ,
                 _ => {

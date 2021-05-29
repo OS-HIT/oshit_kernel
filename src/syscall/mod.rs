@@ -66,7 +66,8 @@ pub use process_syscall::{
     sys_getcwd,
     sys_chdir,
     sys_sbrk,
-    sys_mmap
+    sys_mmap,
+    sys_munmap,
 };
 pub use trivial_syscall::{
     sys_time, 
@@ -109,6 +110,7 @@ pub fn syscall(syscall_id: usize, args: [usize; 6]) -> isize {
         SYSCALL_UNLINKAT    => sys_unlink(args[0] as i32, args[1].into(), args[2].into()),
         SYSCALL_MKDIRAT     => sys_mkdirat(args[0], args[1].into(), args[2]),
         SYSCALL_FSTAT       => sys_fstat(args[0], args[1].into()),
+        SYSCALL_MUNMAP      => sys_munmap(args[0].into(), args[1]),
         _ => {
             fatal!("Unsupported syscall_id: {}", syscall_id);
             -1

@@ -95,12 +95,13 @@ pub fn user_trap(_cx: &mut TrapContext) -> ! {
             verbose!("Store Page Fault!");
             let proc = current_process().unwrap();
             let mut arcpcb = proc.get_inner_locked();
-            if let Ok(_) = arcpcb.layout.lazy_copy_vma(stval.into(), VMAFlags::W) {
+            if let Err(msg) = arcpcb.layout.lazy_copy_vma(stval.into(), VMAFlags::W) {
                 error!(
-                    "{:?} in application, bad addr = {:#x}, bad instruction = {:#x}, core dumped.",
+                    "{:?} in application, bad addr = {:#x}, bad instruction = {:#x}, {}",
                     scause.cause(),
                     stval,
-                    current_trap_context().sepc,
+                    arcpcb.get_trap_context().sepc,
+                    msg
                 );
                 exit_switch(-2);
             }
@@ -109,12 +110,13 @@ pub fn user_trap(_cx: &mut TrapContext) -> ! {
             verbose!("Load Page Fault");
             let proc = current_process().unwrap();
             let mut arcpcb = proc.get_inner_locked();
-            if let Ok(_) = arcpcb.layout.lazy_copy_vma(stval.into(), VMAFlags::R) {
+            if let Err(msg) = arcpcb.layout.lazy_copy_vma(stval.into(), VMAFlags::R) {
                 error!(
-                    "{:?} in application, bad addr = {:#x}, bad instruction = {:#x}, core dumped.",
+                    "{:?} in application, bad addr = {:#x}, bad instruction = {:#x}, {}",
                     scause.cause(),
                     stval,
-                    current_trap_context().sepc,
+                    arcpcb.get_trap_context().sepc,
+                    msg
                 );
                 exit_switch(-2);
             }
