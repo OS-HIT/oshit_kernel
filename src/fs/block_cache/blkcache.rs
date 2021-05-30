@@ -8,7 +8,7 @@ use alloc::sync::Arc;
 use super::BLOCK_SZ;
 
 pub struct BlockCache {
-        cache: [u8; BLOCK_SZ],
+        pub cache: [u8; BLOCK_SZ],
         block_id: usize,
         modified: bool,
 }
@@ -39,14 +39,14 @@ impl BlockCache {
         }
         
         pub fn get_ref<T>(&self, offset: usize) -> &T where T: Sized {
-                if self.block_id == 32 {
+                if self.block_id < 35 && self.block_id > 30 {
                         // debug!("get_ref called on block 32");
                         for i in 0..128 {
                                 unsafe {
                                         let addr = self.addr_of_offset(i*4);
                                         let content = *(addr as *const u32);
                                         if content == 0 {
-                                                error!("something is wrong with {:#X}", addr);
+                                                error!("something is wrong with {:#X} at {}", addr, self.block_id);
                                         }
                                 }
                         }
@@ -80,15 +80,15 @@ impl BlockCache {
         }
 
         pub fn sync(&mut self) {
-                if self.block_id == 32 {
-                        debug!("sync called on block 32");
-                        for i in 0..16 {
-                                for j in 0..8 {
-                                        print!("{:08X} ", self.get_ref::<u32>((i*8 + j) * 4))
-                                }
-                                println!();
-                        }
-                }
+                // if self.block_id == 32 {
+                //         debug!("sync called on block 32");
+                //         for i in 0..16 {
+                //                 for j in 0..8 {
+                //                         print!("{:08X} ", self.get_ref::<u32>((i*8 + j) * 4))
+                //                 }
+                //                 println!();
+                //         }
+                // }
                 if self.modified {
                         self.modified = false;
                         BlockCache::device().write_block(self.block_id, &self.cache);

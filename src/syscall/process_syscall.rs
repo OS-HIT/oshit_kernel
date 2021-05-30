@@ -35,7 +35,7 @@ pub fn sys_yield() -> isize {
 pub fn sys_exit(code: i32) -> ! {
     match FILE::open_file("/dup", FILE::FMOD_READ) {
         Ok(mut file) => {
-            error!("FILE clone chain len {} ({:?}) size {}", file.fchain.len(), file.fchain, file.fsize);
+            debug!("FILE clone chain len {} ({:?}) size {}", file.fchain.len(), file.fchain, file.fsize);
             drop(file);
         }
         Err(msg) => {

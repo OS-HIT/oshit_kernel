@@ -297,7 +297,7 @@ pub fn find_entry_from(from: u32, path: &Path) -> Result<DirEntry, &'static str>
                                         i += 1;
                                 },
                                 Err(_) => {
-                                        // panic!("PANICCCCC");
+                                        // panic!("PANICCCCC {}", fname);
                                         return Err("find_entry_from: file not found");
                                 }
                         };
