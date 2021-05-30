@@ -22,16 +22,29 @@ impl BlockCache {
         pub fn new(
                 block_id: usize,
         ) -> Self {
+
                 let mut cache = [0u8; BLOCK_SZ];
                 BlockCache::device().read_block(block_id, &mut cache);
                 if block_id == 32 {
                         debug!("new block 32!!!!!!!!!!!!!!!!!!!!!!!!!!!");
                 }
-                Self {
+                let ret = Self {
                         cache,
                         block_id,
                         modified: false,
-                }
+                };
+                
+                
+                // if ret.block_id == 32 {
+                //         info!("new called on block 32");
+                //         for i in 0..16 {
+                //                 for j in 0..8 {
+                //                         print!("{:08X} ", ret.get_ref::<u32>((i*8 + j) * 4))
+                //                 }
+                //                 println!();
+                //         }
+                // }
+                return ret;
         }
 
         fn addr_of_offset(&self, offset: usize) -> usize {
@@ -39,18 +52,18 @@ impl BlockCache {
         }
         
         pub fn get_ref<T>(&self, offset: usize) -> &T where T: Sized {
-                if self.block_id < 35 && self.block_id > 30 {
-                        // debug!("get_ref called on block 32");
-                        for i in 0..128 {
-                                unsafe {
-                                        let addr = self.addr_of_offset(i*4);
-                                        let content = *(addr as *const u32);
-                                        if content == 0 {
-                                                error!("something is wrong with {:#X} at {}", addr, self.block_id);
-                                        }
-                                }
-                        }
-                }
+                // if self.block_id < 35 && self.block_id > 30 {
+                //         // debug!("get_ref called on block 32");
+                //         for i in 0..128 {
+                //                 unsafe {
+                //                         let addr = self.addr_of_offset(i*4);
+                //                         let content = *(addr as *const u32);
+                //                         if content == 0 {
+                //                                 error!("something is wrong with {:#X} at {}", addr, self.block_id);
+                //                         }
+                //                 }
+                //         }
+                // }
 
                 let type_size = core::mem::size_of::<T>();
                 assert!(offset + type_size <= BLOCK_SZ);
@@ -59,6 +72,20 @@ impl BlockCache {
         }
         
         pub fn get_mut<T>(&mut self, offset: usize) -> &mut T where T: Sized {
+                
+                // if self.block_id < 35 && self.block_id > 30 {
+                //         // debug!("get_ref called on block 32");
+                //         for i in 0..128 {
+                //                 unsafe {
+                //                         let addr = self.addr_of_offset(i*4);
+                //                         let content = *(addr as *const u32);
+                //                         if content == 0 {
+                //                                 error!("something is wrong with {:#X} at {}", addr, self.block_id);
+                //                         }
+                //                 }
+                //         }
+                // }
+
                 if self.block_id == 32 {
                         debug!("get_mut called on block 32 {}", size_of::<T>());
                 }
@@ -81,7 +108,7 @@ impl BlockCache {
 
         pub fn sync(&mut self) {
                 // if self.block_id == 32 {
-                //         debug!("sync called on block 32");
+                //         info!("sync called on block 32");
                 //         for i in 0..16 {
                 //                 for j in 0..8 {
                 //                         print!("{:08X} ", self.get_ref::<u32>((i*8 + j) * 4))

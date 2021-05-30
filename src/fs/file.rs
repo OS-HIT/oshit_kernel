@@ -676,30 +676,35 @@ impl FILE {
                 if self.do_create() {
                         if let Ok(mut entry) = find_entry(&self.path) {
                                 if self.write_allowed() || self.append_allowed() {
-                                        entry.size = self.fsize;
-                                        let mut chain_len = self.fsize / *CLUSTER_SIZE;
-                                        if self.fsize % *CLUSTER_SIZE != 0 {
-                                                chain_len += 1;
-                                        }
-                                        if self.fchain.len() != 0 {
-                                                entry.set_start(self.fchain[0]);
-                                        }
-                                        if chain_len < self.fchain.len() as u32 {
-                                                if chain_len == 0 {
-                                                        clear_file_chain(self.fchain[0]).unwrap();
-                                                } else {
-                                                        truncat_file_chain(self.fchain[chain_len as usize - 1]).unwrap();
+                                        if !self.read_allowed() || self.fsize > entry.size{
+                                                entry.size = self.fsize;
+                                                let mut chain_len = self.fsize / *CLUSTER_SIZE;
+                                                if self.fsize % *CLUSTER_SIZE != 0 {
+                                                        chain_len += 1;
                                                 }
+                                                if self.fchain.len() != 0 {
+                                                        entry.set_start(self.fchain[0]);
+                                                }
+                                                if chain_len < self.fchain.len() as u32 {
+                                                        if chain_len == 0 {
+                                                                clear_file_chain(self.fchain[0]).unwrap();
+                                                        } else {
+                                                                truncat_file_chain(self.fchain[chain_len as usize - 1]).unwrap();
+                                                        }
+                                                }
+                                                update_entry(&self.path, &entry).unwrap();
+                                                flush();
                                         }
-                                        update_entry(&self.path, &entry).unwrap();
-                                        flush();
                                 } 
                         } else {
                                 let file = self.path.path.pop().unwrap();
                                 let mut name = [0u8;8];
                                 let mut ext = [0u8;3];
-                                let start_h = (self.fchain[0] >> 16) as u16;
-                                let start_l = (self.fchain[0] & 0xff) as u16;
+                                let (start_h, start_l) = if self.fchain.len() > 0 {
+                                        ((self.fchain[0] >> 16) as u16, (self.fchain[0] & 0xff) as u16)
+                                } else {
+                                        (0,0)
+                                };
                                 let mut entry = DirEntry{
                                         name, ext,
                                         attr: DirEntry::attr_file(), reserved: 0x0,
@@ -715,25 +720,27 @@ impl FILE {
                 } else {
                         if self.write_allowed() || self.append_allowed() {
                                 if let Ok(mut entry) = find_entry(&self.path) {
-                                        entry.size = self.fsize;
-                                        let mut chain_len = self.fsize / *CLUSTER_SIZE;
-                                        if self.fsize % *CLUSTER_SIZE != 0 {
-                                                chain_len += 1;
-                                        }
-                                        if self.fchain.len() != 0 {
-                                                entry.set_start(self.fchain[0]);
-                                        }
-                                        if chain_len < self.fchain.len() as u32 {
-                                                if chain_len == 0 {
-                                                        clear_file_chain(self.fchain[0]).unwrap();
-                                                } else {
-                                                        truncat_file_chain(self.fchain[chain_len as usize - 1]).unwrap();
+                                        if !self.read_allowed() || self.fsize > entry.size {
+                                                entry.size = self.fsize;
+                                                let mut chain_len = self.fsize / *CLUSTER_SIZE;
+                                                if self.fsize % *CLUSTER_SIZE != 0 {
+                                                        chain_len += 1;
                                                 }
+                                                if self.fchain.len() != 0 {
+                                                        entry.set_start(self.fchain[0]);
+                                                }
+                                                if chain_len < self.fchain.len() as u32 && !self.read_allowed() {
+                                                        if chain_len == 0 {
+                                                                clear_file_chain(self.fchain[0]).unwrap();
+                                                        } else {
+                                                                truncat_file_chain(self.fchain[chain_len as usize - 1]).unwrap();
+                                                        }
+                                                }
+                                                update_entry(&self.path, &entry).unwrap();
+                                                flush();
                                         }
-                                        update_entry(&self.path, &entry).unwrap();
-                                        flush();
                                 } else {
-                                        return Err((self, "file_close: file not exist, what up?"));
+                                        return Err((self, "file_close: file not exist, what's up?"));
                                 }
                         }
                 }
