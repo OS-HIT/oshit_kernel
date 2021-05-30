@@ -322,7 +322,7 @@ pub fn delete_entry(path: &Path, is_dir: bool) -> Result<(),&'static str> {
                 return Err("delete_entry: no entry for root directory");
         }
         let mut parent_path = path.clone();
-        let file = parent_path.path.pop().unwrap();
+        let file = parent_path.path.pop().unwrap().to_ascii_uppercase();
         parent_path.must_dir = true;
         let chain = if parent_path.path.len() == 0 {
                 get_file_chain(*ROOT_DIR)
@@ -333,39 +333,23 @@ pub fn delete_entry(path: &Path, is_dir: bool) -> Result<(),&'static str> {
         let mut dex = Vec::<DirEntryExt>::new();
         let mut offset = 0;
         loop {
-                if let Some(dirent) = read_dirent(&chain, offset) {
-                        if dirent.deleted() {
-                                continue;
-                        }
-                        if dirent.is_ext() {
-                                unsafe {
-                                        dex.push(*((&dirent as *const _) as *const DirEntryExt));
-                                }
-                                continue;
-                        }
-                        if dex.len() != 0 {
-                                let flen = dex.len() as u32 + 1;
-                                if file == get_full_name(&mut dex).unwrap() {
-                                        if path.must_dir && !dirent.is_dir() {
-                                                return Err("delete entry: not a directory");
-                                        }
-                                        for i in 0..flen {
-                                                delete_dirent(&chain, offset + i).unwrap();
-                                        }
-                                }
-                        } else {
-                                if file == dirent.get_name() {
+                match read_dirent_lfn(&chain, offset) {
+                        Ok(Some((dirent, cnt, name))) => {
+                                if file == name.to_ascii_uppercase() {
                                         if is_dir && !dirent.is_dir() {
                                                 return Err("delete_entry: not a directory");
                                         }
-                                        delete_dirent(&chain, offset).unwrap();
+                                        for i in 0..cnt {
+                                                delete_dirent(&chain, offset+i as u32).unwrap();
+                                        }
                                         return Ok(());
+                                } else {
+                                        offset += cnt as u32;
                                 }
-                        }
-                } else {
-                        return Err("delete_entry: entry not found");
+                        },
+                        Ok(None) => {offset += 1;},
+                        Err(_) => return Err("delete_entry: entry not found"),
                 }
-                offset += 1;
         }
 }
 
