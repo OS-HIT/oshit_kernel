@@ -12,6 +12,9 @@
 
 use lazy_static::lazy_static;
 
+use crate::{fs::fat::print_vec, memory::{FrameTracker, alloc_frame}};
+use alloc::vec::Vec;
+
 global_asm!(include_str!("entry.asm"));
 global_asm!(include_str!("link_app.asm"));
 
@@ -56,9 +59,9 @@ pub extern "C" fn rust_main() -> !{
     trap::init();
         
     fs::list_tree("/", 0).unwrap();
-    // match fs::FILE::open_file("/mydir/new_file_test.rs", fs::FILE::FMOD_CREATE | fs::FILE::FMOD_WRITE) {
+    // match fs::FILE::open_file("/clone", fs::FILE::FMOD_READ) {
     //     Ok(mut file) => {
-    //         file.write_file("hello_world\n".as_bytes());
+    //         error!("FILE clone chain len {} ({:?}) size {}", file.fchain.len(), file.fchain, file.fsize);
     //     }
     //     Err(msg) => {
     //         error!("Create file failed: {}", msg);
@@ -66,6 +69,32 @@ pub extern "C" fn rust_main() -> !{
     // }
     // fs::list_tree("/", 0).unwrap();
     // fs::fs_test();
+    // let mut a = fs::FILE::open_file("/test1", fs::FILE::FMOD_READ | fs::FILE::FMOD_WRITE | fs::FILE::FMOD_CREATE).unwrap();
+    // a.write_file(&[1u8; 64]).unwrap();
+    // let mut a = fs::FILE::open_file("/test2", fs::FILE::FMOD_READ | fs::FILE::FMOD_WRITE | fs::FILE::FMOD_CREATE).unwrap();
+    // a.write_file(&[1u8; 64]).unwrap();
+    // let mut a = fs::FILE::open_file("/test3", fs::FILE::FMOD_READ | fs::FILE::FMOD_WRITE | fs::FILE::FMOD_CREATE).unwrap();
+    // a.write_file(&[1u8; 64]).unwrap();
+    // let mut a = fs::FILE::open_file("/test4", fs::FILE::FMOD_READ | fs::FILE::FMOD_WRITE | fs::FILE::FMOD_CREATE).unwrap();
+    // a.write_file(&[1u8; 64]).unwrap();
+    // let mut a = fs::FILE::open_file("/test5", fs::FILE::FMOD_READ | fs::FILE::FMOD_WRITE | fs::FILE::FMOD_CREATE).unwrap();
+    // a.write_file(&[1u8; 64]).unwrap();
+    // let mut a = fs::FILE::open_file("/test6", fs::FILE::FMOD_READ | fs::FILE::FMOD_WRITE | fs::FILE::FMOD_CREATE).unwrap();
+    // a.write_file(&[1u8; 64]).unwrap();
+
+    // let a = fs::FILE::open_file("/clone", fs::FILE::FMOD_READ).unwrap();
+    // let a = fs::FILE::open_file("/brk", fs::FILE::FMOD_READ).unwrap();
+    // let a = fs::FILE::open_file("/dup", fs::FILE::FMOD_READ).unwrap();
+    // let a = fs::FILE::open_file("/dup2", fs::FILE::FMOD_READ).unwrap();
+    // let mut frames: Vec<FrameTracker> = Vec::new();
+    // for i in 0..200 {
+    //     frames.push(alloc_frame().unwrap());
+    //     frames.last().unwrap().ppn.page_ptr().copy_from_slice(&[0u8; config::PAGE_SIZE]);
+    // }
+    // let a = fs::FILE::open_file("/execve", fs::FILE::FMOD_READ).unwrap();
+    // let a = fs::FILE::open_file("/fork", fs::FILE::FMOD_READ).unwrap();
+    // let a = fs::FILE::open_file("/unlink", fs::FILE::FMOD_READ).unwrap();
+
     process::init();
     panic!("drop off from bottom!");
 }

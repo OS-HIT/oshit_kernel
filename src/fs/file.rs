@@ -30,6 +30,7 @@ use super::fat::fat::get_file_chain;
 use super::fat::fat::clear_file_chain;
 use super::fat::fat::truncat_file_chain;
 use super::fat::fat::get_free_cluster;
+use alloc::string::ToString;
 
 #[derive(Clone)]
 pub struct FILE {
@@ -611,6 +612,7 @@ impl FILE {
 
                 let mut read = 0;
                 while read < len {
+                        debug!("read_file:{} {} {} {}", self.path.path.last().unwrap(), self.cursor, self.fsize, self.fchain.len());
                         let read_len = read_cluster(self.get_cur_cluster().unwrap(), self.cursor % *CLUSTER_SIZE, rbuf).unwrap();
                         self.cursor += read_len;
                         read += read_len;
@@ -666,6 +668,8 @@ impl FILE {
         }
 
         pub fn close_file(&mut self) -> Result<(), (&FILE, &'static str)> {
+        
+                debug!("Closing file {}", self.path.path.last().unwrap_or(&"ROOT?".to_string()));
                 if self.ftype != FTYPE::TFile {
                         return Err((self, "FILE::close_file: not a file"));
                 }

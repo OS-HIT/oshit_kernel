@@ -53,6 +53,9 @@ impl BlockCacheManager {
         }
 
         pub fn clear_block_cache(&mut self, block_id: usize) {
+                if block_id < 100 {
+                        error!("clear_block_cache called on {}", block_id);
+                }
                 if let Some(pair) = self.queue.iter().find(|pair| pair.0 == block_id) {
                         pair.1.lock().clear();
                 }

@@ -15,7 +15,7 @@ pub struct FAT {
         pub clen: u32,
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 enum CLUSTER {
         Free,
         Temp,
@@ -52,10 +52,14 @@ impl FAT {
                 let block_id = clst_num / self.clen + self.start;
                 let offset = clst_num % self.clen * size_of::<u32>() as u32;
                 // debug!("get_next: getting block cache");
-                Some(*get_block_cache(block_id as usize).lock().get_ref::<u32>(offset as usize))
+                let next = *get_block_cache(block_id as usize).lock().get_ref::<u32>(offset as usize);
+                Some(next)
         }
 
         fn write_next(&self, clst_num: u32, next: u32) -> Result<(),()> {
+                if clst_num == 72 {
+                        error!("CAUTION: writting {:X} to 72", next);
+                }
                 if clst_num >= self.len {
                         return Err(());
                 }
@@ -83,6 +87,7 @@ impl FAT {
                                 false
                         }
                         _ => {
+                                debug!("{:?}", t);
                                 false
                         }
                 } { 
@@ -179,6 +184,7 @@ pub fn clear_file_chain(start: u32) -> Result<(),()> {
 }
 
 pub fn truncat_file_chain(start: u32) -> Result<(), ()> {
+        debug!("truncat_file_called");
         match FAT_INST.clear_file_chain(start) {
                 Ok(()) => {
                         match FAT_INST_2.clear_file_chain(start) {
@@ -215,7 +221,7 @@ pub fn append_chain(end: u32) -> Result<u32, &'static str> {
         match FAT_INST.append_cluster(end) {
                 Ok(new) => {
                         FAT_INST_2.write_next(end, new).unwrap();
-                        FAT_INST_2.write_next(end, 0x0FFF_FFFF).unwrap();
+                        FAT_INST_2.write_next(new, 0x0FFF_FFFF).unwrap();
                         return Ok(new);
                 } ,
                 Err(msg) => {
