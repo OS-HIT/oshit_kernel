@@ -10,7 +10,7 @@ use crate::fs::BLOCK_DEVICE;
 
 pub const BLOCK_SZ: usize = 512;
 
-const BLOCK_CACHE_SIZE: usize = 1;
+const BLOCK_CACHE_SIZE: usize = 16;
 
 pub struct BlockCacheManager {
     queue: VecDeque<(usize, Arc<Mutex<BlockCache>>)>,

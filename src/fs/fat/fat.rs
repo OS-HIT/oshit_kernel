@@ -97,6 +97,9 @@ impl FAT {
         }
 
         pub fn clear_file_chain(&self, start: u32) -> Result<(),()> {
+                if start == 0 {
+                        return Ok(());
+                }
                 let mut cur = start;
                 loop {
                         let next = self.get_next(cur).unwrap();
