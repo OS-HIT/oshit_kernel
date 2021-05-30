@@ -317,10 +317,13 @@ pub fn sys_unlink(dirfd: i32, file_name: VirtAddr, _: usize) -> isize{
     let proc = current_process().unwrap();
     let arcpcb = proc.get_inner_locked();
     let buf = arcpcb.layout.get_user_cstr(file_name);
-    if let Ok(path) = core::str::from_utf8(&buf) {
+    if let Ok(mut path) = core::str::from_utf8(&buf) {
         if dirfd == AT_FDCWD {
             verbose!("sys_unlink found AT_FDCWD!");
             let mut whole_path = arcpcb.path.clone();
+            if buf[0] == b'.' && buf[1] == b'/' {
+                path = &path[2..];
+            }
             whole_path.push_str(path);
             verbose!("Deleting at_fdcwd path {}", whole_path);
             match FILE::delete_file(whole_path.as_str()) {
