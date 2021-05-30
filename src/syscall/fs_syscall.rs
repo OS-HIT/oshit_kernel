@@ -21,7 +21,17 @@ pub fn sys_openat(fd: i32, file_name: VirtAddr, flags: u32, _: u32) -> isize {
     if buf[0] == b'.' && buf[1] == b'/' {
         buf = buf[2..].iter().cloned().collect();
     }
-
+    let mut fs_flags = FILE::FMOD_READ;
+    if flags & 0x001 != 0 {
+        fs_flags = FILE::FMOD_WRITE;
+    }
+    if flags & 0x002 != 0 {
+        fs_flags |= FILE::FMOD_WRITE;
+    }
+    if flags & 0x040 != 0 {
+        fs_flags |= FILE::FMOD_CREATE;
+    }
+    verbose!("syscall flag: {:x}", flags);
     if let Ok(path) = core::str::from_utf8(&buf) {
         verbose!("Path: {}", path);
         if fd == AT_FDCWD {
@@ -29,28 +39,30 @@ pub fn sys_openat(fd: i32, file_name: VirtAddr, flags: u32, _: u32) -> isize {
             let mut whole_path = arcpcb.path.clone();
             whole_path.push_str(path);
             verbose!("Openat path: {} + {}", arcpcb.path.clone(), path);
-            let fs_flags: u32 = match flags {
-                0x000 => FILE::FMOD_READ,
-                0x001 => FILE::FMOD_WRITE,
-                0x002 => FILE::FMOD_READ | FILE::FMOD_WRITE,
-                0x040 => FILE::FMOD_CREATE,
-                0x041 => FILE::FMOD_CREATE | FILE::FMOD_WRITE,
-                0x042 => FILE::FMOD_READ | FILE::FMOD_WRITE | FILE::FMOD_CREATE,
-                0x200000 => FILE::FMOD_READ,
-                // 0x0200000 => FILE::FMOD_READ,
-                _ => {
-                    error!("Not supported combination： {:x}", flags);
-                    return -1;
+ 
+
+            let file = if fs_flags & 0x200000 != 0 {
+                match FILE::open_dir(path, fs_flags) {
+                    Ok(dir) => dir,
+                    Err(msg) => {
+                        error!("{}", msg);
+                        return -1;
+                    }
+                }
+            } else {
+                match FILE::open_file(whole_path.as_str(), fs_flags) {
+                    Ok(file) => file,
+                    Err(_) => {
+                        match FILE::open_dir(path, fs_flags) {
+                            Ok(dir) => dir,
+                            Err(msg) => {
+                                error!("{}", msg);
+                                return -1;
+                            }
+                        }
+                    }
                 }
             };
-            let file = match FILE::open_file(whole_path.as_str(), fs_flags) {
-                Ok(file) => file,
-                Err(msg) => {
-                    error!("{}", msg);
-                    return -1;
-                }
-            };
-        
             let new_fd = arcpcb.alloc_fd();
             arcpcb.files[new_fd] = Some(Arc::new(FileWithLock::new(file)));
             return new_fd.try_into().unwrap();
@@ -64,14 +76,14 @@ pub fn sys_openat(fd: i32, file_name: VirtAddr, flags: u32, _: u32) -> isize {
         if let Some(dir) = arcpcb.files[fd as usize].clone() {
             if let Ok(dir_file) = dir.to_fs_file_locked() {
                 if dir_file.ftype == fs::FTYPE::TDir {
-                    match dir_file.open_file_from(path, flags) {
+                    match dir_file.open_file_from(path, fs_flags) {
                         Ok(fs_file) => {
                             let new_fd = arcpcb.alloc_fd();
                             arcpcb.files[new_fd] = Some(Arc::new(FileWithLock::new(fs_file)));
                             return new_fd as isize;
                         }
                         Err(err_msg) => {
-                            error!("{}", err_msg);
+                            error!("{}, flags: {:x}", err_msg, fs_flags);
                             return -1;
                         }
                     }
@@ -288,7 +300,8 @@ pub fn sys_getdents64(fd: usize, buf: VirtAddr, len: usize) -> isize {
                     }
                 }
             }
-            (last_ptr - buf) as isize
+            verbose!("Getdents64 returns {}", (last_ptr - buf));
+            (last_ptr - buf) as i32 as isize
         } else {
             error!("Not a directory.");
             -1

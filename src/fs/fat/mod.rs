@@ -283,6 +283,7 @@ pub fn find_entry_from(from: u32, path: &Path) -> Result<DirEntry, &'static str>
                 loop {
                         match read_dirent_lfn(&dir, i) {
                                 Ok(Some((item, cnt, name))) => {
+                                        verbose!("Checking: {} <=> {}", name.to_ascii_uppercase(), fname);
                                         if name.to_ascii_uppercase() == fname {
                                                 dirent = Some(item);
                                                 lname = Some(name);

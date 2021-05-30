@@ -37,9 +37,9 @@ $(KERNEL_BIN): kernel
 kernel:
 	@cp src/linker_$(BOARD).ld src/linker.ld
 ifeq ($(MODE), debug)
-	cargo build -vv --features "$(FEATURES)"
+	cargo build --features "$(FEATURES)"
 else
-	cargo build -vv --release --features "$(FEATURES)"
+	cargo build --release --features "$(FEATURES)"
 endif
 	@rm src/linker.ld
 
