@@ -1,5 +1,5 @@
 # Building args
-TARGET 			:= riscv64gc-unknown-none-elf
+TARGET 			:= riscv64imac-unknown-none-elf
 MODE 			:= debug
 KERNEL_ELF 		:= target/$(TARGET)/$(MODE)/oshit_kernel
 KERNEL_BIN 		:= $(KERNEL_ELF).bin
@@ -26,10 +26,10 @@ endif
 build: env $(KERNEL_BIN)
 
 env:
-	# rustup component add rust-src
-	# rustup component add llvm-tools-preview
-	# cargo install cargo-binutils
-	# rustup target add riscv64gc-unknown-none-elf
+	rustup component add rust-src
+	rustup component add llvm-tools-preview
+	cargo install cargo-binutils
+	rustup target add riscv64imac-unknown-none-elf
 
 $(KERNEL_BIN): kernel
 	@$(OBJCOPY) $(KERNEL_ELF) --strip-all -O binary $@

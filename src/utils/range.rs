@@ -1,4 +1,5 @@
 //! Range objects, for iterating through addresses
+#![allow(unused)]
 use core::fmt::Debug;
 
 pub trait StepByOne {

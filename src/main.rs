@@ -5,15 +5,9 @@
 #![feature(global_asm)]
 #![feature(asm)]
 #![feature(llvm_asm)]
-#![feature(assoc_char_funcs)]
 #![feature(panic_info_message)]
-#![feature(const_in_array_repeat_expressions)]
+// #![feature(const_in_array_repeat_expressions)]
 #![feature(alloc_error_handler)]
-
-use lazy_static::lazy_static;
-
-use crate::{fs::fat::print_vec, memory::{FrameTracker, alloc_frame}};
-use alloc::vec::Vec;
 
 global_asm!(include_str!("entry.asm"));
 global_asm!(include_str!("link_app.asm"));
@@ -51,7 +45,7 @@ compile_error!("At least one of the board_* feature should be active!");
 /// never returns.
 #[no_mangle]
 pub extern "C" fn rust_main() -> !{
-    print!("{}", config::logo);
+    print!("{}", config::LOGO);
     info!("Kernel hello world!");
     info!("Vendor id = {}", sbi::get_vendor_id());
     memory::init();

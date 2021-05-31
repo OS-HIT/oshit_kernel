@@ -1,13 +1,12 @@
 //! Wrappers of file system related syscalls.
 use super::super::fs::file::FILE;
 use crate::fs::block_cache::BLOCK_SZ;
-use crate::fs::{self, FTYPE, FileWithLock, VirtFile, make_pipe};
+use crate::fs::{self, FTYPE, FileWithLock, make_pipe};
 use crate::memory::{VirtAddr};
 use crate::process::{current_process};
 // use alloc::vec::Vec;
 use alloc::sync::Arc;
 use core::{convert::TryInto, mem::size_of};
-use alloc::string::ToString;
 
 /// The special "file descriptor" indicating that the path is relative path to process's current working directory. 
 pub const AT_FDCWD: i32 =  -100;
@@ -277,7 +276,7 @@ pub fn sys_getdents64(fd: usize, buf: VirtAddr, len: usize) -> isize {
         if let Ok(mut dir) = file.to_fs_file_locked() {
             loop{
                 match dir.get_dirent() {
-                    Ok((dirent, name)) => {
+                    Ok((dirent, _name)) => {
                         if last_ptr - buf > len {
                             error!("Memory out of bound");
                             return -1;

@@ -11,7 +11,6 @@ use super::{
     PageTableEntry,
     PTEFlags,
     alloc_frame,
-    get_user_buffer,
     UserBuffer
 };
 use core::mem::size_of;
@@ -21,7 +20,6 @@ use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
 use bitflags::*;
 use crate::config::*;
-use crate::fs::FileWithLock;
 use crate::fs::VirtFile;
 use crate::fs::FSEEK;
 use core::cmp::min;
@@ -375,7 +373,7 @@ impl MemLayout {
     }
 
     pub fn alter_segment(&mut self, old_end: VirtPageNum, new_end: VirtPageNum) {
-        if let Some((idx, segment)) = self.segments.iter_mut().enumerate().find(|(_, seg)| seg.range.get_end() == old_end) {
+        if let Some((_idx, segment)) = self.segments.iter_mut().enumerate().find(|(_, seg)| seg.range.get_end() == old_end) {
             segment.adjust_end(&mut self.pagetable, new_end);
         } else {
             error!("No segment end with {:?}", old_end);

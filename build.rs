@@ -67,6 +67,6 @@ app_{0}_start:
     .incbin "{2}{1}"
 app_{0}_end:"#, idx, app, TARGET_PATH)?;
     }
-    writeln!(f, "# Try to make cargo happy: last compiled @ {}", Utc::now().to_rfc2822());
+    writeln!(f, "# Try to make cargo happy: last compiled @ {}", Utc::now().to_rfc2822()).unwrap();
     Ok(())
 }

@@ -4,7 +4,7 @@ use crate::process::{current_path, current_process, enqueue, exit_switch, suspen
 use crate::memory::{
     VirtAddr,
     get_user_cstr,
-    translate_user_va,
+    // translate_user_va,
     VMAFlags
 };
 
@@ -15,9 +15,7 @@ use crate::process::{
 
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use core::convert::TryInto;
 use alloc::string::ToString;
-use alloc::string::String;
 
 use crate::fs::FILE;
 
@@ -34,7 +32,7 @@ pub fn sys_yield() -> isize {
 /// Process exit.
 pub fn sys_exit(code: i32) -> ! {
     match FILE::open_file("/dup", FILE::FMOD_READ) {
-        Ok(mut file) => {
+        Ok(file) => {
             debug!("FILE clone chain len {} ({:?}) size {}", file.fchain.len(), file.fchain, file.fsize);
             drop(file);
         }

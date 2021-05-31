@@ -41,8 +41,6 @@ mod fs_syscall;
 mod process_syscall;
 mod trivial_syscall;
 
-use core::convert::TryInto;
-
 pub use fs_syscall::{
     sys_write, 
     sys_read,

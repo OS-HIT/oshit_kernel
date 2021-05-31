@@ -1,3 +1,4 @@
+#![allow(unused)]
 //! Some C-like memory operation
 
 /// Copy a C-style string from `src` to `dst`

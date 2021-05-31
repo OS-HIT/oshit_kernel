@@ -1,5 +1,5 @@
 //! The process control module for oshit kernel
-
+#![allow(unused)]
 mod pcb;
 mod manager;
 mod pid;

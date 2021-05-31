@@ -1,11 +1,9 @@
 //! Trivial system calls.
 use crate::{process::{current_process, suspend_switch}, sbi::get_time};
-use crate::process::{current_up_since, current_utime, current_satp};
-use crate::memory::{VirtAddr, translate_user_va};
+use crate::memory::{VirtAddr};
 use crate::config::*;
-use crate::utils::strcpy;
 use crate::version::*;
-use core::{borrow::Borrow, convert::TryInto};
+use core::{convert::TryInto};
 
 /// Linux style tms
 #[repr(C)]

@@ -76,7 +76,7 @@ pub const MMIO: &[(usize, usize)] = &[
 ];
 
 /// An ASCII art logo
-pub const logo: &str = r#"
+pub const LOGO: &str = r#"
  ██████╗ ███████╗      ██╗  ██╗██╗████████╗
 ██╔═══██╗██╔════╝      ██║  ██║██║╚══██╔══╝
 ██║   ██║███████╗█████╗███████║██║   ██║   
