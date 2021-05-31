@@ -4,6 +4,8 @@ use lazy_static::*;
 
 use alloc::string::String;
 
+use super::mbr::MBR_INST;
+
 use super::super::block_cache::get_block_cache;
 use super::super::block_cache::clear_block_cache;
 use super::super::block_cache::BLOCK_SZ;
@@ -61,8 +63,8 @@ pub struct RAW_DBR {
 }
 
 impl RAW_DBR {
-        pub fn get_dbr() -> RAW_DBR {
-                let cache = get_block_cache(0);
+        pub fn get_dbr(partition: usize) -> RAW_DBR {
+                let cache = get_block_cache(MBR_INST.par_tab[partition].start as usize);
                 let dbr = *cache.lock().get_ref::<RAW_DBR>(0);
                 if dbr.sign[0] != 0x55 || dbr.sign[1] != 0xAA {
                         panic!("get_dbr: Invalid dbr");
@@ -97,10 +99,19 @@ pub struct DBR {
 
 impl DBR {
         pub fn new() -> DBR {
-                DBR::from_raw(RAW_DBR::get_dbr())
+                let mut partition:isize = -1;
+                for i in 0..4 {
+                        if MBR_INST.par_tab[i].id != 0 {
+                                partition = i as isize;
+                        }
+                }
+                if partition == -1 {
+                        panic!("no fat partition found");
+                }
+                DBR::from_raw(RAW_DBR::get_dbr(partition as usize), MBR_INST.par_tab[partition as usize].start)
         }
 
-        pub fn from_raw(raw: RAW_DBR) -> Self {
+        pub fn from_raw(raw: RAW_DBR, start_sector: u32) -> Self {
                 let mut fat32 = [0u8; 8];
                 for i in 0..fat32.len() {
                         fat32[i] = raw.fat32[i];
@@ -117,7 +128,7 @@ impl DBR {
                 
                 let sec_len = b2u16(&raw.sec_len) as u32;
                 let sec_cnt = b2u32(&raw.sec_cnt) as u32;
-                let rsv_sec = b2u16(&raw.rsv_sec) as u32;
+                let rsv_sec = b2u16(&raw.rsv_sec) as u32 + start_sector;
                 
                 let fat_sec = b2u32(&raw.fat_sec);
                 let fat_cnt = raw.fat_cnt as u32;
@@ -210,7 +221,7 @@ impl DBR {
 }
 
 lazy_static! {
-        pub static ref DBR_INST: DBR = DBR::from_raw(RAW_DBR::get_dbr());
+        pub static ref DBR_INST: DBR = DBR::new();
 }
 
 #[allow(unused)]

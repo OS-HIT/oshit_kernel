@@ -19,6 +19,7 @@ use super::dirent::DIRENT_P_CLST;
 use super::path::Path;
 use alloc::borrow::ToOwned;
 
+pub mod mbr;
 mod dbr;
 pub mod fsinfo;
 pub mod fat;
