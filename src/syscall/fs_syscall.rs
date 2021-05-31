@@ -439,11 +439,12 @@ pub fn sys_fstat(fd: usize, ptr: VirtAddr) -> isize {
     if let Some(op_file) = arcpcb.files.get(fd) {
         if let Some(file) = op_file {
             if let Ok(fs_file) = file.to_fs_file_locked() {
+                let inode = if fs_file.fchain.len() == 0 { !0u64} else {fs_file.fchain[0] as u64};
                 let stat = FStat {
                     st_dev: 0,
-                    st_ino: 0,
+                    st_ino: inode,
                     st_mode: 0,
-                    st_nlink: 0,
+                    st_nlink: 1,
                     st_uid: 0,
                     st_gid: 0,
                     st_rdev: 0,

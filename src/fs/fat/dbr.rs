@@ -1,3 +1,5 @@
+//! Dos Boot Record parser
+
 use core::str::from_utf8;
 use core::mem::size_of;
 use lazy_static::*;
@@ -13,6 +15,9 @@ use super::super::block_cache::BLOCK_SZ;
 use super::fsinfo::FSINFO;
 use super::fat::FAT;
 
+/// bytes to u32
+/// # Description
+/// Read u32 from byte slice in little endian without causing LoadMisalign
 fn b2u32(b: &[u8; 4]) -> u32 {
         b[0] as u32 
         | ((b[1] as u32) << 8)
@@ -20,11 +25,20 @@ fn b2u32(b: &[u8; 4]) -> u32 {
         | ((b[3] as u32) << 24)
 }
 
+/// bytes to u16
+/// # Description
+/// Read u16 from byte slice in little endian withou causing LoadMisalign
 fn b2u16(b: &[u8; 2]) -> u16 {
         b[0] as u16 
         | ((b[1] as u16) << 8)
 }
 
+
+/// Raw Dos Boot Record
+/// # Description
+/// A Struct that has the same layout as DBR on Block Device
+/// Reading fields from it directly may cause LoadMisalign.
+/// This's why most field are presented as byte array
 #[derive(Clone, Copy)]
 #[repr(C, packed(1))]
 pub struct RAW_DBR {
@@ -63,6 +77,7 @@ pub struct RAW_DBR {
 }
 
 impl RAW_DBR {
+        /// Read dbr from block device and
         pub fn get_dbr(block_id: usize) -> RAW_DBR {
                 let cache = get_block_cache(block_id);
                 let dbr = *cache.lock().get_ref::<RAW_DBR>(0);
