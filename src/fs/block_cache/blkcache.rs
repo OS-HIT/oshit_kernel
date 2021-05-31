@@ -1,3 +1,5 @@
+//! In-Memory Cache for Block Device
+
 use core::fmt::Display;
 use core::mem::size_of;
 
@@ -7,14 +9,19 @@ use alloc::sync::Arc;
 
 use super::BLOCK_SZ;
 
+/// Struct of cache for a block (size: 512B)
 pub struct BlockCache {
+        /// Block content
         pub cache: [u8; BLOCK_SZ],
+        /// Id of a block, whose value equals to block offset in the block device
         block_id: usize,
+        /// Indecate whe the block has been modified
         modified: bool,
 }
 
 impl BlockCache {
         // const block_device: Arc<SDCard0WithLock> = BLOCK_DEVICE.clone();
+        /// Get Block device (SDCard for k210)
         fn device() -> Arc<dyn BlockDevice> {
                 return BLOCK_DEVICE.clone();
         }
@@ -47,10 +54,14 @@ impl BlockCache {
                 return ret;
         }
 
+        /// Get the memory address that points to the content from cache at the specified offset
         fn addr_of_offset(&self, offset: usize) -> usize {
                 &self.cache[offset] as *const _ as usize
         }
         
+        /// Get a reference to a object in cache
+        /// # Description
+        /// Reference returned is read only. Panic when object is out of block baoundary
         pub fn get_ref<T>(&self, offset: usize) -> &T where T: Sized {
                 // if self.block_id < 35 && self.block_id > 30 {
                 //         // debug!("get_ref called on block 32");
@@ -71,6 +82,9 @@ impl BlockCache {
                 unsafe { &*(addr as *const T) }
         }
         
+        /// Get a mutable reference to a object in cache
+        /// # Description
+        /// Panic when object is out of block baoundary
         pub fn get_mut<T>(&mut self, offset: usize) -> &mut T where T: Sized {
                 
                 // if self.block_id < 35 && self.block_id > 30 {
@@ -96,6 +110,7 @@ impl BlockCache {
                 unsafe { &mut *(addr as *mut T) }
         }
 
+        
         pub fn clear(&mut self) {
                 if self.block_id == 32 {
                         debug!("clear called on block 32");

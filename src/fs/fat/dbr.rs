@@ -63,8 +63,8 @@ pub struct RAW_DBR {
 }
 
 impl RAW_DBR {
-        pub fn get_dbr(partition: usize) -> RAW_DBR {
-                let cache = get_block_cache(MBR_INST.par_tab[partition].start as usize);
+        pub fn get_dbr(block_id: usize) -> RAW_DBR {
+                let cache = get_block_cache(block_id);
                 let dbr = *cache.lock().get_ref::<RAW_DBR>(0);
                 if dbr.sign[0] != 0x55 || dbr.sign[1] != 0xAA {
                         panic!("get_dbr: Invalid dbr");
@@ -99,16 +99,18 @@ pub struct DBR {
 
 impl DBR {
         pub fn new() -> DBR {
-                let mut partition:isize = -1;
-                for i in 0..4 {
-                        if MBR_INST.par_tab[i].id != 0 {
-                                partition = i as isize;
-                        }
-                }
-                if partition == -1 {
-                        panic!("no fat partition found");
-                }
-                DBR::from_raw(RAW_DBR::get_dbr(partition as usize), MBR_INST.par_tab[partition as usize].start)
+                // let mut partition:isize = -1;
+                // for i in 0..4 {
+                //         if MBR_INST.par_tab[i].id != 0 {
+                //                 partition = i as isize;
+                //         }
+                // }
+                // if partition == -1 {
+                //         panic!("no fat partition found");
+                // }
+                // let start = MBR_INST.par_tab[partition as usize].start as usize;
+                let start = 0;
+                DBR::from_raw(RAW_DBR::get_dbr(start), start as u32)
         }
 
         pub fn from_raw(raw: RAW_DBR, start_sector: u32) -> Self {
@@ -127,7 +129,8 @@ impl DBR {
 
                 
                 let sec_len = b2u16(&raw.sec_len) as u32;
-                let sec_cnt = b2u32(&raw.sec_cnt) as u32;
+                // let sec_cnt = b2u32(&raw.sec_cnt) as u32;
+                let sec_cnt = 0x0fff_0000;
                 let rsv_sec = b2u16(&raw.rsv_sec) as u32 + start_sector;
                 
                 let fat_sec = b2u32(&raw.fat_sec);
