@@ -57,6 +57,9 @@ pub extern "C" fn rust_main() -> !{
     memory::init();
     
     trap::init();
+
+    fs::fat::mbr::MBR_INST.print();
+    fs::fat::print_dbr();
         
     fs::list_tree("/", 0).unwrap();
     // match fs::FILE::open_file("/clone", fs::FILE::FMOD_READ) {
