@@ -1,3 +1,4 @@
+//! Manager of block caches
 mod blkcache;
 
 use alloc::sync::Arc;
@@ -12,15 +13,22 @@ pub const BLOCK_SZ: usize = 512;
 
 const BLOCK_CACHE_SIZE: usize = 1;
 
+/// Manager of block caches
 pub struct BlockCacheManager {
-    queue: VecDeque<(usize, Arc<Mutex<BlockCache>>)>,
+        /// vector queue of block cache  
+        queue: VecDeque<(usize, Arc<Mutex<BlockCache>>)>,
 }
 
 impl BlockCacheManager {
+        /// Create new block cache
         pub fn new() -> Self {
                 Self { queue: VecDeque::new() }
         }
 
+        /// Get a block cache
+        /// # Description 
+        /// Returns a cache of a block at specified offset of the block device 
+        /// Drops earliest allocate cache when necessary
         pub fn get_block_cache(
                 &mut self,
                 block_id: usize,
@@ -53,6 +61,10 @@ impl BlockCacheManager {
                 }
         }
 
+        /// clear block content
+        /// # Description 
+        /// Reset content of a block at specified offset 
+        /// Block cache will be cleared if it is allocated
         pub fn clear_block_cache(&mut self, block_id: usize) {
                 if block_id < 100 {
                         error!("clear_block_cache called on {}", block_id);
@@ -64,6 +76,9 @@ impl BlockCacheManager {
                 return;
         }
 
+        /// Flush all caches
+        /// # Description  
+        /// Write all caches back to Block device without freeing them
         pub fn flush_all(&self) {
                 for cache in self.queue.iter() {
                         cache.1.lock().sync();
@@ -73,11 +88,13 @@ impl BlockCacheManager {
 }
 
 lazy_static! {
+        /// Initilize a block cache manager
         pub static ref BLOCK_CACHE_MANAGER: Mutex<BlockCacheManager> = Mutex::new(
                 BlockCacheManager::new()
         );
 }
 
+/// Wrapper function of get_block_cache of singleton block cache manager
 pub fn get_block_cache(
         block_id: usize,
 ) -> Arc<Mutex<BlockCache>> {
@@ -86,14 +103,17 @@ pub fn get_block_cache(
         locked.get_block_cache(block_id)
 }
 
+/// Wrapper function of clear_block_cache of singleton block cache manager
 pub fn clear_block_cache (block_id: usize) {
         BLOCK_CACHE_MANAGER.lock().clear_block_cache(block_id);
 }
 
+/// Write specified cache back to block device without freeing cache
 pub fn flush(cache: Arc<Mutex<BlockCache>>) {
         cache.lock().sync();
 }
 
+/// Wrapper function of flush_all of singleton block cache manager
 pub fn flush_all() {
         BLOCK_CACHE_MANAGER.lock().flush_all();
 }

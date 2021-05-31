@@ -21,6 +21,7 @@ pub struct BlockCache {
 
 impl BlockCache {
         // const block_device: Arc<SDCard0WithLock> = BLOCK_DEVICE.clone();
+
         /// Get Block device (SDCard for k210)
         fn device() -> Arc<dyn BlockDevice> {
                 return BLOCK_DEVICE.clone();
@@ -110,7 +111,9 @@ impl BlockCache {
                 unsafe { &mut *(addr as *mut T) }
         }
 
-        
+        /// Clear cache
+        /// # Description 
+        /// Set content to zero and reset modified without sync to block device
         pub fn clear(&mut self) {
                 if self.block_id == 32 {
                         debug!("clear called on block 32");
@@ -121,6 +124,10 @@ impl BlockCache {
                 }
         }
 
+        /// Write cache content back to block device
+        /// # Description
+        /// Write only occured when 'modified' flag is set
+        /// 'Modified' flag will be reset during this operation 
         pub fn sync(&mut self) {
                 // if self.block_id == 32 {
                 //         info!("sync called on block 32");
@@ -137,16 +144,22 @@ impl BlockCache {
                 }
         }
 
+        /// Not in use
         pub fn read<T, V>(&self, offset: usize, f: impl FnOnce(&T) -> V) -> V {
                 f(self.get_ref(offset))
         }
         
+        /// Not in use
         pub fn modify<T, V>(&mut self, offset:usize, f: impl FnOnce(&mut T) -> V) -> V {
                 f(self.get_mut(offset))
         }
 }
 
 impl Drop for BlockCache {
+
+        /// Drop trait for BlockCache
+        /// # Description
+        /// Call sync before dropping blockcache
         fn drop(&mut self) {
                 if self.block_id == 32 {
                         debug!("dropping block 32");
