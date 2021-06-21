@@ -1,3 +1,4 @@
+//! A module that provides underlying filesystem services
 /*
         FAT structure on disk:
 
@@ -29,14 +30,17 @@ use dbr::get_cluster_cache;
 use fat::get_file_chain;
 
 lazy_static! {
+        /// Size of a cluster in bytes
         pub static ref CLUSTER_SIZE: u32 = DBR_INST.clst_size;
+        /// Cluster number of the root directory
         pub static ref ROOT_DIR: u32 = DBR_INST.root;
         
+        /// Total cluster cnt that the filesystem has
         static ref CLUSTER_CNT: u32 = DBR_INST.clst_cnt; 
         // static ref ROOT_DIR: Vec<u32> = fat::FAT_INST.get_clusters(DBR_INST.root);
 }
 
-
+/// helper function for printing vector of u32
 #[allow(unused)]
 pub fn print_vec(vec : Vec<u32>) {
         for i in vec.iter() {
@@ -48,31 +52,46 @@ pub fn print_vec(vec : Vec<u32>) {
 // DBR functions
 #[inline]
 #[allow(unused)]
+/// Wrapper of dbr::print_dbr
 pub fn print_dbr() {
         dbr::print_dbr();
 }
 
+/// Wrapper of dbr::read_cluster 
 #[inline]
 pub fn read_cluster(cluster: u32, offset: u32, buf: &mut [u8]) ->Result<u32,&str> {
         dbr::read_cluster(cluster, offset, buf)
 }
 
+
+/// Wrapper of dbr::write_cluster
 #[inline]
 pub fn write_cluster(cluster: u32, offset: u32, buf: &[u8]) -> Result<u32, &str> {
         dbr::write_cluster(cluster, offset, buf)
 }
 
 // FAT functions
+/// Wrapper of fat::append_chain
 #[inline]
 pub fn append_chain(end: u32) -> Result<u32, &'static str> {
         fat::append_chain(end)
 }
 
+/// Wrapper of fat::truncat_chain 
 #[inline]
 pub fn truncat_chain(start: u32) -> Result<(), ()> {
         fat::truncat_file_chain(start)
 }
 
+/// Read bytes in file chain 
+/// # Description 
+/// Read bytes from a specified offset in the given chain   
+/// Short read occurs when end of chain is met  
+/// # Exception
+/// Fails when given offset is out of boundary of the given chain
+/// # Return
+/// On success, return byte count that actually read  
+/// Err otherwise
 pub fn read_chain(chain: &Vec<u32>, offset: u32, buf: &mut [u8]) -> Result<u32, &'static str> {
         let mut chain_i = (offset / *CLUSTER_SIZE) as usize;
         if chain_i >= chain.len(){
@@ -95,6 +114,15 @@ pub fn read_chain(chain: &Vec<u32>, offset: u32, buf: &mut [u8]) -> Result<u32, 
         return Err("error");
 }
 
+/// Write bytes in file chain 
+/// # Description 
+/// Write bytes to a specified offset in the given chain   
+/// Short write occurs when end of chain is met  
+/// # Exception
+/// Fails when given offset is out of boundary of the given chain
+/// # Return
+/// On success, return byte count that actually wrote  
+/// Err otherwise
 pub fn write_chain(chain: &Vec<u32>, offset: u32, buf: &mut [u8]) -> Result<u32, &'static str> {
         let mut chain_i = (offset / *CLUSTER_SIZE) as usize;
         if chain_i >= chain.len(){
@@ -117,6 +145,9 @@ pub fn write_chain(chain: &Vec<u32>, offset: u32, buf: &mut [u8]) -> Result<u32,
         return Err("error");
 }
 
+/// Read the offset-th dirent in the specified chain
+/// # Exception
+/// Returns None when offset is out of boundary of the chain
 pub fn read_dirent(chain: &Vec<u32>, offset: u32) -> Option<DirEntry> {
         let chain_i = offset / *DIRENT_P_CLST;
         if chain_i >= chain.len() as u32 {
@@ -126,6 +157,15 @@ pub fn read_dirent(chain: &Vec<u32>, offset: u32) -> Option<DirEntry> {
         return read_dirent_c(chain[chain_i as usize], off);
 }
 
+/// Read the offset-th dirent in the specifed chain (Long File Name supported)
+/// # Description
+/// When the dirent offset is the last Long File Name entry of a file,
+/// it returns the corresponding short file name entry, filename and entry counts it read
+/// Work as read_dirent otherwise
+/// # Return 
+/// A dirent   
+/// Count of dirent being read
+/// Filename of the file that the dirent corresponds to
 pub fn read_dirent_lfn(chain: &Vec<u32>, offset: u32) -> Result<Option<(DirEntry, usize, String)>,()> {
         let mut direntext = Vec::<DirEntryExt>::new();
         let mut do_push = false;
@@ -168,6 +208,9 @@ pub fn read_dirent_lfn(chain: &Vec<u32>, offset: u32) -> Result<Option<(DirEntry
         }
 }
 
+/// Read the offset-th dirent in the specified clustere
+/// # Exception
+/// Returns None when offset is out of boundary of the cluster
 pub fn read_dirent_c(cluster: u32, offset: u32) -> Option<DirEntry> {
         if cluster > *CLUSTER_CNT {
                 return None;
@@ -185,6 +228,9 @@ pub fn read_dirent_c(cluster: u32, offset: u32) -> Option<DirEntry> {
         }
 }
 
+/// Write the offset-th dirent in the specified chain
+/// # Exception
+/// Returns None when offset is out of boundary of the chain
 pub fn write_dirent(chain: &Vec<u32>, offset: u32, new: &DirEntry) -> Result<(), &'static str> {
         let chain_i = offset / *DIRENT_P_CLST;
         if chain_i >= chain.len() as u32 {
@@ -194,6 +240,9 @@ pub fn write_dirent(chain: &Vec<u32>, offset: u32, new: &DirEntry) -> Result<(),
         return write_dirent_c(chain[chain_i as usize], off, new);
 }
 
+/// Write the offset-th dirent in the specified cluster
+/// # Exception
+/// Returns None when offset is out of boundary of the cluster
 pub fn write_dirent_c(cluster:u32, offset: u32, new: &DirEntry) -> Result<(), &'static str> {
         if cluster > *CLUSTER_CNT {
                 return Err("write_dirent: invalid cluster");
@@ -208,6 +257,9 @@ pub fn write_dirent_c(cluster:u32, offset: u32, new: &DirEntry) -> Result<(), &'
         }
 }
 
+/// Mark the offset-th dirent in the specified chain as deleted
+/// # Exception
+/// Returns None when offset is out of boundary of the chain
 pub fn delete_dirent(chain: &Vec<u32>, offset: u32) -> Result<(), &'static str> {
         let chain_i = offset / *DIRENT_P_CLST;
         if chain_i >= chain.len() as u32 {
@@ -217,6 +269,9 @@ pub fn delete_dirent(chain: &Vec<u32>, offset: u32) -> Result<(), &'static str> 
         return delete_dirent_c(chain[chain_i as usize], off);
 }
 
+/// Mark the offset-th dirent in the specified cluster as deleted
+/// # Exception
+/// Returns None when offset is out of boundary of the cluster
 pub fn delete_dirent_c(cluster: u32, offset: u32) -> Result<(), &'static str> {
         if cluster > *CLUSTER_CNT {
                 return Err("delete_dirent_c: invalid cluster");
@@ -231,10 +286,20 @@ pub fn delete_dirent_c(cluster: u32, offset: u32) -> Result<(), &'static str> {
         }
 }
 
+/// Find a dirent from root directory
+/// # Descriptioin 
+/// Given a path that starts from root, it returns the corresponding dirent
+/// # Exception
+/// There is no dirent for root, attempts to get dirent of root fails.  
+/// When path indicate the dirent is for directory, it fails if it turns out to not being a directory.  
+/// When dirent for the given path not exists, it fails.    
 pub fn find_entry(path: &Path) -> Result<DirEntry, &'static str> {
         find_entry_from(*ROOT_DIR, path)
 }
 
+/// Get the complete name of a file 
+/// # Description
+/// Given a group of Long File Name entry, it returns the complete name of the file.
 fn get_full_name(dex: &mut Vec::<DirEntryExt>) -> Result<String, &'static str> {
         let mut name = Vec::<u8>::new();
         loop {
@@ -260,6 +325,14 @@ fn get_full_name(dex: &mut Vec::<DirEntryExt>) -> Result<String, &'static str> {
         }
 }
 
+/// Find a dirent from a specified directory
+/// # Descriptioin 
+/// Given a relative path, it returns the corresponding dirent if found in specified directory.  
+/// To pass the Directory to search from, just give the starting cluster of its file chain.  
+/// # Exception
+/// There is no dirent for root, attempts to get dirent of root fails.  
+/// When path indicate the dirent is for directory, it fails if it turns out to not being a directory.  
+/// When dirent for the given path not exists, it fails.    
 pub fn find_entry_from(from: u32, path: &Path) -> Result<DirEntry, &'static str> {
         // debug!("find_entry_from:{} {}", from, path.path[0]);
         if path.path.len() == 0 {
@@ -318,6 +391,13 @@ pub fn find_entry_from(from: u32, path: &Path) -> Result<DirEntry, &'static str>
         }
 }
 
+/// Delete an entry (Long File Name Support)
+/// # Description
+/// Mark the dirent(s) of the specified path as deleted  
+/// # Exception
+/// Attempts to delete root directory dirent fails(since there is no entry for root directory).  
+/// When path indicate the dirent is for directory, it fails if it turns out to not being a directory.  
+/// When dirent for the given path not exists, it fails.    
 pub fn delete_entry(path: &Path, is_dir: bool) -> Result<(),&'static str> {
         if path.path.len() == 0 {
                 return Err("delete_entry: no entry for root directory");
@@ -354,11 +434,19 @@ pub fn delete_entry(path: &Path, is_dir: bool) -> Result<(),&'static str> {
         }
 }
 
+/// Judge whether a dirent at specified offset of the given file chain is free or not
 fn is_free_entry(chain: &Vec<u32>, offset: u32) -> bool {
         let entry = read_dirent(chain, offset).unwrap();
         return entry.deleted() || entry.name[0] == 0;
 }
 
+/// Update a dirent of the specified path with the given dirent
+/// # Description
+/// Updates only short file name entrys
+/// # Exception
+/// Attempts to update root directory dirent fails(since there is no entry for root directory).  
+/// When path indicate the dirent is for directory, it fails if it turns out to not being a directory.  
+/// When dirent for the given path not exists, it fails.    
 pub fn update_entry(path: &Path, new: &DirEntry) -> Result<(), &'static str> {
         if path.path.len() == 0 {
                 return Err("update_entry: no entry for root directory");
@@ -418,6 +506,10 @@ pub fn update_entry(path: &Path, new: &DirEntry) -> Result<(), &'static str> {
 //         }
 //         return (0,0, false);
 // }
+
+/// Find a space for free entry in the specified chain
+/// # Description
+/// Entries mark as deleted will not be returned in current implementation
 fn get_free_entry(chain: &Vec<u32>) -> u32 {
         let mut offset = 0;
         loop {
@@ -429,6 +521,13 @@ fn get_free_entry(chain: &Vec<u32>) -> u32 {
         
 }
 
+/// Write a new entry at a specified path (directory) (Long File Name support)
+/// # Description
+/// Long File Name entries will be written automatically
+/// # Exception
+/// Fails when specified path (directory) is not found
+/// # Panic
+/// Panics when not enough space in filesystem to add new entry
 pub fn new_entry(parent: &Path, new: &DirEntry, name: &String) -> Result<(), &'static str> {
         // debug!("new_entry: name {}", name);
         let mut fchain = get_file_chain(*ROOT_DIR);
@@ -480,6 +579,14 @@ pub fn new_entry(parent: &Path, new: &DirEntry, name: &String) -> Result<(), &'s
         return Ok(());
 }
 
+/// Write a new entry at a specified directory (Long File Name support)
+/// # Description
+/// Specified directory should be passed as a dirent
+/// Long File Name entries will be written automatically
+/// # Exception
+/// Fails when specified path (directory) is not found
+/// # Panic
+/// Panics when not enough space in filesystem to add new entry
 pub fn new_entry_at(parent: &DirEntry, new: &DirEntry, name: &String) -> Result<u32, &'static str> {
         // debug!("new_entry_at: name {} {}",new.get_name(), name);
         let fchain = get_file_chain(parent.get_start());
@@ -514,6 +621,7 @@ pub fn new_entry_at(parent: &DirEntry, new: &DirEntry, name: &String) -> Result<
         return Ok(size as u32);
 }
 
+/// List files in root directory
 #[allow(unused)]
 pub fn ls_root() {
         let chain = get_file_chain(*ROOT_DIR);
@@ -541,6 +649,7 @@ pub fn ls_root() {
         }
 }
 
+/// Flush changes to block device
 pub fn flush() {
         flush_all();
 }

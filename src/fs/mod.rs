@@ -127,6 +127,7 @@ pub fn sdcard_test() {
         info!("sdcard test passed");
 }
 
+/// Stat the file
 pub fn stat_file(path_s:& str) -> Result<DirEntry, &'static str> {
         match path::parse_path(path_s) {
                 Ok(path_v) => {
@@ -145,7 +146,7 @@ pub fn stat_file(path_s:& str) -> Result<DirEntry, &'static str> {
         }
 }
 
-// ls
+/// list files in directory
 pub fn list(path: &str) -> Result<(), &'static str> {
         match FILE::open_dir(path, FILE::FMOD_READ) {
                 Ok(mut dir) => {
@@ -167,6 +168,7 @@ pub fn list(path: &str) -> Result<(), &'static str> {
         }
 }
 
+/// list files in directory recursively
 pub fn list_tree(path: &str, level: u32) -> Result<(), &'static str> {
         const INDENT: &str = "|   ";
         let path = String::from(path);

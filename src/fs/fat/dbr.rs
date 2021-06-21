@@ -36,7 +36,7 @@ fn b2u16(b: &[u8; 2]) -> u16 {
 
 /// Raw Dos Boot Record
 /// # Description
-/// A Struct that has the same layout as DBR on Block Device
+/// A Struct that has the same layout as DBR on Block Device  
 /// Reading fields from it directly may cause LoadMisalign.
 /// This's why most field are presented as byte array
 #[derive(Clone, Copy)]
@@ -77,7 +77,11 @@ pub struct RAW_DBR {
 }
 
 impl RAW_DBR {
-        /// Read dbr from block device and
+        /// Read dbr from specified block
+        /// # Description
+        /// Reading from block other than 0 section is implemented  
+        /// for partition table(MBR), which is not enable on  
+        /// submit version.
         pub fn get_dbr(block_id: usize) -> RAW_DBR {
                 let cache = get_block_cache(block_id);
                 let dbr = *cache.lock().get_ref::<RAW_DBR>(0);
@@ -88,31 +92,58 @@ impl RAW_DBR {
         }
 }
 
+
+/// Simplified DBR
+/// # Description build from RAW_DBR
+/// Calculate and store helpful fields only  
+/// Using non-packing layout so that no worrianty of Load Misalign
 pub struct DBR {
+        /// volume id
         pub vol: u32,
+        /// volume name
         pub vol_name:  [u8; 11],
+        /// filesystem name
         pub name: [u8; 8],
+        /// String "fat32   " (three spaces)
         pub fat32: [u8; 8],
+        /// version of fat32
         pub version: u16,
 
+        /// FAT count , (assumed) always 2 
         pub fat_cnt: u32,
+        /// FAT size in sectors
         pub fat_sec: u32,       // fat size in sectors
+        /// FAT size in bytes
         pub fat_len: u32,       // fat size in bytes
 
+        /// Length of a single sector in bytes, (assumed) always 512
         pub sec_len: u32,       
+        /// Length of the whole filesystem in sectors
         pub sec_cnt: u32,
+        /// Length of sectors in front of FAT
         pub rsv_sec: u32,
+        /// Offset of the first data sector
         pub data_sec_base: u32,
 
+        /// Cluster size in sector
         pub clst_sec: u32,      // cluster size in sectors
+        /// Cluster size in bytes
         pub clst_size: u32,     // cluster size in bytes
+        /// Total cluster count filesystem has 
         pub clst_cnt: u32,      // total cluster count in disk
 
+        /// Root cluster number, always 2
         pub root: u32,
+        /// Backup cluster of DBR cluster, not in use
         pub boot: u32,
 }
 
 impl DBR {
+
+        /// Get DBR of FAT32 filesystem
+        /// # Description 
+        /// Get filesystem section offset from partition table  
+        /// is disabled(commented). DBR is read from sector 0.
         pub fn new() -> DBR {
                 // let mut partition:isize = -1;
                 // for i in 0..4 {
@@ -128,6 +159,10 @@ impl DBR {
                 DBR::from_raw(RAW_DBR::get_dbr(start), start as u32)
         }
 
+        /// Build DBR from RAW_DBR
+        /// # Description 
+        /// start_sector is required to calculate filesystem offset, 
+        /// pass 0 to start_sector when no partition table
         pub fn from_raw(raw: RAW_DBR, start_sector: u32) -> Self {
                 let mut fat32 = [0u8; 8];
                 for i in 0..fat32.len() {
@@ -179,6 +214,7 @@ impl DBR {
                 }       
         }
 
+        /// Print DBR Information
         pub fn print(&self) {
                 println!("------DBR---------");
                 println!("{} Version {}", from_utf8(&self.fat32).unwrap(), self.version );
@@ -194,6 +230,7 @@ impl DBR {
                 println!("backup sector:\t{}\n", self.boot);
         }
 
+        /// Returns infomation in fsinfo section
         pub fn get_fsinfo(&self) -> FSINFO {
                 let cache = get_block_cache(1);
                 if *cache.lock().get_ref::<u32>(0) != FSINFO::EXT_FLAG {
@@ -213,6 +250,7 @@ impl DBR {
                 }
         }
 
+        /// Return first FAT table meta-infomation
         pub fn get_fat1(&self) -> FAT {
                 let block_id = self.rsv_sec as u32;
                 let clen  = self.sec_len / size_of::<u32>() as u32;
@@ -225,6 +263,7 @@ impl DBR {
                 };
         }
 
+        /// Return second FAT table meta-information
         pub fn get_fat2(&self) -> FAT {
                 let block_id = self.rsv_sec as u32 + self.fat_sec;
                 let clen  = self.sec_len / size_of::<u32>() as u32;
@@ -239,9 +278,11 @@ impl DBR {
 }
 
 lazy_static! {
+        /// singleton dbr, since mount is not yet implemented
         pub static ref DBR_INST: DBR = DBR::new();
 }
 
+/// wrapper function of print of singleton DBR
 #[allow(unused)]
 pub fn print_dbr() {
         unsafe{
@@ -249,6 +290,11 @@ pub fn print_dbr() {
         }
 }
 
+
+/// Calculate block offset
+/// # Discription
+/// Given the offset of cluster and offset in cluster, it returns
+/// the offset of the block that contains the address.
 pub fn get_cluster_cache(cluster: u32, offset: u32) -> Option<u32> {
         if cluster < DBR_INST.root {
                 return None;
@@ -262,6 +308,14 @@ pub fn get_cluster_cache(cluster: u32, offset: u32) -> Option<u32> {
         return Some(sector);
 }
 
+/// Read content of a cluster
+/// # Discription
+/// Read starts at the specified offset.  
+/// Short read occurs when end of cluster is met.  
+/// Fails when invalid cluster is given or offset out of cluster boundary.  
+/// # Return
+/// On success, return byte count that it actually read  
+/// On failure, return error message
 pub fn read_cluster(cluster: u32, offset: u32, buf: &mut [u8]) ->Result<u32,&str> {
         if cluster >= DBR_INST.clst_cnt {
                 return Err("read_cluster: Invalid cluster");
@@ -292,6 +346,14 @@ pub fn read_cluster(cluster: u32, offset: u32, buf: &mut [u8]) ->Result<u32,&str
         return Ok(buf.len() as u32);
 }
 
+/// Write content of a cluster
+/// # Discription
+/// Write starts at the specified offset.  
+/// Short write occurs when end of cluster is met  
+/// Fails when invalid cluster is given or offset out of cluster boundary
+/// # Return
+/// On success, return byte count that it actually write  
+/// On failure, return error message
 pub fn write_cluster(cluster: u32, offset: u32, buf: &[u8]) -> Result<u32, &str> {
         if cluster >= DBR_INST.clst_cnt {
                 return Err("read_cluster: Invalid cluster");
@@ -322,6 +384,11 @@ pub fn write_cluster(cluster: u32, offset: u32, buf: &[u8]) -> Result<u32, &str>
         return Ok(buf.len() as u32);
 }
 
+
+/// Clear a cluster
+/// # Description
+/// Set every byte in specified cluster to 0  
+/// Failed when invalid cluster is Given
 pub fn clear_cluster(cluster:u32) -> Result<(), &'static str> {
         if cluster >= DBR_INST.clst_cnt {
                 return Err("clear_cluster: Invalid cluster");

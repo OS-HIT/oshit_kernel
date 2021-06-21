@@ -1,4 +1,4 @@
-
+//! Master Boot Record parser, not in use in submitted version
 use super::super::block_cache::get_block_cache;
 use lazy_static::*;
 

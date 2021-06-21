@@ -1,3 +1,4 @@
+//! FSINFO section in filesystem's header region, not in use basically
 #![allow(unused)]
 use super::super::block_cache::get_block_cache;
 

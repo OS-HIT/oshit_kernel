@@ -126,7 +126,7 @@ impl BlockCache {
 
         /// Write cache content back to block device
         /// # Description
-        /// Write only occured when 'modified' flag is set
+        /// Write only occured when 'modified' flag is set  
         /// 'Modified' flag will be reset during this operation 
         pub fn sync(&mut self) {
                 // if self.block_id == 32 {

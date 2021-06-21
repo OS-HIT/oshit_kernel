@@ -1,4 +1,4 @@
-
+//! Providing file related function
 use core::{convert::TryInto, mem::size_of};
 
 use alloc::vec::Vec;
@@ -32,34 +32,53 @@ use super::fat::fat::truncat_file_chain;
 use super::fat::fat::get_free_cluster;
 use alloc::string::ToString;
 
+/// Struct for file
 #[derive(Clone)]
 pub struct FILE {
+        /// absolute file path
         pub path: Path,
+        /// file type
         pub ftype: FTYPE,
+        /// file chain
         pub fchain: Vec<u32>,
+        /// file size
         pub fsize: u32,
+        /// file cursor
         pub cursor: u32,
+        /// access mode
         pub flag: u32,
 }
 
+/// enum for file type
 #[derive(PartialEq)]
 #[derive(Clone, Copy, Debug)]
 pub enum FTYPE {
+        /// directory type
         TDir,
+        /// regular file type
         TFile,
+        /// not in use
         TStdIn,
+        /// not in use
         TStdOut,
+        /// not in use
         TStdErr,
+        /// not in use
         TFree,
 }
 
+/// enum for file seek
 pub enum FSEEK {
+        /// seek from start
         SET(i32),
+        /// seek from cursor
         CUR(i32),
+        /// seek from end
         END(i32),
 }
 
 impl Drop for FILE {
+        /// auto close when dropping file
     fn drop(&mut self) {
         self.close_file();      // TODO: Ask Shi Jvlao for this
     }
@@ -69,11 +88,16 @@ impl FILE {
         // pub const FLAG_READ: u32= 1;
         // pub const FLAG_WRITE: u32 = 2;
 
+        /// allow read
         pub const FMOD_READ: u32 = 1;
+        /// allow write
         pub const FMOD_WRITE: u32 = 2;
+        /// create if not found 
         pub const FMOD_CREATE: u32 = 4;
+        /// append only
         pub const FMOD_APPEND: u32 = 8;
 
+        /// check given access mode is implemented
         #[inline]
         fn implemented(mode: u32) -> bool {
                 return (mode == FILE::FMOD_READ) 
@@ -85,26 +109,31 @@ impl FILE {
                         // || (mode == FILE::FMOD_APPEND | FILE::FMOD_CREATE)
         }
 
+        /// check whether read is allowed
         #[inline]
         fn read_allowed(&self) -> bool {
                 return self.flag & FILE::FMOD_READ != 0;
         }
 
+        /// check whether write is allowed
         #[inline]
         fn write_allowed(&self) -> bool {
                 return self.flag & FILE::FMOD_WRITE != 0;
         }
 
+        /// check whether is in append mode
         #[inline]
         fn append_allowed(&self) -> bool {
                 return self.flag & FILE::FMOD_APPEND != 0;
         }
 
+        /// check whether to create when not found
         #[inline]
         fn do_create(&self) -> bool {
                 return self.flag & FILE::FMOD_CREATE != 0;
         }
         
+        /// Open file at the given path start from root
         fn open_file_path(path: Path, mode: u32) -> Result<FILE, &'static str> {
                 match find_entry(&path) {
                         Ok(entry) => {
@@ -161,6 +190,9 @@ impl FILE {
                 }
         }
 
+        /// Open file at the given relative path from self(a diretory file)
+        /// # Description
+        /// Path is given as string
         pub fn open_file_from(&self, path: &str, mode: u32) -> Result<FILE, &'static str> {
                 if !FILE::implemented(mode) {
                         return Err("open_file: Not implemented yet");
@@ -190,6 +222,9 @@ impl FILE {
                 FILE::open_file_path(path, mode)
         }
         
+        /// Open file at the given path start from root
+        /// # Description
+        /// Path is given as string
         pub fn open_file(path: &str, mode: u32) -> Result<FILE, &'static str> {
                 if !FILE::implemented(mode) {
                         return Err("open_file: Not implemented yet");
@@ -210,6 +245,9 @@ impl FILE {
                 FILE::open_file_path(path, mode)
         }
 
+        /// Delete file at the specified path
+        /// # Description
+        /// Path given as string
         pub fn delete_file(path: &str) -> Result<(), &'static str> {
                 let path = match parse_path(path) {
                         Ok(path) => {
@@ -222,6 +260,7 @@ impl FILE {
                 FILE::delete_file_path(path)
         }
 
+        /// Delete file at the specified path
         pub fn delete_file_path(path: Path) -> Result<(), &'static str> {
                 if path.must_dir {
                         return Err("delete_file: input path is referring a directory");
@@ -242,6 +281,9 @@ impl FILE {
                 }
         }
 
+        /// delete file at the given relative path from self(a diretory file)
+        /// # Description
+        /// Path given as string
         pub fn delete_file_from(&self, path: &str) -> Result<(), &'static str> {
                 let path = match parse_path(path) {
                         Ok(mut path) => {
@@ -268,6 +310,9 @@ impl FILE {
                 FILE::delete_file_path(path)
         }
 
+        /// Open a directory at specified path
+        /// # Description
+        /// Path given as string
         pub fn open_dir(path: &str, mode: u32) -> Result<FILE, &'static str> {
                 // debug!("open_dir: path:{}", path);
                 if mode != FILE::FMOD_READ {
@@ -312,6 +357,9 @@ impl FILE {
                 }
         }
 
+        /// Create a directory at specified path
+        /// # Description
+        /// Path given as string
         pub fn make_dir(path: &str) -> Result<(), &'static str> {
                 verbose!("make_dir!");
                 let path = match parse_path(path) {
@@ -322,6 +370,9 @@ impl FILE {
         }
 
         // I can't wait any longer.
+        /// Open a directory at at the given relative path from self(a diretory file)
+        /// # Description
+        /// Path given as string
         pub fn make_dir_from(&self, path: &str) -> Result<(), &'static str> {
                 verbose!("make_dir_from!");
                 let path = match parse_path(path) {
@@ -346,6 +397,7 @@ impl FILE {
                 FILE::make_dir_path(path)
         }
 
+        /// Create a directory at specified path
         pub fn make_dir_path(mut path: Path) -> Result<(), &'static str> {
                 // debug!("make_dir_path!");
                 path.must_dir = true;
@@ -441,6 +493,9 @@ impl FILE {
                 return Ok(());
         }
 
+        /// Check if directory is empty
+        /// # Discription
+        /// Direcotry pass as dirent
         fn is_empty_dir(entry: &DirEntry) -> bool {
                 let chain = entry.get_chain();
                 let mut offset = 0;
@@ -461,6 +516,9 @@ impl FILE {
                 return true;
         }
 
+        /// Delete dir at specified path
+        /// # Description
+        /// Path given as string
         pub fn delete_dir(path: &str) -> Result<(), &'static str> {
                 let mut path = match parse_path(path) {
                         Ok(path) => path,
@@ -504,6 +562,7 @@ impl FILE {
                 }
         }
 
+        /// Get the cluster that cursor is pointing to
         #[inline]
         fn get_cur_cluster(&self) -> Result<u32, &str> {
                 // if self.cursor > self.fsize {
@@ -516,6 +575,7 @@ impl FILE {
                 return Ok(self.fchain[idx as usize]);
         }
 
+        /// Get dirent of the file
         pub fn get_dirent(&mut self) ->Result<(DirEntry, String) , &'static str> {
                 if self.ftype != FTYPE::TDir {
                         return Err("get_dirent: not a directory");
@@ -544,6 +604,7 @@ impl FILE {
                 }
         }
 
+        /// Seek in file
         pub fn seek_file(&mut self, seek: &FSEEK) -> i32 {
                 match seek {
                         FSEEK::SET(offset) => {
@@ -591,6 +652,11 @@ impl FILE {
                 };
         }
 
+        /// Read from file
+        /// # Description
+        /// Short read occurs when end of file is met
+        /// # Exception
+        /// Fails if file opened without read flag
         pub fn read_file(&mut self, buf: &mut [u8]) -> Result<u32, &'static str> {
 
                 if self.ftype != FTYPE::TFile {
@@ -621,6 +687,9 @@ impl FILE {
                 return Ok(read);
         }
 
+        /// Write to file
+        /// # Exception
+        /// Fails if file opened with write flag
         pub fn write_file(&mut self, buf: &[u8]) -> Result<u32, &str> {
                 if self.ftype != FTYPE::TFile {
                         return Err("write_file: Not a regular file");
@@ -667,6 +736,7 @@ impl FILE {
                 return Ok(wlen);
         }
 
+        /// Close the file
         pub fn close_file(&mut self) -> Result<(), (&FILE, &'static str)> {
         
                 debug!("Closing file {}", self.path.path.last().unwrap_or(&"ROOT?".to_string()));

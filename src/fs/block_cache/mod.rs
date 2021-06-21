@@ -9,9 +9,11 @@ use lazy_static::*;
 
 use crate::fs::BLOCK_DEVICE;
 
+/// Size of a block cache
 pub const BLOCK_SZ: usize = 512;
 
-const BLOCK_CACHE_SIZE: usize = 1;
+/// Max block cache count that a block cache manager holds
+const BLOCK_CACHE_SIZE: usize = 32;
 
 /// Manager of block caches
 pub struct BlockCacheManager {
@@ -27,7 +29,7 @@ impl BlockCacheManager {
 
         /// Get a block cache
         /// # Description 
-        /// Returns a cache of a block at specified offset of the block device 
+        /// Returns a cache of a block at specified offset of the block device  
         /// Drops earliest allocate cache when necessary
         pub fn get_block_cache(
                 &mut self,
@@ -63,7 +65,7 @@ impl BlockCacheManager {
 
         /// clear block content
         /// # Description 
-        /// Reset content of a block at specified offset 
+        /// Reset content of a block at specified offset  
         /// Block cache will be cleared if it is allocated
         pub fn clear_block_cache(&mut self, block_id: usize) {
                 if block_id < 100 {
