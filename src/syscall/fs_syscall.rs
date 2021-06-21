@@ -258,7 +258,7 @@ pub struct dirent {
     d_off: i64,
     d_reclen: u16,
     d_type: u8,
-    d_name: [u8; 256],
+    d_name: [u8; 128],
 }
 
 /// Get dirents of a directory.
@@ -288,7 +288,7 @@ pub fn sys_getdents64(fd: usize, buf: VirtAddr, len: usize) -> isize {
                             d_off : size_of::<dirent> as i64,
                             d_reclen: dirent.get_name().len() as u16,
                             d_type: dirent.attr,
-                            d_name: [0; 256],   // How to do this?
+                            d_name: [0; 128],   // How to do this?
                         };
                         dirent_item.d_name[0..dirent.name.len()].copy_from_slice(&dirent.name);
                         arcpcb.layout.write_user_data(last_ptr, &dirent_item);
