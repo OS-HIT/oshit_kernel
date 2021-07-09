@@ -20,8 +20,7 @@ use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
 use bitflags::*;
 use crate::config::*;
-use crate::fs::VirtFile;
-use crate::fs::FSEEK;
+use crate::fs::{File, SeekOp};
 use core::cmp::min;
 use crate::utils::StepByOne;
 use lazy_static::*;
@@ -96,7 +95,7 @@ pub struct Segment {
     /// vma flags
     pub vmaFlags : VMAFlags,
     /// the mmap file
-    pub file    : Option<Arc<dyn VirtFile + Send + Sync>>,
+    pub file    : Option<Arc<dyn File>>,
     /// the mmap file offset
     pub offset  : usize
 }
@@ -118,7 +117,7 @@ impl Segment {
     /// ```
     /// # Return
     /// Returns a new, unmapped segment.
-    pub fn new(start: VirtAddr, stop: VirtAddr, map_type: MapType, segFlags: SegmentFlags, vmaFlags: VMAFlags, file: Option<Arc<dyn VirtFile + Send + Sync>>, offset: usize) -> Self {
+    pub fn new(start: VirtAddr, stop: VirtAddr, map_type: MapType, segFlags: SegmentFlags, vmaFlags: VMAFlags, file: Option<Arc<dyn File>>, offset: usize) -> Self {
         verbose!("New Segment: {:?} <=> {:?}", start.to_vpn(), stop.to_vpn_ceil());
         Self {
             range   : VPNRange::new(start.to_vpn(), stop.to_vpn_ceil()),
@@ -182,9 +181,9 @@ impl Segment {
         let cur = inner_file.cursor;
         let offset: i32 = (va - VirtAddr::from(self.range.get_start()) - self.offset).try_into().unwrap();
         let offset = offset - offset % PAGE_SIZE as i32;
-        inner_file.seek_file(&FSEEK::SET(offset));
+        inner_file.seek_file(&SeekOp::SET(offset));
         let res = inner_file.read_file(bytes);
-        inner_file.seek_file(&FSEEK::SET(cur as i32));
+        inner_file.seek_file(&SeekOp::SET(cur as i32));
 
         if let Err(msg) = res {
             error!("{}", msg);
@@ -237,13 +236,13 @@ impl Segment {
                     let mut fs_file = file.to_fs_file_locked().unwrap();
                     let cur = fs_file.cursor;
                     let offset = (vpn - self.range.get_start()) * PAGE_SIZE + self.offset;
-                    fs_file.seek_file(&FSEEK::SET(offset as i32)); 
+                    fs_file.seek_file(&SeekOp::SET(offset as i32)); 
                     verbose!("Unmap page VMA write back, from {:?}({:?})", vpn, PhysPageNum::from(pagetable.translate_va(vpn.into()).unwrap()));
                     let page_ptr = PhysPageNum::from(pagetable.translate_va(vpn.into()).unwrap()).page_ptr();
                     if let Err(msg) = fs_file.write_file(page_ptr) {
                         error!("Failed to write to file: {}", msg);
                     }
-                    fs_file.seek_file(&FSEEK::SET(cur as i32));
+                    fs_file.seek_file(&SeekOp::SET(cur as i32));
                     self.frames.remove(&vpn);
                 } else {
                     verbose!("Lazy page detected, not unmapping");
@@ -755,7 +754,7 @@ impl MemLayout {
     }
 
     /// Add a VMA segment to the layout
-    pub fn add_vma(&mut self, file: Arc<dyn VirtFile + Send + Sync>, start: VirtAddr, flag: VMAFlags, offset: usize, length: usize) -> Result<VirtAddr, &'static str> {
+    pub fn add_vma(&mut self, file: Arc<dyn File>, start: VirtAddr, flag: VMAFlags, offset: usize, length: usize) -> Result<VirtAddr, &'static str> {
         if start.0 == 0 {
             return self.add_vma_anywhere(file, flag, offset, length);
         }
@@ -787,7 +786,7 @@ impl MemLayout {
     }
 
     /// Add a VMA segment anywhere
-    pub fn add_vma_anywhere(&mut self, file: Arc<dyn VirtFile + Send + Sync>, flag: VMAFlags, offset: usize, len: usize) -> Result<VirtAddr, &'static str> {
+    pub fn add_vma_anywhere(&mut self, file: Arc<dyn File>, flag: VMAFlags, offset: usize, len: usize) -> Result<VirtAddr, &'static str> {
         let mut stop_vpn: VirtPageNum = VirtAddr::from(TRAP_CONTEXT - 4 * PAGE_SIZE).into();
         let mut start_vpn: VirtPageNum = stop_vpn - file.to_fs_file_locked().unwrap().fsize as usize / PAGE_SIZE;
         'outer: for i in stop_vpn.0..0 {

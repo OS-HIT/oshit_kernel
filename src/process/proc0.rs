@@ -3,7 +3,7 @@ use super::ProcessControlBlock;
 use super::enqueue;
 use lazy_static::*;
 use alloc::sync::Arc;
-use crate::fs::FILE;
+use crate::fs::File;
 use alloc::vec::Vec;
 use alloc::string::ToString;
 

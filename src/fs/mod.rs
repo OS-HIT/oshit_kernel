@@ -13,5 +13,19 @@ pub use fs_impl::{
     DeviceFile,
     VirtualFileSystem,
     FSFlags,
+    OpenMode,
     FSStatus
+};
+
+pub use mount_manager::{
+	mount_fs,
+	unmount_fs,
+	parse,
+	open,
+	mkdir,
+	mkfile,
+	remove,
+	link,
+	sym_link,
+	rename
 };

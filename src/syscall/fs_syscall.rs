@@ -1,7 +1,7 @@
 //! Wrappers of file system related syscalls.
-use super::super::fs::file::FILE;
-use crate::fs::block_cache::BLOCK_SZ;
-use crate::fs::{self, FTYPE, FileWithLock, make_pipe};
+// use super::super::fs::file::FILE;
+// use crate::fs::block_cache::BLOCK_SZ;
+use crate::fs::{File, OpenMode, open};
 use crate::memory::{VirtAddr};
 use crate::process::{current_process};
 // use alloc::vec::Vec;
@@ -20,15 +20,15 @@ pub fn sys_openat(fd: i32, file_name: VirtAddr, flags: u32, _: u32) -> isize {
     if buf[0] == b'.' && buf[1] == b'/' {
         buf = buf[2..].iter().cloned().collect();
     }
-    let mut fs_flags = FILE::FMOD_READ;
+    let mut fs_flags = OpenMode::READ;
     if flags & 0x001 != 0 {
-        fs_flags = FILE::FMOD_WRITE;
+        fs_flags = OpenMode::WRITE;
     }
     if flags & 0x002 != 0 {
-        fs_flags |= FILE::FMOD_WRITE;
+        fs_flags |= OpenMode::WRITE;
     }
     if flags & 0x040 != 0 {
-        fs_flags |= FILE::FMOD_CREATE;
+        fs_flags |= OpenMode::CREATE;
     }
     verbose!("syscall flag: {:x}", flags);
     if let Ok(path) = core::str::from_utf8(&buf) {
@@ -40,30 +40,13 @@ pub fn sys_openat(fd: i32, file_name: VirtAddr, flags: u32, _: u32) -> isize {
             verbose!("Openat path: {} + {}", arcpcb.path.clone(), path);
  
 
-            let file = if fs_flags & 0x200000 != 0 {
-                match FILE::open_dir(path, fs_flags) {
-                    Ok(dir) => dir,
-                    Err(msg) => {
-                        error!("{}", msg);
-                        return -1;
-                    }
-                }
-            } else {
-                match FILE::open_file(whole_path.as_str(), fs_flags) {
-                    Ok(file) => file,
-                    Err(_) => {
-                        match FILE::open_dir(path, fs_flags) {
-                            Ok(dir) => dir,
-                            Err(msg) => {
-                                error!("{}", msg);
-                                return -1;
-                            }
-                        }
-                    }
-                }
+            let res = open(path, fs_flags);
+            let file = match res {
+                Ok(f) => f,
+                Err(e) => return -1,
             };
             let new_fd = arcpcb.alloc_fd();
-            arcpcb.files[new_fd] = Some(Arc::new(FileWithLock::new(file)));
+            arcpcb.files[new_fd] = Some(file);
             return new_fd.try_into().unwrap();
         }
 

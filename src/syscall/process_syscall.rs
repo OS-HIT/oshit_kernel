@@ -17,7 +17,11 @@ use alloc::sync::Arc;
 use alloc::vec::Vec;
 use alloc::string::ToString;
 
-use crate::fs::FILE;
+use crate::fs::{
+    File,
+    open,
+    OpenMode
+};
 
 pub const WNOHANG: isize = 1;
 pub const WUNTRACED: isize = 2;
@@ -31,15 +35,6 @@ pub fn sys_yield() -> isize {
 
 /// Process exit.
 pub fn sys_exit(code: i32) -> ! {
-    match FILE::open_file("/dup", FILE::FMOD_READ) {
-        Ok(file) => {
-            debug!("FILE clone chain len {} ({:?}) size {}", file.fchain.len(), file.fchain, file.fsize);
-            drop(file);
-        }
-        Err(msg) => {
-            error!("Create file failed: {}", msg);
-        }
-    }
     debug!("Application {} exited with code {:}", current_process().unwrap().pid.0, code);
     exit_switch(code);
     unreachable!("This part should be unreachable. Go check __switch.")
@@ -80,7 +75,8 @@ pub fn sys_exec(app_name: VirtAddr, argv: VirtAddr, envp: VirtAddr) -> isize {
         app_name = path;
     }
     verbose!("Exec {}", app_name);
-    match FILE::open_file(&app_name, FILE::FMOD_READ) {
+
+    match open(&app_name, OpenMode::R) {
         Ok(mut file) => {
             verbose!("File found {}", app_name);
             let mut v: Vec<u8> = Vec::with_capacity(file.fsize as usize);
@@ -198,7 +194,7 @@ pub fn sys_chdir(buf: VirtAddr) -> isize {
     let proc = current_process().unwrap();
     let mut arcpcb = proc.get_inner_locked();
     if let Ok (dir_str) = core::str::from_utf8(&arcpcb.layout.get_user_cstr(buf)) {
-        if let Ok (_) = FILE::open_dir(dir_str, FILE::FMOD_READ) {
+        if let Ok (_) = open(dir_str, OpenMode::R) {
             arcpcb.path = dir_str.to_string();
             return 0;
         } else {

@@ -11,5 +11,6 @@ pub use devfs::{DeviceFile};
 pub use vfs::{
 	VirtualFileSystem,
     FSStatus,
+    OpenMode,
     FSFlags
 };

@@ -1,6 +1,6 @@
-use alloc::string::String;
+use alloc::{string::String, sync::Arc};
 
-use super::{CommonFile, DeviceFile, DirFile};
+use super::{CommonFile, DeviceFile, DirFile, VirtualFileSystem};
 
 
 /// seek types, def similar to linux man
@@ -19,7 +19,7 @@ pub struct FileStatus {
 }
 
 /// File traits. Mostly inspired by linux file_operations struct. Implements Drop Trait.
-pub trait File: Drop {
+pub trait File: Drop + Send + Sync {
     /// seek cursor. Some type of file not support this (like char device)
     fn seek(&self, offset: u64, op: SeekOp) -> Result<(), &'static str>;
 
@@ -34,21 +34,25 @@ pub trait File: Drop {
     /// cast down to common file
     /// HACK: It is unclear how this will coop with Arc<File>, recommand no holding this but Arc<File>.
     /// return casted on success
-    fn to_common_file(&self) -> Option<dyn CommonFile>;
+    fn to_common_file(&self) -> Option<Arc<dyn CommonFile>>;
 
     /// cast down to common file
     /// HACK: It is unclear how this will coop with Arc<File>, recommand no holding this but Arc<File>.
     /// return casted on success
-    fn to_dir_file(&self) -> Option<dyn DirFile>;
+    fn to_dir_file(&self) -> Option<Arc<dyn DirFile>>;
 
     /// cast down to device file
     /// HACK: It is unclear how this will coop with Arc<File>, recommand no holding this but Arc<File>.
     /// return casted on success
-    fn to_device_file(&self) -> Option<dyn DeviceFile>;
+    fn to_device_file(&self) -> Option<Arc<dyn DeviceFile>>;
 
     /// Get file status
     fn poll(&self) -> FileStatus;
 
     /// rename
     fn rename(&self, new_name: String) -> Result<(), &'static str>;
+
+    fn get_vfs(&self) -> Arc<dyn VirtualFileSystem>;
+
+    fn get_path(&self) -> String;
 }

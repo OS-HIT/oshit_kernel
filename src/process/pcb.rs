@@ -1,6 +1,6 @@
 //! Implementation of Process Control Block of oshit kernel
 
-use crate::fs::{FILE, FileWithLock, VirtFile};
+use crate::fs::{File};
 
 use crate::memory::{
     MemLayout,
@@ -97,7 +97,7 @@ pub struct ProcessControlBlockInner {
     pub children: Vec<Arc<ProcessControlBlock>>,
     /// Opened file descriptors
     /// TODO: Change to hash_map<Arc<dyn VirtFile + Send + Sync>>>
-    pub files: Vec<Option<Arc<dyn VirtFile + Send+ Sync>>>,
+    pub files: Vec<Option<Arc<dyn File>>>,
     /// Current working directory
     pub path: String,
     /// Exit code of the process
@@ -168,9 +168,10 @@ impl ProcessControlBlock {
                 parent: None,
                 children: Vec::new(),
                 files: vec![
-                    Some(Arc::new(crate::fs::Stdin)), 
-                    Some(Arc::new(crate::fs::Stdout)), 
-                    Some(Arc::new(crate::fs::Stderr))
+                    // TODO: stdio fd here
+                    // Some(Arc::new(crate::fs::Stdin)), 
+                    // Some(Arc::new(crate::fs::Stdout)), 
+                    // Some(Arc::new(crate::fs::Stderr))
                 ],
                 path: path[..path.rfind('/').unwrap() + 1].to_string(),
                 exit_code: 0
