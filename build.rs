@@ -22,7 +22,7 @@ pub const VERSION : &[u8] = b"{}\0";"#, now.to_rfc2822());
     Ok(())
 }
 
-static TARGET_PATH: &str = "../user_bins/";
+static TARGET_PATH: &str = "built_in_elfs/";
 
 fn insert_app_data() -> Result<()> {
     let mut f = File::create("src/link_app.asm").unwrap();
