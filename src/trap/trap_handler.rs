@@ -103,6 +103,7 @@ pub fn user_trap(_cx: &mut TrapContext) -> ! {
                     arcpcb.get_trap_context().sepc,
                     msg
                 );
+                drop(arcpcb);
                 exit_switch(-2);
             }
         },
@@ -118,6 +119,7 @@ pub fn user_trap(_cx: &mut TrapContext) -> ! {
                     arcpcb.get_trap_context().sepc,
                     msg
                 );
+                drop(arcpcb);
                 exit_switch(-2);
             }
         },

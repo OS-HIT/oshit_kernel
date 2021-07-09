@@ -47,7 +47,9 @@ _num_app:
     for i in 0..apps.len() {
         writeln!(f, r#"    .quad app_{}_start"#, i)?;
     }
-    writeln!(f, r#"    .quad app_{}_end"#, apps.len() - 1)?;
+    if apps.len() > 0 {
+        writeln!(f, r#"    .quad app_{}_end"#, apps.len() - 1)?;
+    }
 
     writeln!(f, r#"
     .global _app_names
