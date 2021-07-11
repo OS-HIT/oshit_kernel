@@ -72,26 +72,22 @@ impl MountManagerInner {
     }
 
     pub fn mount_fs(&self, path: String, vfs: Arc<dyn VirtualFileSystem>) -> Result<(), &'static str> {
-        self.mounted_fs.try_insert(path, vfs).map(|res| -> Result<(), &'static str>{
-            match res {
-                Ok(_) => Ok(()),
-                _ => Err("Insert failed.")
-            }
-        })
+        match self.mounted_fs.try_insert(path, vfs) {
+            Ok(_) => Ok(()),
+            Err(_) => Err("Insert failed.")
+        }
     }
 
     pub fn unmount_fs(&self, path: String) -> Result<(), &'static str> {
-        self.mounted_fs.remove(path).map(|res| -> Result<(), &'static str>{
-            match res {
-                Ok(vfs) => {
-                    if Arc::strong_count(vfs) > 1 {
-                        error!("The vfs you are about to remove have {} reference count. Proceed with caution.", Arc::strong_count(vfs));
-                    }
-                    Ok(())
-                },
-                _ => Err("Remove failed.")
-            }
-        })
+        match self.mounted_fs.remove(&path) {
+            Some(vfs) => {
+                if Arc::strong_count(&vfs) > 1 {
+                    error!("The vfs you are about to remove have {} reference count. Proceed with caution.", Arc::strong_count(&vfs));
+                }
+                Ok(())
+            },
+            None => Err("Remove failed: no such VFS")
+        }
     }
 
     /// get vfs and string relative to it.
@@ -127,7 +123,7 @@ impl MountManagerInner {
         let src_vfs = to_link.get_vfs();
         let src_path = to_link.get_path();
         let (dst_vfs, dst_path) = self.parse(dest)?;
-        if src_vfs != dst_path {
+        if Arc::ptr_eq(&src_vfs, &dst_vfs) {
             return Err("Cannot create hard link accross file systems!");
         } else {
             return src_vfs.link(to_link, dst_path);
@@ -137,7 +133,7 @@ impl MountManagerInner {
     pub fn sym_link(&self, to_link: Arc<dyn File>, dest: String) -> Result<(), &'static str> {
         let src_vfs = to_link.get_vfs();
         let src_rel_path = to_link.get_path();
-        let src_abs_path = self.mounted_at(src_vfs) + src_rel_path;
+        let src_abs_path = self.mounted_at(src_vfs)? + &src_rel_path;
         let (dst_vfs, dst_path) = self.parse(dest)?;
         return dst_vfs.sym_link(src_abs_path, dst_path);
     }

@@ -29,3 +29,8 @@ pub use mount_manager::{
 	sym_link,
 	rename
 };
+
+pub use pipe::{
+	PipeEnd,
+	make_pipe
+};

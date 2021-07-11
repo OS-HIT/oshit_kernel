@@ -23,10 +23,11 @@ pub struct FSStatus {
 bitflags! {
     /// fs flags
     pub struct OpenMode: u64 {
-        /// todo.
         const READ = 1 << 0;
         const WRITE = 1 << 1;
         const CREATE = 1 << 2;
+        // special access: opened by kernel
+        const SYS = 1 << 3;
     }
 }
 

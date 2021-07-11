@@ -76,13 +76,14 @@ pub fn sys_exec(app_name: VirtAddr, argv: VirtAddr, envp: VirtAddr) -> isize {
     }
     verbose!("Exec {}", app_name);
 
-    match open(&app_name, OpenMode::R) {
+    match open(app_name, OpenMode::READ) {
         Ok(mut file) => {
             verbose!("File found {}", app_name);
-            let mut v: Vec<u8> = Vec::with_capacity(file.fsize as usize);
-            v.resize(file.fsize as usize, 0);
+            let length = file.poll().size as usize;
+            let mut v: Vec<u8> = Vec::with_capacity(length);
+            v.resize(length, 0);
 
-            match file.read_file(&mut v) {
+            match file.read(&mut v) {
                 Ok(res) => {
                     verbose!("Loaded App {}, size = {}", app_name, res);
                     let proc = current_process().unwrap();
@@ -194,7 +195,7 @@ pub fn sys_chdir(buf: VirtAddr) -> isize {
     let proc = current_process().unwrap();
     let mut arcpcb = proc.get_inner_locked();
     if let Ok (dir_str) = core::str::from_utf8(&arcpcb.layout.get_user_cstr(buf)) {
-        if let Ok (_) = open(dir_str, OpenMode::R) {
+        if let Ok (_) = open(dir_str.to_string(), OpenMode::READ) {
             arcpcb.path = dir_str.to_string();
             return 0;
         } else {

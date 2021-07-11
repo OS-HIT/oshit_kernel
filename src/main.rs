@@ -8,6 +8,7 @@
 #![feature(panic_info_message)]
 // #![feature(const_in_array_repeat_expressions)]
 #![feature(alloc_error_handler)]
+#![feature(map_try_insert)]
 
 global_asm!(include_str!("entry.asm"));
 global_asm!(include_str!("link_app.asm"));

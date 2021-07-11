@@ -1,6 +1,8 @@
+use alloc::sync::Arc;
+
 use super::File;
 
-struct PipeEnd {
+pub struct PipeEnd {
     // todo: finish this. Copy-paste from old
 }
 
@@ -9,11 +11,11 @@ impl File for PipeEnd {
         todo!()
     }
 
-    fn read(&self, buffer: &[u8], length: u64) -> Result<u64, &'static str> {
+    fn read(&self, buffer: &[u8]) -> Result<u64, &'static str> {
         todo!()
     }
 
-    fn write(&self, buffer: &[u8], length: u64) -> Result<u64, &'static str> {
+    fn write(&self, buffer: &[u8]) -> Result<u64, &'static str> {
         todo!()
     }
 
@@ -44,4 +46,26 @@ impl File for PipeEnd {
     fn get_path(&self) -> alloc::string::String {
         todo!()
     }
+
+    fn read_user_buffer(&self, buffer: crate::memory::UserBuffer) -> Result<u64, &'static str> {
+        todo!()
+    }
+
+    fn write_user_buffer(&self, buffer: crate::memory::UserBuffer) -> Result<u64, &'static str> {
+        todo!()
+    }
+
+    fn get_cursor(&self) -> Result<u64, &'static str> {
+        todo!()
+    }
+}
+
+impl Drop for PipeEnd {
+    fn drop(&mut self) {
+        todo!()
+    }
+}
+
+pub fn make_pipe() -> (Arc<PipeEnd>, Arc<PipeEnd>) {
+    todo!()
 }

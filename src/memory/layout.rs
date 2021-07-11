@@ -177,13 +177,13 @@ impl Segment {
 
         let bytes = ppn.page_ptr();
         let optfile = self.file.clone().unwrap();
-        let mut inner_file = optfile.to_fs_file_locked().unwrap();
-        let cur = inner_file.cursor;
+        let mut inner_file = optfile.to_common_file().unwrap();
+        let cur = inner_file.get_cursor()?;
         let offset: i32 = (va - VirtAddr::from(self.range.get_start()) - self.offset).try_into().unwrap();
         let offset = offset - offset % PAGE_SIZE as i32;
-        inner_file.seek_file(&SeekOp::SET(offset));
-        let res = inner_file.read_file(bytes);
-        inner_file.seek_file(&SeekOp::SET(cur as i32));
+        inner_file.seek(offset as u64, SeekOp::SET);
+        let res = inner_file.read(bytes);
+        inner_file.seek(cur, SeekOp::SET);
 
         if let Err(msg) = res {
             error!("{}", msg);
@@ -233,16 +233,16 @@ impl Segment {
                 verbose!("pte find: valid: {}, ditry: {}", pte.valid(), pte.dirty());
                 if self.vmaFlags.contains(VMAFlags::W) && pte.dirty() && pte.valid() {
                     let file = self.file.clone().unwrap();
-                    let mut fs_file = file.to_fs_file_locked().unwrap();
-                    let cur = fs_file.cursor;
+                    let mut fs_file = file.to_common_file().unwrap();
+                    let cur = fs_file.get_cursor().unwrap();
                     let offset = (vpn - self.range.get_start()) * PAGE_SIZE + self.offset;
-                    fs_file.seek_file(&SeekOp::SET(offset as i32)); 
+                    fs_file.seek(offset as u64, SeekOp::SET); 
                     verbose!("Unmap page VMA write back, from {:?}({:?})", vpn, PhysPageNum::from(pagetable.translate_va(vpn.into()).unwrap()));
                     let page_ptr = PhysPageNum::from(pagetable.translate_va(vpn.into()).unwrap()).page_ptr();
-                    if let Err(msg) = fs_file.write_file(page_ptr) {
+                    if let Err(msg) = fs_file.write(page_ptr) {
                         error!("Failed to write to file: {}", msg);
                     }
-                    fs_file.seek_file(&SeekOp::SET(cur as i32));
+                    fs_file.seek(cur, SeekOp::SET);
                     self.frames.remove(&vpn);
                 } else {
                     verbose!("Lazy page detected, not unmapping");
@@ -759,9 +759,9 @@ impl MemLayout {
             return self.add_vma_anywhere(file, flag, offset, length);
         }
         verbose!("Mapping VMA: [{:?}, {:?}), length = {}", VirtPageNum::from(start), (start + length).to_vpn_ceil(), length);
-        let inner = file.to_fs_file_locked().unwrap();
+        let inner = file.to_common_file().unwrap();
         let start_vpn = start.to_vpn();
-        let stop_vpn = (min(start + inner.fsize as usize, start + length)).to_vpn_ceil();
+        let stop_vpn = (min(start + inner.poll().size as usize, start + length)).to_vpn_ceil();
         // check overlap
         for seg in self.segments.iter() {
             if seg.range.get_start() <= start_vpn && start_vpn < seg.range.get_end() {
@@ -788,10 +788,10 @@ impl MemLayout {
     /// Add a VMA segment anywhere
     pub fn add_vma_anywhere(&mut self, file: Arc<dyn File>, flag: VMAFlags, offset: usize, len: usize) -> Result<VirtAddr, &'static str> {
         let mut stop_vpn: VirtPageNum = VirtAddr::from(TRAP_CONTEXT - 4 * PAGE_SIZE).into();
-        let mut start_vpn: VirtPageNum = stop_vpn - file.to_fs_file_locked().unwrap().fsize as usize / PAGE_SIZE;
+        let mut start_vpn: VirtPageNum = stop_vpn - file.poll().size as usize / PAGE_SIZE;
         'outer: for i in stop_vpn.0..0 {
             stop_vpn = i.into();
-            start_vpn = (i - file.to_fs_file_locked().unwrap().fsize as usize / PAGE_SIZE).into();
+            start_vpn = (i - file.poll().size as usize / PAGE_SIZE).into();
             
             // check overlap
             for seg in self.segments.iter() {
