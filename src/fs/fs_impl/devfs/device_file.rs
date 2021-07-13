@@ -1,3 +1,5 @@
+use crate::fs::CommonFile;
+
 use super::super::super::File;
 
 pub trait DeviceFile : File {
@@ -6,7 +8,7 @@ pub trait DeviceFile : File {
 }
 
 pub trait CharDevice : DeviceFile {
-    // todo
+    fn flush(&self);
 }
 
 pub trait BlockDevice : DeviceFile {

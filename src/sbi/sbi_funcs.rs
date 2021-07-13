@@ -78,6 +78,15 @@ pub fn get_byte() -> u8 {
     return res.try_into().unwrap();
 }
 
+/// Get a single byte from SBI I/O module
+pub fn get_byte_non_block_with_echo() -> usize {
+    let res = sbi_call(SBI_CONSOLE_GETCHAR, 0, 0, 0);
+    if(res != 0xFFFFFFFFFFFFFFFF) { 
+        put_byte(res.try_into().unwrap())
+    }
+    return res;
+}
+
 /// Shutdown the machine
 pub fn shutdown() -> ! {
     sbi_call(SBI_SHUTDOWN, 0, 0, 0);
