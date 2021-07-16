@@ -53,61 +53,7 @@ pub extern "C" fn rust_main() -> !{
     
     trap::init();
 
-    fs::fat::mbr::MBR_INST.print();
-    fs::fat::print_dbr();
-        
-    fs::list_tree("/", 0).unwrap();
-    // match fs::FILE::open_file("/clone", fs::FILE::FMOD_READ) {
-    //     Ok(mut file) => {
-    //         error!("FILE clone chain len {} ({:?}) size {}", file.fchain.len(), file.fchain, file.fsize);
-    //     }
-    //     Err(msg) => {
-    //         error!("Create file failed: {}", msg);
-    //     }
-    // }
-    // fs::list_tree("/", 0).unwrap();
-    // fs::fs_test();
-    // let mut a = fs::FILE::open_file("/test1", fs::FILE::FMOD_READ | fs::FILE::FMOD_WRITE | fs::FILE::FMOD_CREATE).unwrap();
-    // a.write_file(&[1u8; 64]).unwrap();
-    // let mut a = fs::FILE::open_file("/test2", fs::FILE::FMOD_READ | fs::FILE::FMOD_WRITE | fs::FILE::FMOD_CREATE).unwrap();
-    // a.write_file(&[1u8; 64]).unwrap();
-    // let mut a = fs::FILE::open_file("/test3", fs::FILE::FMOD_READ | fs::FILE::FMOD_WRITE | fs::FILE::FMOD_CREATE).unwrap();
-    // a.write_file(&[1u8; 64]).unwrap();
-    // let mut a = fs::FILE::open_file("/test4", fs::FILE::FMOD_READ | fs::FILE::FMOD_WRITE | fs::FILE::FMOD_CREATE).unwrap();
-    // a.write_file(&[1u8; 64]).unwrap();
-    // let mut a = fs::FILE::open_file("/test5", fs::FILE::FMOD_READ | fs::FILE::FMOD_WRITE | fs::FILE::FMOD_CREATE).unwrap();
-    // a.write_file(&[1u8; 64]).unwrap();
-    // let mut a = fs::FILE::open_file("/test6", fs::FILE::FMOD_READ | fs::FILE::FMOD_WRITE | fs::FILE::FMOD_CREATE).unwrap();
-    // a.write_file(&[1u8; 64]).unwrap();
-
-    // let a = fs::FILE::open_file("/clone", fs::FILE::FMOD_READ).unwrap();
-    // let a = fs::FILE::open_file("/brk", fs::FILE::FMOD_READ).unwrap();
-    // let a = fs::FILE::open_file("/dup", fs::FILE::FMOD_READ).unwrap();
-    // let a = fs::FILE::open_file("/dup2", fs::FILE::FMOD_READ).unwrap();
-    // let a = fs::FILE::open_file("/execve", fs::FILE::FMOD_READ).unwrap();
-    // let a = fs::FILE::open_file("/fork", fs::FILE::FMOD_READ).unwrap();
-    // let a = fs::FILE::open_file("/unlink", fs::FILE::FMOD_READ).unwrap();
-
-    // let mut a = fs::FILE::open_file("/test1", fs::FILE::FMOD_READ | fs::FILE::FMOD_WRITE | fs::FILE::FMOD_CREATE).unwrap();
-    // a.write_file(&[1u8; 64]).unwrap();
-    // let mut a = fs::FILE::open_file("/test2", fs::FILE::FMOD_READ | fs::FILE::FMOD_WRITE | fs::FILE::FMOD_CREATE).unwrap();
-    // a.write_file(&[1u8; 64]).unwrap();
-    // let mut a = fs::FILE::open_file("/test3", fs::FILE::FMOD_READ | fs::FILE::FMOD_WRITE | fs::FILE::FMOD_CREATE).unwrap();
-    // a.write_file(&[1u8; 64]).unwrap();
-    // let mut a = fs::FILE::open_file("/test4", fs::FILE::FMOD_READ | fs::FILE::FMOD_WRITE | fs::FILE::FMOD_CREATE).unwrap();
-    // a.write_file(&[1u8; 64]).unwrap();
-    // let mut a = fs::FILE::open_file("/test5", fs::FILE::FMOD_READ | fs::FILE::FMOD_WRITE | fs::FILE::FMOD_CREATE).unwrap();
-    // a.write_file(&[1u8; 64]).unwrap();
-    // let mut a = fs::FILE::open_file("/test6", fs::FILE::FMOD_READ | fs::FILE::FMOD_WRITE | fs::FILE::FMOD_CREATE).unwrap();
-    // a.write_file(&[1u8; 64]).unwrap();
-
-    // let a = fs::FILE::open_file("/clone", fs::FILE::FMOD_READ).unwrap();
-    // let a = fs::FILE::open_file("/brk", fs::FILE::FMOD_READ).unwrap();
-    // let a = fs::FILE::open_file("/dup", fs::FILE::FMOD_READ).unwrap();
-    // let a = fs::FILE::open_file("/dup2", fs::FILE::FMOD_READ).unwrap();
-    // let a = fs::FILE::open_file("/execve", fs::FILE::FMOD_READ).unwrap();
-    // let a = fs::FILE::open_file("/fork", fs::FILE::FMOD_READ).unwrap();
-    // let a = fs::FILE::open_file("/unlink", fs::FILE::FMOD_READ).unwrap();
+    
 
     process::init();
     panic!("drop off from bottom!");

@@ -52,7 +52,7 @@ pub fn enqueue(process: Arc<ProcessControlBlock>) {
     PROCESS_MANAGER.lock().enqueue(process);
 }
 
-    /// dequeue a new process, i.e. it's either running or dead.
+/// dequeue a new process, i.e. it's either running or dead.
 /// Use locked to access the manager, to prevent data racing.
 pub fn dequeue() -> Option<Arc<ProcessControlBlock>> {
     return PROCESS_MANAGER.lock().dequeue();
