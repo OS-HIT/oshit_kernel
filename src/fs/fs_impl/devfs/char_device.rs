@@ -34,7 +34,7 @@ impl SBITTY {
 
 impl Drop for SBITTY {
     fn drop(&mut self) {
-        // Do nothing?
+        // do nothing
     }
 }
 
@@ -156,6 +156,8 @@ impl File for SBITTY {
 impl DeviceFile for SBITTY {
     fn ioctl(&self, op: u64) -> Result<u64, &'static str> {
         todo!()
+		// TODO: Check tty's ioctl
+		
     }
 }
 

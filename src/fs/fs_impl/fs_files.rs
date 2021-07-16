@@ -6,7 +6,7 @@ pub trait CommonFile : File {
 }
 pub trait DirFile : CommonFile {
     /// open files under dir
-    fn open(&self, path: String, mode: OpenMode) -> Arc<dyn File>;
+    fn open(&self, path: String, mode: OpenMode) -> Result<Arc<dyn File>, &'static str>;
 
     /// mkdir. remember to sanitize name.
     fn mkdir(&self, name: String) -> Result<Arc<dyn File>, &'static str>;
@@ -18,5 +18,5 @@ pub trait DirFile : CommonFile {
     fn remove(&self, path: String) -> Result<(), &'static str>;
 
     /// list
-    fn list(&self) -> Vec<Arc<dyn CommonFile>>;
+    fn list(&self) -> Vec<Arc<dyn File>>;
 }
