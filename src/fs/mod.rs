@@ -14,7 +14,8 @@ pub use fs_impl::{
     VirtualFileSystem,
     FSFlags,
     OpenMode,
-    FSStatus
+    FSStatus,
+	SDA_WRAPPER
 };
 
 pub use mount_manager::{

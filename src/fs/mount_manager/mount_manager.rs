@@ -1,5 +1,7 @@
+use core::cmp::Ordering;
+
 use super::super::VirtualFileSystem;
-use alloc::collections::BTreeMap;
+use alloc::{collections::BTreeMap, string::ToString};
 use alloc::string::String;
 use spin::{Mutex, MutexGuard};
 use alloc::sync::Arc;
@@ -13,7 +15,9 @@ unsafe impl Sync for MountManager {}
 
 impl MountManager {
     pub fn new() -> Self {
-        todo!()
+        Self {
+            inner: Mutex::new(MountManagerInner::new())
+        }
     }
 
     pub fn get_inner_locked (&self) -> MutexGuard<MountManagerInner> {
@@ -68,7 +72,9 @@ pub struct MountManagerInner {
 
 impl MountManagerInner {
     pub fn new() -> Self {
-        todo!()
+        Self {
+            mounted_fs: BTreeMap::new()
+        }
     }
 
     pub fn mount_fs(&mut self, path: String, vfs: Arc<dyn VirtualFileSystem>) -> Result<(), &'static str> {
@@ -92,11 +98,29 @@ impl MountManagerInner {
 
     /// get vfs and string relative to it.
     pub fn parse(&self, total_path: String) -> Result<(Arc<dyn VirtualFileSystem>, String), &'static str> {
-        todo!();
+        let longest_match = self.mounted_fs.iter().max_by(|x, y| -> Ordering {
+            if total_path.starts_with(x.0) && total_path.starts_with(y.0){
+                x.0.len().cmp(&y.0.len())
+            } else if total_path.starts_with(x.0) {
+                Ordering::Greater
+            } else if total_path.starts_with(y.0) {
+                Ordering::Less
+            } else {
+                Ordering::Equal
+            }
+        });
+        let longest_match = longest_match.ok_or("No VFS mounted!")?;
+        let sub_path = total_path[longest_match.0.len()..].to_string();
+        return Ok((longest_match.1.clone(), sub_path));
     }
 
     pub fn mounted_at(&self, vfs: Arc<dyn VirtualFileSystem>) -> Result<String, &'static str> {
-        todo!();
+        for i in &self.mounted_fs {
+            if Arc::ptr_eq(&i.1, &vfs) {
+                return Ok(i.0.clone());
+            }
+        }
+        Err("VFS not found")
     }
     
     pub fn open(&self, abs_path: String, mode: OpenMode) -> Result<Arc<dyn File>, &'static str> {

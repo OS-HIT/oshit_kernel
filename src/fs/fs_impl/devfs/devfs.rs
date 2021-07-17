@@ -1,4 +1,4 @@
-use crate::fs::{CommonFile, DirFile, FSFlags, FSStatus, File, VirtualFileSystem, file::FileStatus};
+use crate::fs::{CommonFile, DirFile, FSFlags, FSStatus, File, VirtualFileSystem, file::FileStatus, SDA_WRAPPER};
 use super::{CharDeviceFile, TTY0};
 use alloc::{string::{String, ToString}, sync::Arc, vec::Vec};
 use lazy_static::*;
@@ -13,7 +13,7 @@ pub struct DevFS {
 
 impl DevFS {
 	pub fn new() -> Self {
-		todo!()
+        Self{}
         // Do nothing?
 	}
 }
@@ -114,7 +114,7 @@ impl CommonFile for DevFSBLockFolder {
 impl DirFile for DevFSBLockFolder {
     fn open(&self, path: String, mode: crate::fs::OpenMode) -> Result<Arc<(dyn File + 'static)>, &'static str> {
         if path == "sda" {
-            todo!("return the sd card block file")
+            Ok(SDA_WRAPPER.clone())
         } else {
             Err("File not found")
         }
@@ -156,9 +156,9 @@ impl VirtualFileSystem for DevFS {
         if abs_path == "/tty0" {
             Ok(TTY0.clone())
         } else if abs_path == "/block/sda" {
-            todo!("Put sd card here")
+            Ok(SDA_WRAPPER.clone())
         } else if abs_path == "/block" {
-            todo!("a folder here")
+            Ok(DEV_FS_BLOCK_FOLDER.clone())
         } else {
             Err("File not found.")
         }

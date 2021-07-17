@@ -7,10 +7,10 @@ use crate::drivers::BLOCK_DEVICE;
 use lazy_static::*;
 
 lazy_static! {
-	pub static ref SDA_WRAPPER: Arc<dyn DeviceFile> = Arc::new(SDAWrapper::new());
+	pub static ref SDA_WRAPPER: Arc<SDAWrapper> = Arc::new(SDAWrapper::new());
 }
 
-struct SDAWrapper {
+pub struct SDAWrapper {
 	pub cursor: AtomicU64,
 	pub blk_sz: u64
 }
