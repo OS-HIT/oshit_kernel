@@ -1,8 +1,11 @@
 mod vfs;
+mod path;
 mod fat32;
+mod cache_mgr;
 mod devfs;
 mod procfs;
 mod sysfs;
+mod blkdevice;
 
 mod fs_files;
 
