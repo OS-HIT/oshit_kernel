@@ -71,14 +71,14 @@ impl MountManagerInner {
         todo!()
     }
 
-    pub fn mount_fs(&self, path: String, vfs: Arc<dyn VirtualFileSystem>) -> Result<(), &'static str> {
+    pub fn mount_fs(&mut self, path: String, vfs: Arc<dyn VirtualFileSystem>) -> Result<(), &'static str> {
         match self.mounted_fs.try_insert(path, vfs) {
             Ok(_) => Ok(()),
             Err(_) => Err("Insert failed.")
         }
     }
 
-    pub fn unmount_fs(&self, path: String) -> Result<(), &'static str> {
+    pub fn unmount_fs(&mut self, path: String) -> Result<(), &'static str> {
         match self.mounted_fs.remove(&path) {
             Some(vfs) => {
                 if Arc::strong_count(&vfs) > 1 {

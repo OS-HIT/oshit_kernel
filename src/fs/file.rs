@@ -59,7 +59,7 @@ pub trait File: Drop + Send + Sync {
 
     /// read to buffers
     /// return length read on success
-    fn read(&self, buffer: &[u8]) -> Result<u64, &'static str>;
+    fn read(&self, buffer: &mut [u8]) -> Result<u64, &'static str>;
 
     /// write from buffers
     /// return length written on success

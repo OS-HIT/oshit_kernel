@@ -11,7 +11,7 @@ impl File for PipeEnd {
         todo!()
     }
 
-    fn read(&self, buffer: &[u8]) -> Result<u64, &'static str> {
+    fn read(&self, buffer: &mut [u8]) -> Result<u64, &'static str> {
         todo!()
     }
 

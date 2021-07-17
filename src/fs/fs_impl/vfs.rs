@@ -31,7 +31,7 @@ bitflags! {
     }
 }
 
-pub trait VirtualFileSystem {
+pub trait VirtualFileSystem : Send + Sync {
     // ==================== fs level ops ====================
 
     /// force write back all dirty

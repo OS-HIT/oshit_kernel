@@ -58,9 +58,14 @@ pub fn sys_openat(fd: i32, file_name: VirtAddr, flags: u32, _: u32) -> isize {
 
         if let Some(dir) = arcpcb.files[fd as usize].clone() {
             if let Some(dir_file) = dir.to_dir_file() {
-                let new_fd = arcpcb.alloc_fd();
-                arcpcb.files[new_fd] = Some(dir_file.open(path.to_string(), fs_flags));
-                return new_fd as isize;
+                if let Ok(new_file) = dir_file.open(path.to_string(), fs_flags) {
+                    let new_fd = arcpcb.alloc_fd();
+                    arcpcb.files[new_fd] = Some(new_file);
+                    new_fd as isize
+                } else {
+                    error!("Cannot open such file");
+                    -1
+                }
             } else {
                 error!("Not a directory!");
                 -1

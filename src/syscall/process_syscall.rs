@@ -76,8 +76,8 @@ pub fn sys_exec(app_name: VirtAddr, argv: VirtAddr, envp: VirtAddr) -> isize {
     }
     verbose!("Exec {}", app_name);
 
-    match open(app_name, OpenMode::READ) {
-        Ok(mut file) => {
+    match open(app_name.clone(), OpenMode::READ) {
+        Ok(file) => {
             verbose!("File found {}", app_name);
             let length = file.poll().size as usize;
             let mut v: Vec<u8> = Vec::with_capacity(length);

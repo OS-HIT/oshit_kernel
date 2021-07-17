@@ -5,8 +5,9 @@ use lazy_static::*;
 
 lazy_static! {
 	pub static ref DEV_FS: Arc<DevFS> = Arc::new(DevFS::new());
+    pub static ref DEV_FS_BLOCK_FOLDER: Arc<DevFSBLockFolder> = Arc::new(DevFSBLockFolder::new());
 }
-struct DevFS {
+pub struct DevFS {
 
 }
 
@@ -17,9 +18,14 @@ impl DevFS {
 	}
 }
 
-struct DevFSBLockFolder {
-    pub name: String
+pub struct DevFSBLockFolder {
     // Add list of block devices in the future
+}
+
+impl DevFSBLockFolder {
+    pub fn new() -> Self {
+        Self{}
+    }
 }
 
 impl Drop for DevFSBLockFolder {
@@ -37,7 +43,7 @@ impl File for DevFSBLockFolder {
         Err("No cursor in dir file")
     }
 
-    fn read(&self, buffer: &[u8]) -> Result<u64, &'static str> {
+    fn read(&self, buffer: &mut [u8]) -> Result<u64, &'static str> {
         Err("Cannot read dir file")
     }
 
@@ -58,7 +64,7 @@ impl File for DevFSBLockFolder {
     }
 
     fn to_dir_file(&self) -> Option<Arc<dyn crate::fs::DirFile>> {
-        Some(Arc::new(*self))
+        Some(DEV_FS_BLOCK_FOLDER.clone())
     }
 
     fn to_device_file(&self) -> Option<Arc<dyn super::DeviceFile>> {
