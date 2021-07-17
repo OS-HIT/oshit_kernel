@@ -6,14 +6,21 @@ mod pid;
 mod kernel_stack;
 mod processor;
 mod proc0;
+pub mod default_handlers;
 pub mod kernel_stored_app_loader;
 
-pub use pcb::ProcessContext;
-pub use pcb::ProcessControlBlock;
-pub use pcb::ProcessStatus;
+pub use pcb::{
+    ProcessContext,
+    ProcessControlBlock,
+    ProcessStatus,
+    SignalFlags,
+    default_sig_handlers
+};
 pub use manager::{
     enqueue,
     dequeue,
+    get_proc_by_pid,
+    PROCESS_MANAGER,
 };
 pub use pid::{
     Pid,

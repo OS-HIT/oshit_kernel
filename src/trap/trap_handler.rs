@@ -1,6 +1,6 @@
 //! Trap handler of oshit kernel
 use super::TrapContext;
-use crate::{process::current_process, syscall::syscall};
+use crate::{memory::VirtAddr, process::current_process, syscall::syscall};
 use riscv::register::{
     stvec,      // s trap vector base address register
     scause::{   // s cause register
@@ -17,7 +17,7 @@ use crate::sbi::{
 };
 use crate::process::{suspend_switch, exit_switch};
 use crate::config::*;
-use crate::process::{current_trap_context, current_satp};
+use crate::process::{current_trap_context, current_satp, SignalFlags};
 use crate::memory::VMAFlags;
 
 global_asm!(include_str!("./trap.asm"));
@@ -148,6 +148,19 @@ pub fn user_trap(_cx: &mut TrapContext) -> ! {
     trap_return();
 }
 
+#[allow(unused)]
+struct SigInfo {
+    si_signo     :i32,	/* Signal number */
+    si_errno     :i32,	/* An errno value */
+    si_code      :i32,	/* Signal code */
+    si_trapno    :i32,	/* Trap number that caused hardware-generated signal (unused on most architectures) */
+    si_pid       :u32,	/* Sending process ID */
+    si_uid       :u32,	/* Real user ID of sending process */
+    si_status    :i32,	/* Exit value or signal */
+    si_utime     :i32,	/* User time consumed */
+    si_stime     :i32,	/* System time consumed */
+}
+
 /// Trap return function
 /// # Description
 /// Trap return funciton. Use jr for trampoline functions.
@@ -159,11 +172,67 @@ pub fn trap_return() -> ! {
     extern "C" {
         fn __alltraps();
         fn __restore();
+        fn __restore_to_signal_handler();
+        fn __siginfo();
     }
     let restore_va = __restore as usize - __alltraps as usize + TRAMPOLINE;
-    unsafe {
-        llvm_asm!("fence.i" :::: "volatile");
-        llvm_asm!("jr $0" :: "r"(restore_va), "{a0}"(trap_cx_ptr), "{a1}"(user_satp) :: "volatile");
+    let restore_to_signal_handler_va = __restore_to_signal_handler as usize - __alltraps as usize + TRAMPOLINE;
+    let current = current_process().unwrap();
+    let mut arcpcb = current.get_inner_locked();
+    
+    let mut to_process: Option<(usize, usize)> = None;
+
+    for sig in arcpcb.pending_sig.iter().enumerate() {
+        if 1u64 << sig.1 & &arcpcb.handlers[sig.1].mask != 0 {
+            to_process = Some((sig.0, *sig.1));
+            break;
+        }
+    }
+
+    if let Some((idx, signal)) = to_process {
+        arcpcb.pending_sig.remove(idx);
+        let terminate_self_va = crate::process::default_handlers::def_terminate_self as usize - __alltraps as usize + TRAMPOLINE;
+        let handler_va = arcpcb.handlers.get(&signal).map_or(terminate_self_va, |handler| handler.handler.0);
+        let sig_info = SigInfo {
+            si_signo:   signal as i32,
+            si_errno:   0,
+            si_code:    32767,     // SI_NOINFO
+            si_trapno:  0,
+            si_pid:     0,
+            si_uid:     0,
+            si_status:  0,
+            si_utime:   0,
+            si_stime:   0,
+        };
+        arcpcb.layout.write_user_data(VirtAddr::from(__siginfo as usize), &sig_info);
+        
+        if arcpcb.handlers.get(&signal).unwrap().flags.contains(SignalFlags::RESETHAND) {
+            arcpcb.handlers.insert(signal, crate::process::default_sig_handlers()[&signal]);
+        }
+        
+        // mask itself
+        (arcpcb.handlers.get_mut(&signal).unwrap().mask) &= 1u64 << signal;
+
+        drop(arcpcb);
+        unsafe {
+            llvm_asm!("fence.i" :::: "volatile");
+            llvm_asm!(
+                "jr $0" :: 
+                "r"(restore_to_signal_handler_va), 
+                "{a0}"(trap_cx_ptr), 
+                "{a1}"(user_satp), 
+                "{a2}"(handler_va),
+                "{a3}"(signal),
+                "{a4}"(__siginfo as usize) :: 
+                "volatile"
+            );
+        }
+    } else {
+        drop(arcpcb);
+        unsafe {
+            llvm_asm!("fence.i" :::: "volatile");
+            llvm_asm!("jr $0" :: "r"(restore_va), "{a0}"(trap_cx_ptr), "{a1}"(user_satp) :: "volatile");
+        }
     }
     unreachable!("Unreachable in trap_return!");
 }

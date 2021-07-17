@@ -1,5 +1,5 @@
 //! Process related syscalls.
-use crate::process::{current_path, current_process, enqueue, exit_switch, suspend_switch};
+use crate::process::{PROCESS_MANAGER, current_path, current_process, enqueue, exit_switch, get_proc_by_pid, suspend_switch};
 
 use crate::memory::{
     VirtAddr,
@@ -244,4 +244,20 @@ pub fn sys_munmap(start: VirtAddr, len: usize) -> isize {
             -1
         }
     }
+}
+
+pub fn sys_kill(target_pid: usize, signal: usize) -> isize {
+    if let Some(proc) = get_proc_by_pid(target_pid) {
+        let mut arcpcb = proc.get_inner_locked();
+        arcpcb.pending_sig.push_back(signal);
+        0
+    } else {
+        error!("No such process with pid {}, failed to send signal", target_pid);
+        -1
+    }
+}
+
+pub fn sys_sigaction(signum: usize, act: VirtAddr, oldact: VirtAddr) -> isize {
+    
+    0
 }
