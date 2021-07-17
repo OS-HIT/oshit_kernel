@@ -6,7 +6,7 @@ use alloc::collections::VecDeque;
 use spin::Mutex;
 use blkcache::BlockCache;
 
-use super::blkdevice::BlockDevice;
+use super::BlockDeviceFile;
 
 pub const BLOCK_SZ: usize = 512;
 
@@ -16,12 +16,12 @@ const BLOCK_CACHE_SIZE: usize = 16;
 pub struct BlockCacheManager {
         /// vector queue of block cache  
         queue: VecDeque<(usize, Arc<Mutex<BlockCache>>)>,
-        device: Arc<Mutex<dyn BlockDevice>>,
+        device: Arc<Mutex<dyn BlockDeviceFile>>,
 }
 
 impl BlockCacheManager {
         /// Create new block cache
-        pub fn new(device: Arc<Mutex<dyn BlockDevice>>) -> Self {
+        pub fn new(device: Arc<Mutex<dyn BlockDeviceFile>>) -> Self {
                 Self { 
                         queue: VecDeque::new(),
                         device: device.clone(),

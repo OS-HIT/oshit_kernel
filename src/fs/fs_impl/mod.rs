@@ -12,7 +12,8 @@ mod fs_files;
 pub use fs_files::{CommonFile, DirFile};
 pub use devfs::{
     DeviceFile,
-	SDA_WRAPPER
+	SDA_WRAPPER,
+    BlockDeviceFile
 };
 pub use vfs::{
 	VirtualFileSystem,

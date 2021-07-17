@@ -5,7 +5,7 @@ use spin::Mutex;
 
 use super::BLOCK_SZ;
 
-use super::super::blkdevice::BlockDevice;
+use crate::fs::fs_impl::BlockDeviceFile;
 
 /// Struct of cache for a block (size: 512B)
 pub struct BlockCache {
@@ -15,7 +15,7 @@ pub struct BlockCache {
         block_id: usize,
         /// Indecate whe the block has been modified
         modified: bool,
-        device: Arc<Mutex<dyn BlockDevice>>,
+        device: Arc<Mutex<dyn BlockDeviceFile>>,
 }
 
 impl BlockCache {
@@ -24,7 +24,7 @@ impl BlockCache {
         /// Load a new BlockCache from disk.
         pub fn new(
                 block_id: usize,
-                device: Arc<Mutex<dyn BlockDevice>>,
+                device: Arc<Mutex<dyn BlockDeviceFile>>,
         ) -> Self {
 
                 let mut cache = [0u8; BLOCK_SZ];
