@@ -1,5 +1,5 @@
 use crate::fs::{CommonFile, DirFile, FSFlags, FSStatus, File, VirtualFileSystem, file::FileStatus};
-use super::{CharDevice, TTY0};
+use super::{CharDeviceFile, TTY0};
 use alloc::{string::{String, ToString}, sync::Arc, vec::Vec};
 use lazy_static::*;
 
@@ -98,8 +98,8 @@ impl File for DevFSBLockFolder {
         Err("cannot rename in devfs")
     }
 
-    fn get_vfs(&self) -> Arc<dyn VirtualFileSystem> {
-        DEV_FS.clone()
+    fn get_vfs(&self) -> Result<Arc<(dyn VirtualFileSystem + 'static)>, &'static str> {
+        Ok(DEV_FS.clone())
     }
 
     fn get_path(&self) -> String {

@@ -94,7 +94,7 @@ pub trait File: Drop + Send + Sync {
     /// rename
     fn rename(&self, new_name: String) -> Result<(), &'static str>;
 
-    fn get_vfs(&self) -> Arc<dyn VirtualFileSystem>;
+    fn get_vfs(&self) -> Result<Arc<dyn VirtualFileSystem>, &'static str>;
 
     fn get_path(&self) -> String;
 }

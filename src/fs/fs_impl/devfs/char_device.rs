@@ -1,4 +1,4 @@
-use super::{CharDevice, DeviceFile};
+use super::{CharDeviceFile, DeviceFile};
 use super::super::super::File;
 use alloc::string::ToString;
 use lazy_static::*;
@@ -154,8 +154,8 @@ impl File for SBITTY {
         Err("Cannot rename tty")
     }
 
-    fn get_vfs(&self) -> alloc::sync::Arc<dyn crate::fs::VirtualFileSystem> {
-        super::DEV_FS.clone()
+    fn get_vfs(&self) -> Result<Arc<(dyn crate::fs::VirtualFileSystem + 'static)>, &'static str> {
+        Ok(super::DEV_FS.clone())
     }
 
     fn get_path(&self) -> alloc::string::String {
@@ -175,7 +175,7 @@ impl DeviceFile for SBITTY {
     }
 }
 
-impl CharDevice for SBITTY {
+impl CharDeviceFile for SBITTY {
     fn flush(&self) {
 		let value = get_byte_non_block_with_echo();
 		let mut inner_locked = self.inner.lock();

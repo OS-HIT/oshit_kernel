@@ -1,0 +1,176 @@
+use core::{cell::Cell, sync::atomic::{AtomicU64, Ordering}};
+
+use crate::fs::{File, file::FileStatus};
+use alloc::{string::ToString, sync::Arc, vec::Vec};
+use super::{DeviceFile, device_file::BlockDeviceFile};
+use crate::drivers::BLOCK_DEVICE;
+use lazy_static::*;
+
+lazy_static! {
+	pub static ref SDA_WRAPPER: Arc<dyn DeviceFile> = Arc::new(SDAWrapper::new());
+}
+
+struct SDAWrapper {
+	pub cursor: AtomicU64,
+	pub blk_sz: u64
+}
+
+impl SDAWrapper {
+	pub fn new() -> Self {
+		Self {
+			cursor: AtomicU64::new(0),
+			blk_sz: 512
+		}
+	}
+}
+
+impl BlockDeviceFile for SDAWrapper {
+    fn read_block(&self, block_id: usize, buf: &mut [u8]) {
+        BLOCK_DEVICE.read_block(block_id, buf)
+    }
+
+    fn write_block(&self, block_id: usize, buf: &[u8]) {
+        BLOCK_DEVICE.write_block(block_id, buf)
+    }
+
+    fn clear_block(&self, block_id: usize) {
+        BLOCK_DEVICE.clear_block(block_id)
+    }
+}
+
+impl DeviceFile for SDAWrapper {
+    fn ioctl(&self, op: u64) -> Result<u64, &'static str> {
+        todo!()
+    }
+}
+
+impl File for SDAWrapper {
+    fn seek(&self, offset: u64, op: crate::fs::SeekOp) -> Result<(), &'static str> {
+        match op {
+			crate::fs::SeekOp::CUR => {
+				if offset % self.blk_sz == 0 {
+					self.cursor.fetch_add(offset, Ordering::Relaxed);
+					Ok(())
+				} else {
+					Err("Seek not aligned.")
+				}
+			},
+            crate::fs::SeekOp::SET => {
+				if offset % self.blk_sz == 0 {
+					self.cursor.store(offset, Ordering::Relaxed);
+					Ok(())
+				} else {
+					Err("Seek not aligned.")
+				}
+			},
+            crate::fs::SeekOp::END => Err("Cannot seek to end of Block device"),
+		}
+    }
+
+    fn get_cursor(&self) -> Result<u64, &'static str> {
+        Ok(self.cursor.load(Ordering::Relaxed))
+    }
+
+    fn read(&self, buffer: &mut [u8]) -> Result<u64, &'static str> {
+        let mut offset = 0;
+		while buffer.len() - offset > self.blk_sz as usize{
+			let mut rd_buf = Vec::<u8>::new();
+			rd_buf.resize(self.blk_sz as usize, 0);
+			self.read_block(offset / self.blk_sz as usize, &mut rd_buf);
+			buffer[offset..(offset + self.blk_sz as usize)].copy_from_slice(&rd_buf);
+			offset += self.blk_sz as usize;
+		}
+		Ok(offset as u64)
+    }
+
+    fn write(&self, buffer: &[u8]) -> Result<u64, &'static str> {
+        let mut offset = 0;
+		while buffer.len() - offset > self.blk_sz as usize{
+			self.write_block(offset / self.blk_sz as usize, &buffer[offset..(offset+self.blk_sz as usize)]);
+			offset += self.blk_sz as usize;
+		}
+		Ok(offset as u64)
+    }
+
+    fn read_user_buffer(&self, mut buffer: crate::memory::UserBuffer) -> Result<u64, &'static str> {
+		let mut offset = 0;
+		while buffer.len() - offset > self.blk_sz as usize{
+			let mut rd_buf = Vec::<u8>::new();
+			rd_buf.resize(self.blk_sz as usize, 0);
+			self.read_block(offset / self.blk_sz as usize, &mut rd_buf);
+			
+			for i in offset..(offset + self.blk_sz as usize) {
+				buffer[i] = rd_buf[i - offset];
+			}
+			
+			offset += self.blk_sz as usize;
+		}
+		Ok(offset as u64)
+    }
+
+    fn write_user_buffer(&self, buffer: crate::memory::UserBuffer) -> Result<u64, &'static str> {
+		let mut offset = 0;
+		while buffer.len() - offset > self.blk_sz as usize{
+			let mut wr_buf = Vec::new();
+			for i in 0..self.blk_sz as usize{
+				wr_buf.push(buffer[offset + i]);
+			}
+			self.write_block(offset / self.blk_sz as usize, &wr_buf);
+			offset += self.blk_sz as usize;
+		}
+		Ok(offset as u64)
+    }
+
+    fn to_common_file(&self) -> Option<alloc::sync::Arc<dyn crate::fs::CommonFile>> {
+        None
+    }
+
+    fn to_dir_file(&self) -> Option<alloc::sync::Arc<dyn crate::fs::DirFile>> {
+        None
+    }
+
+    fn to_device_file(&self) -> Option<alloc::sync::Arc<dyn DeviceFile>> {
+        Some(SDA_WRAPPER.clone())
+    }
+
+    fn poll(&self) -> crate::fs::file::FileStatus {
+        FileStatus {
+            readable: true,
+            writeable: true,
+            size: BLOCK_DEVICE.block_cnt() * self.blk_sz,
+            name: "sda".to_string(),
+            ftype: crate::fs::file::FileType::BlockDev,
+            inode: 0,
+            dev_no: 0,
+            mode: 0,
+            block_sz: self.blk_sz as u32,
+            blocks: BLOCK_DEVICE.block_cnt(),
+            uid: 0,
+            gid: 0,
+            atime_sec: 0,
+            atime_nsec:0,
+            mtime_sec: 0,
+            mtime_nsec:0,
+            ctime_sec: 0,
+            ctime_nsec:0,
+        }
+    }
+
+    fn rename(&self, new_name: alloc::string::String) -> Result<(), &'static str> {
+        Err("Cannot rename block device")
+    }
+
+    fn get_vfs(&self) -> Result<alloc::sync::Arc<dyn crate::fs::VirtualFileSystem>, &'static str> {
+        Ok(super::DEV_FS.clone())
+    }
+
+    fn get_path(&self) -> alloc::string::String {
+        "/block/sda".to_string()
+    }
+}
+
+impl Drop for SDAWrapper {
+    fn drop(&mut self) {
+        panic!("SDA wrapper dropped? what happened?")
+    }
+}

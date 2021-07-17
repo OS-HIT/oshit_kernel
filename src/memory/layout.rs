@@ -177,13 +177,13 @@ impl Segment {
 
         let bytes = ppn.page_ptr();
         let optfile = self.file.clone().unwrap();
-        let mut inner_file = optfile.to_common_file().unwrap();
+        let inner_file = optfile.to_common_file().unwrap();
         let cur = inner_file.get_cursor()?;
         let offset: i32 = (va - VirtAddr::from(self.range.get_start()) - self.offset).try_into().unwrap();
         let offset = offset - offset % PAGE_SIZE as i32;
-        inner_file.seek(offset as u64, SeekOp::SET);
+        inner_file.seek(offset as u64, SeekOp::SET).unwrap();
         let res = inner_file.read(bytes);
-        inner_file.seek(cur, SeekOp::SET);
+        inner_file.seek(cur, SeekOp::SET).unwrap();
 
         if let Err(msg) = res {
             error!("{}", msg);
@@ -233,16 +233,16 @@ impl Segment {
                 verbose!("pte find: valid: {}, ditry: {}", pte.valid(), pte.dirty());
                 if self.vmaFlags.contains(VMAFlags::W) && pte.dirty() && pte.valid() {
                     let file = self.file.clone().unwrap();
-                    let mut fs_file = file.to_common_file().unwrap();
+                    let fs_file = file.to_common_file().unwrap();
                     let cur = fs_file.get_cursor().unwrap();
                     let offset = (vpn - self.range.get_start()) * PAGE_SIZE + self.offset;
-                    fs_file.seek(offset as u64, SeekOp::SET); 
+                    fs_file.seek(offset as u64, SeekOp::SET).unwrap(); 
                     verbose!("Unmap page VMA write back, from {:?}({:?})", vpn, PhysPageNum::from(pagetable.translate_va(vpn.into()).unwrap()));
                     let page_ptr = PhysPageNum::from(pagetable.translate_va(vpn.into()).unwrap()).page_ptr();
                     if let Err(msg) = fs_file.write(page_ptr) {
                         error!("Failed to write to file: {}", msg);
                     }
-                    fs_file.seek(cur, SeekOp::SET);
+                    fs_file.seek(cur, SeekOp::SET).unwrap();
                     self.frames.remove(&vpn);
                 } else {
                     verbose!("Lazy page detected, not unmapping");

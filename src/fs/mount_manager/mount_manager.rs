@@ -120,7 +120,7 @@ impl MountManagerInner {
     }
     
     pub fn link(&self, to_link: Arc<dyn File>, dest: String) -> Result<(), &'static str> {
-        let src_vfs = to_link.get_vfs();
+        let src_vfs = to_link.get_vfs()?;
         let src_path = to_link.get_path();
         let (dst_vfs, dst_path) = self.parse(dest)?;
         if Arc::ptr_eq(&src_vfs, &dst_vfs) {
@@ -131,7 +131,7 @@ impl MountManagerInner {
     }
 
     pub fn sym_link(&self, to_link: Arc<dyn File>, dest: String) -> Result<(), &'static str> {
-        let src_vfs = to_link.get_vfs();
+        let src_vfs = to_link.get_vfs()?;
         let src_rel_path = to_link.get_path();
         let src_abs_path = self.mounted_at(src_vfs)? + &src_rel_path;
         let (dst_vfs, dst_path) = self.parse(dest)?;
@@ -139,7 +139,7 @@ impl MountManagerInner {
     }
 
     pub fn rename(&self, to_rename: Arc<dyn File>, new_name: String) -> Result<(), &'static str> {
-        let vfs = to_rename.get_vfs();
+        let vfs = to_rename.get_vfs()?;
         return vfs.rename(to_rename, new_name);
     }
 }
