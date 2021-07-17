@@ -21,6 +21,7 @@ use super::{
     KernelStack,
     alloc_pid,
 };
+use alloc::collections::{BTreeMap, VecDeque};
 use spin::{
     Mutex,
     MutexGuard
@@ -28,6 +29,24 @@ use spin::{
 use alloc::sync::{Arc, Weak};
 use alloc::vec::Vec;
 use alloc::string::{String, ToString};
+use crate::process::default_handlers::*;
+
+use bitflags::*;
+
+
+bitflags! {
+    pub struct SignalFlags: u32 {
+        const NOCLDSTOP   = 0x00000001;
+        const NOCLDWAIT   = 0x00000002;
+        const SIGINFO     = 0x00000004;
+        const ONSTACK     = 0x08000000;
+        const RESTART     = 0x10000000;
+        const NODEFER     = 0x40000000;
+        const UNSUPPORTED = 0x00000400;
+        const RESETHAND   = 0x80000000;
+    }
+}
+
 
 /// The process context used in `__switch` (kernel execution flow) 
 /// Saved on top of the kernel stack of corresponding process.
@@ -73,6 +92,14 @@ pub struct ProcessControlBlock {
     inner:              Mutex<ProcessControlBlockInner>,
 }
 
+#[derive(Clone, Copy)]
+pub struct SigAction {
+    pub handler: VirtAddr,
+    pub mask: u64,
+    pub flags: SignalFlags,
+    pub restorer: VirtAddr // deprecated, go with zero
+}
+
 /// The mutable part of the process control block
 pub struct ProcessControlBlockInner {
     /// The ProcessContext pointer
@@ -102,6 +129,10 @@ pub struct ProcessControlBlockInner {
     pub path: String,
     /// Exit code of the process
     pub exit_code: i32,
+    /// pending signals
+    pub pending_sig: VecDeque<usize>,
+    /// signal handlers
+    pub handlers: BTreeMap<usize, SigAction>
 }
 
 impl ProcessControlBlockInner {
@@ -131,6 +162,55 @@ impl ProcessControlBlockInner {
             }
         }
     }
+}
+pub fn default_sig_handlers() -> BTreeMap<usize, SigAction> {
+    extern "C" {fn __alltraps(); }
+    let mut map = BTreeMap::new();
+    let terminate_self_va   = VirtAddr::from(def_terminate_self as usize - __alltraps as usize + TRAMPOLINE);
+    let ignore_va           = VirtAddr::from(def_ignore         as usize - __alltraps as usize + TRAMPOLINE);
+    let dump_core_va        = VirtAddr::from(def_dump_core      as usize - __alltraps as usize + TRAMPOLINE);
+    let cont_va             = VirtAddr::from(def_cont           as usize - __alltraps as usize + TRAMPOLINE);
+    let stop_va             = VirtAddr::from(def_stop           as usize - __alltraps as usize + TRAMPOLINE);
+    let terminate_self_va   = SigAction { handler: terminate_self_va, mask: 0, flags: SignalFlags::empty(), restorer: 0.into()};
+    let ignore_va           = SigAction { handler: ignore_va        , mask: 0, flags: SignalFlags::empty(), restorer: 0.into()};
+    let dump_core_va        = SigAction { handler: dump_core_va     , mask: 0, flags: SignalFlags::empty(), restorer: 0.into()};
+    let cont_va             = SigAction { handler: cont_va          , mask: 0, flags: SignalFlags::empty(), restorer: 0.into()};
+    let stop_va             = SigAction { handler: stop_va          , mask: 0, flags: SignalFlags::empty(), restorer: 0.into()};
+    map.insert(SIGHUP   , terminate_self_va.clone());
+    map.insert(SIGINT   , terminate_self_va.clone());
+    map.insert(SIGQUIT  , terminate_self_va.clone());
+    map.insert(SIGILL   , terminate_self_va.clone());
+    map.insert(SIGTRAP  , ignore_va        .clone());
+    map.insert(SIGABRT  , dump_core_va     .clone());
+    map.insert(SIGBUS   , dump_core_va     .clone());
+    map.insert(SIGFPE   , dump_core_va     .clone());
+    map.insert(SIGKILL  , terminate_self_va.clone());
+    map.insert(SIGUSR1  , ignore_va        .clone());
+    map.insert(SIGSEGV  , dump_core_va     .clone());
+    map.insert(SIGUSR2  , ignore_va        .clone());
+    map.insert(SIGPIPE  , terminate_self_va.clone());
+    map.insert(SIGALRM  , terminate_self_va.clone());
+    map.insert(SIGTERM  , terminate_self_va.clone());
+    map.insert(SIGSTKFLT, terminate_self_va.clone());
+    map.insert(SIGCHLD  , ignore_va        .clone());
+    map.insert(SIGCONT  , cont_va          .clone());
+    map.insert(SIGSTOP  , stop_va          .clone());
+    map.insert(SIGTSTP  , stop_va          .clone());
+    map.insert(SIGTTIN  , stop_va          .clone());
+    map.insert(SIGTTOU  , stop_va          .clone());
+    map.insert(SIGURG   , ignore_va        .clone());
+    map.insert(SIGXCPU  , terminate_self_va.clone());
+    map.insert(SIGXFSZ  , terminate_self_va.clone());
+    map.insert(SIGVTALRM, ignore_va        .clone());
+    map.insert(SIGPROF  , terminate_self_va.clone());
+    map.insert(SIGWINCH , ignore_va        .clone());
+    map.insert(SIGIO    , ignore_va        .clone());
+    map.insert(SIGPWR   , ignore_va        .clone());
+    map.insert(SIGSYS   , terminate_self_va.clone());
+    for i in SIGRTMIN..SIGRTMAX {
+        map.insert(i, ignore_va.clone());
+    }
+    map
 }
 
 impl ProcessControlBlock {
@@ -174,7 +254,9 @@ impl ProcessControlBlock {
                     // Some(Arc::new(crate::fs::Stderr))
                 ],
                 path: path[..path.rfind('/').unwrap() + 1].to_string(),
-                exit_code: 0
+                exit_code: 0,
+                pending_sig: VecDeque::new(),
+                handlers: default_sig_handlers(),
             }),
         };
         let trap_context = pcb.get_inner_locked().get_trap_context();
@@ -223,7 +305,9 @@ impl ProcessControlBlock {
                 children: Vec::new(),
                 files: parent_arcpcb.files.clone(),
                 path: parent_arcpcb.path.clone(),
-                exit_code: 0
+                exit_code: 0,
+                pending_sig: parent_arcpcb.pending_sig.clone(),
+                handlers: parent_arcpcb.handlers.clone()
             }),
         });
 

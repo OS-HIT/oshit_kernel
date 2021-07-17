@@ -37,6 +37,9 @@ pub const SYSCALL_MMAP          : usize = 222;
 pub const SYSCALL_WAIT4         : usize = 260;  // is this sys_waitpid?
 pub const SYSCALL_WAITPID       : usize = 260;
 
+pub const SYSCALL_SIGRETURN     : usize = 139;
+// pub const SYSCALL_SIGNAL        : usize = 
+
 mod fs_syscall;
 mod process_syscall;
 mod trivial_syscall;

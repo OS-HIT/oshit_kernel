@@ -21,10 +21,12 @@ pub const PAGE_SIZE         : usize = 1 << PAGE_OFFSET;
 pub const MEM_END           : usize = 0x80800000;  
 
 /// Position of Trampoline, which is a piece of code use for context switching when we switch priviledge levels (`ecall`/`sret`)
-pub const TRAMPOLINE        : usize = usize::MAX - PAGE_SIZE + 1;
+#[no_mangle]
+#[link_section = ".trampoline"]
+pub static TRAMPOLINE        : usize = usize::MAX - PAGE_SIZE + 1;
 
 /// Position of TrapContext, which is just below the trampoline and takes up an entire page.
-pub const TRAP_CONTEXT      : usize = TRAMPOLINE - PAGE_SIZE;
+pub static TRAP_CONTEXT      : usize = TRAMPOLINE - PAGE_SIZE;
 
 /// Max pipe ring buffer size. Same as linux.
 pub const PIP_BUF_MAX       : usize = 65536;
@@ -42,7 +44,7 @@ pub const SYSNAME       : &[u8] = b"OSHIT Kernel (Pre-Alpha)\0";
 /// UName constants
 pub const NODENAME      : &[u8] = b"Network currently unsupported\0";
 /// UName constants, OS version
-pub const RELEASE       : &[u8] = b"0.0.1-alpha\0";
+pub const RELEASE       : &[u8] = b"0.0.2-alpha\0";
 /// UName constants
 pub const MACHINE       : &[u8] = b"UNKNOWN MACHINE\0";
 /// UName constants

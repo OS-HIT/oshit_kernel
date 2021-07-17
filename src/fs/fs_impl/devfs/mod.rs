@@ -5,7 +5,8 @@ mod block_device;
 
 pub use device_file::{
     DeviceFile,
-    CharDeviceFile
+    CharDeviceFile,
+    BlockDeviceFile,
 };
 pub use char_device::{
     SBITTY,
