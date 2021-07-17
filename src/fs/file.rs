@@ -52,26 +52,26 @@ pub struct FileStatus {
 /// File traits. Mostly inspired by linux file_operations struct. Implements Drop Trait.
 pub trait File: Drop + Send + Sync {
     /// seek cursor. Some type of file not support this (like char device)
-    fn seek(&self, offset: u64, op: SeekOp) -> Result<(), &'static str>;
+    fn seek(&self, offset: isize, op: SeekOp) -> Result<(), &'static str>;
 
     /// get cursor
-    fn get_cursor(&self) -> Result<u64, &'static str>;
+    fn get_cursor(&self) -> Result<usize, &'static str>;
 
     /// read to buffers
     /// return length read on success
-    fn read(&self, buffer: &mut [u8]) -> Result<u64, &'static str>;
+    fn read(&self, buffer: &mut [u8]) -> Result<usize, &'static str>;
 
     /// write from buffers
     /// return length written on success
-    fn write(&self, buffer: &[u8]) -> Result<u64, &'static str>;
+    fn write(&self, buffer: &[u8]) -> Result<usize, &'static str>;
 
     /// read to buffers
     /// return length read on success
-    fn read_user_buffer(&self, buffer: UserBuffer) -> Result<u64, &'static str>;
+    fn read_user_buffer(&self, buffer: UserBuffer) -> Result<usize, &'static str>;
 
     /// write from buffers
     /// return length written on success
-    fn write_user_buffer(&self, buffer: UserBuffer) -> Result<u64, &'static str>;
+    fn write_user_buffer(&self, buffer: UserBuffer) -> Result<usize, &'static str>;
 
     /// cast down to common file
     /// HACK: It is unclear how this will coop with Arc<File>, recommand no holding this but Arc<File>.
@@ -92,9 +92,9 @@ pub trait File: Drop + Send + Sync {
     fn poll(&self) -> FileStatus;
 
     /// rename
-    fn rename(&self, new_name: String) -> Result<(), &'static str>;
+    fn rename(&self, new_name: &str) -> Result<(), &'static str>;
 
-    fn get_vfs(&self) -> Result<Arc<dyn VirtualFileSystem>, &'static str>;
+    fn get_vfs(&self) -> Arc<dyn VirtualFileSystem>;
 
     fn get_path(&self) -> String;
 }
