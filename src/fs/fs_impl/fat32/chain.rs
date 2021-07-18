@@ -1,6 +1,6 @@
 use super::Fat32FS;
 
-use alloc::string::{String, ToString};
+use alloc::string::String;
 use alloc::vec::Vec;
 use alloc::sync::Arc;
 
@@ -62,7 +62,11 @@ impl Chain {
                                 Ok(c) => break c,
                                 Err(_msg) => {
                                         if self.chain.len() < Chain::max_len {
-                                                let new = self.fs.append_chain(*self.chain.last().unwrap()).unwrap();
+                                                let new = if self.chain.len() == 0 {
+                                                        self.fs.alloc_cluster().unwrap()
+                                                } else {
+                                                        self.fs.append_chain(*self.chain.last().unwrap()).unwrap()
+                                                };
                                                 self.chain.push(new);
                                         } else {
                                                 return Err("Chain::write: invalid offset\n");
@@ -70,7 +74,7 @@ impl Chain {
                                 },
                         }
                 };
-                let coff = offset & self.fs.cluster_size();
+                let coff = offset % self.fs.cluster_size();
                 let len = buffer.len();
                 let mut write = self.fs.write_cluster(clst, coff, buffer).unwrap();
                 while write < len {
@@ -86,6 +90,14 @@ impl Chain {
                         }
                 }
                 return Ok(write);
+        }
+
+        pub fn truncate(&mut self, len: usize) -> Result<(), ()> {
+                if self.chain.len() > len {
+                        self.fs.truncate_chain(self.chain[len-1]).unwrap();
+                        self.chain.truncate(len);
+                }
+                return Ok(());
         }
 
         pub fn to_string(&self) -> String {

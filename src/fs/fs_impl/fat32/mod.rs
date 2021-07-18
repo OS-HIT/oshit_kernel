@@ -1,9 +1,9 @@
 mod dbr;
 mod fat;
 mod chain;
-mod file;
 mod dirent;
 pub mod inode;
+pub mod file;
 
 use dbr::DBR;
 use dbr::RAW_DBR;
@@ -11,19 +11,20 @@ use fat::FAT;
 use fat::CLUSTER;
 use dirent::DirEntryRaw;
 use inode::Inode;
+use file::FileInner;
 
-use alloc::sync::Arc;
 use core::cell::RefCell;
+use alloc::string::String;
+use alloc::sync::Arc;
 use alloc::vec::Vec;
 use spin::Mutex;
 use super::cache_mgr::BlockCacheManager;
 use super::cache_mgr::BLOCK_SZ;
+use super::path::parse_path;
 
-// use super::blkdevice::BlockDevice;
-use super::BlockDeviceFile;
+use crate::blkdevice::BlockDevice;
 
 use core::mem::size_of;
-use alloc::string::String;
 
 struct Fat32FSInner {
         mgr: BlockCacheManager,
@@ -54,7 +55,7 @@ fn get_fat(dbr: &DBR, which: usize) -> FAT {
 }
 
 impl Fat32FS {
-        pub fn openFat32(device: Arc<Mutex<dyn BlockDeviceFile>>) -> Fat32FS {
+        pub fn openFat32(device: Arc<Mutex<dyn BlockDevice>>) -> Fat32FS {
                 let mut mgr = BlockCacheManager::new(device);
                 let raw_dbr = mgr.get_block_cache(0).lock().get_ref::<RAW_DBR>(0).clone();
                 if raw_dbr.sign[0] != 0x55 || raw_dbr.sign[1] != 0xAA {
@@ -263,7 +264,7 @@ impl Fat32FS {
                 }
         }
 
-        pub fn truncat_chain(&mut self, start: u32) -> Result<(), ()> {
+        pub fn truncate_chain(&self, start: u32) -> Result<(), ()> {
                 match self.clear_chain(start) {
                         Ok(()) => {
                                 self.write_next_clst(start, 0x0FFF_FFFF).unwrap();
@@ -274,12 +275,53 @@ impl Fat32FS {
                         }
                 }
         }
+
+        pub fn sync(&self) {
+                self.inner.borrow_mut().mgr.flush_all();
+        }
+}
+
+fn root_dir(fs: Arc<Fat32FS>) -> FileInner {
+        return FileInner::new(Inode::root(fs), 0); 
+}
+
+pub fn open(fs: Arc<Fat32FS>, abs_path: &str, mode: usize) -> Result<FileInner, &'static str> {
+        let mut root = root_dir(fs);
+        return root.open(&abs_path, mode);
+}
+
+pub fn mkdir(fs: Arc<Fat32FS>, abs_path: &str) -> Result<FileInner, &'static str> {
+        let mut root = root_dir(fs);
+        return root.mkdir(abs_path);
+}
+
+pub fn mkfile(fs: Arc<Fat32FS>, abs_path: &str) -> Result<FileInner, &'static str> {
+        let mut root = root_dir(fs);
+        return root.mkfile(abs_path);
+}
+
+pub fn remove(fs: Arc<Fat32FS>, abs_path: &str) -> Result<(), &'static str> {
+        let mut root = root_dir(fs);
+        return root.remove(abs_path);
+}
+
+pub fn rename(fs: Arc<Fat32FS>, to_rename: &str, new_name: &str) -> Result<(), &'static str> {
+        match open(fs, to_rename, 0){
+                Ok(mut file) => {
+                        file.rename(new_name).unwrap();
+                        file.close();
+                        return Ok(());
+                },
+                Err(_) => {
+                        return Err("rename: file not found");
+                }
+        };
 }
 
 pub fn print_file_tree(root: &Inode, indent: usize) {
         if root.is_dir() {
                 let mut indent_s = String::new();
-                for i in 0..indent {
+                for _i in 0..indent {
                         indent_s += "    ";
                 }
                 for inode in root.get_inodes().unwrap() {
@@ -291,11 +333,3 @@ pub fn print_file_tree(root: &Inode, indent: usize) {
                 }
         }
 }
-
-// struct FAT32CommonFile {...}
-// impl CommonFile for FAT32CommonFile {...}
-
-// struct FAT32DirFile {...}
-// impl CommonFile for FAT32DirFile {...}
-
-// I would recommand hold an Arc of all opened file to prevent potential race.

@@ -193,11 +193,13 @@ impl DirEntryRaw {
                         print!("{} ", self.ext[i]);
                 }
                 println!();
-                println!("attr:{}", self.attr);
-                println!("start_h:{}", self.start_h);
-                println!("start_l:{}", self.start_l);
-                println!("size: {}", self.size);
-                println!("-------");
+                unsafe{
+                        println!("attr:{}", self.attr);
+                        println!("start_h:{}", self.start_h);
+                        println!("start_l:{}", self.start_l);
+                        println!("size: {}", self.size);
+                        println!("-------");
+                }
         }
         
         pub fn print(&self) {
@@ -311,8 +313,12 @@ impl DirEntryExtRaw {
                 }
                 let last = cnt -1;
                 result[last].ext_attr |= DirEntryExtRaw::EXT_END;
+                let mut rresult = Vec::<DirEntryExtRaw>::new();
+                while result.len() > 0 {
+                        rresult.push(result.pop().unwrap());
+                }
                 // debug!("DirEntryExtRaw::new return with len{} {:x}", result.len(), result[last].ext_attr);
-                return result;
+                return rresult;
         }
 
         #[inline]
@@ -369,6 +375,8 @@ fn is_del(buf: &[u8; size_of::<DirEntryRaw>()]) -> bool {
 pub struct DirEntryGroup {
         exts: Vec<DirEntryExtRaw>,
         pub entry: DirEntryRaw,
+        offset: usize,
+        slotsize: usize,
 }
 
 impl DirEntryGroup {
@@ -389,7 +397,9 @@ impl DirEntryGroup {
                                 mod_date: 0u16,
                                 start_l: 0u16,
                                 size: 0u32,
-                        }
+                        },
+                        offset: 0,
+                        slotsize: 0,
                 }
         }
 
@@ -399,7 +409,13 @@ impl DirEntryGroup {
                 entry.set_name(name);
                 entry.set_start(start);
                 let exts = DirEntryExtRaw::new(name, entry.chksum());
-                return DirEntryGroup {entry, exts};
+                return DirEntryGroup {entry, exts, offset: 0, slotsize:0 };
+        }
+
+        pub fn rename(&mut self, name: &str) -> Result<(), ()> {
+                self.entry.set_name(name);
+                self.exts = DirEntryExtRaw::new(name, self.entry.chksum());
+                return Ok(());
         }
 
         #[inline]
@@ -421,7 +437,7 @@ impl DirEntryGroup {
                                 name.append(&mut self.exts[i].get_name());
                                 if self.exts[i].is_end() {
                                         if i != 0 {
-                                                return Err("get_full_name: end not end?");
+                                                return Err("get_name: end not end?");
                                         }
                                         let nlen = name.len() >> 1;
                                         let mut n = Vec::<u16>::with_capacity(nlen);
@@ -438,7 +454,7 @@ impl DirEntryGroup {
                                 }
                         } 
 
-                        return Err("get_full_name: missing end for lfn");
+                        return Err("get_name: missing end for lfn");
                 } else {
                         return Ok(self.entry.get_name());
                 }
@@ -449,10 +465,27 @@ impl DirEntryGroup {
         }
 }
 
+pub fn empty_dir(chain: &Chain) -> bool {
+        let mut offset = 0;
+        loop {
+                match read_dirent_group(&chain, offset) {
+                        Ok((group, next)) => {
+                                if group.is_cur() || group.is_par() {
+                                        offset = next;
+                                } else {
+                                        return false;
+                                }
+                        },
+                        Err(_) => return true,
+                }
+        } 
+}
+
 pub fn read_dirent_group(chain: &Chain, offset: usize) -> Result<(DirEntryGroup, usize), &'static str> {
         let mut exts = Vec::<DirEntryExtRaw>::new();
         let mut buf = [0u8; size_of::<DirEntryRaw>()];
         let mut off = offset;
+        let mut slotsize = 0;
         loop {
                 match chain.read(off, &mut buf) {
                         Ok(rlen) => {
@@ -464,6 +497,7 @@ pub fn read_dirent_group(chain: &Chain, offset: usize) -> Result<(DirEntryGroup,
                                 return Err(msg);
                         }
                 }
+                slotsize += 1;
                 off += size_of::<DirEntryExtRaw>();
                 if is_del(&buf) {
                         continue;
@@ -473,9 +507,6 @@ pub fn read_dirent_group(chain: &Chain, offset: usize) -> Result<(DirEntryGroup,
                 }
                 unsafe {
                         let ext = *((&buf as *const _) as *const DirEntryExtRaw).clone();
-                        if ext.is_deleted() {
-                                continue;
-                        }
                         exts.push(ext);
                 }
         }
@@ -485,30 +516,100 @@ pub fn read_dirent_group(chain: &Chain, offset: usize) -> Result<(DirEntryGroup,
         }
         unsafe {
                 let entry = *((&buf as *const _) as *const DirEntryRaw).clone();
-                return Ok((DirEntryGroup {exts, entry}, off));
+                return Ok((DirEntryGroup {
+                                exts, 
+                                entry,
+                                offset,
+                                slotsize,
+                        }, off));
         }
 }
 
-pub fn write_dirent_group (chain: &mut Chain, group: &DirEntryGroup) -> Result<(),()> {
-        let mut offset = 0;
-        loop {
-                let mut b = [0u8];
-                match chain.read(offset, &mut b) {
-                        Ok(rlen) => if b[0] == 0 {break},
-                        Err(msg) => break,
+pub fn write_dirent_group (chain: &mut Chain, group: &mut DirEntryGroup) -> Result<(),()> {
+        if group.slotsize == 0 {
+                let mut offset = 0;
+                let mut slotsize = 0;
+                loop {
+                        let mut b = [0u8];
+                        match chain.read(offset, &mut b) {
+                                Ok(_rlen) => if b[0] == 0 {break}
+                                            else if b[0] == 0xE5 {slotsize += 1}
+                                            else {slotsize = 0},
+                                Err(_msg) => break,
+                        }
+                        offset += size_of::<DirEntryRaw>();
                 }
-                offset += size_of::<DirEntryRaw>();
-        }
-        for ext in &group.exts {
+                group.offset = offset;
+                for ext in &group.exts {
+                        unsafe {
+                                // let buf = core::slice::from_raw_parts((ext as *const DirEntryExtRaw) as *const u8, size_of::<DirEntryExtRaw>());
+                                let buf = &*(ext as *const _ as *const [u8; size_of::<DirEntryExtRaw>()]);
+                                chain.write(offset, buf).unwrap();
+                        } 
+                        offset += size_of::<DirEntryExtRaw>();
+                }
                 unsafe {
-                        let buf = &*((&ext as *const _) as *const [u8; size_of::<DirEntryExtRaw>()]);
+                        let buf = &*((&group.entry as *const _) as *const [u8; size_of::<DirEntryRaw>()]);
                         chain.write(offset, buf).unwrap();
-                } 
-                offset += size_of::<DirEntryExtRaw>();
+                }
+                group.slotsize = group.exts.len() + 1 + slotsize;
+                return Ok(());
+        } else if group.slotsize < group.exts.len() + 1 {
+                let offset = group.offset;
+                group.slotsize = 0;
+                match write_dirent_group(chain, group) {
+                        Ok(()) => {
+                                delete_dirent_group(chain, offset).unwrap();
+                                return Ok(());
+                        },
+                        Err(msg) => {
+                                return Err(msg);
+                        }
+                }
+        } else {
+                let mut offset = group.offset + (group.slotsize - group.exts.len() - 1) * size_of::<DirEntryExtRaw>();
+                for ext in &group.exts {
+                        unsafe {
+                                let buf = &*((ext as *const _) as *const [u8; size_of::<DirEntryExtRaw>()]);
+                                chain.write(offset, buf).unwrap();
+                        } 
+                        offset += size_of::<DirEntryExtRaw>();
+                }
+                unsafe {
+                        let buf = &*((&group.entry as *const _) as *const [u8; size_of::<DirEntryRaw>()]);
+                        chain.write(offset, buf).unwrap();
+                }
+                return Ok(());        
         }
-        unsafe {
-                let buf = &*((&group.entry as *const _) as *const [u8; size_of::<DirEntryRaw>()]);
-                chain.write(offset, buf).unwrap();
+}
+
+pub fn delete_dirent_group(chain: &mut Chain, offset: usize) -> Result<(), &'static str>{
+        let mut buf = [0u8; size_of::<DirEntryRaw>()];
+        let mut off = offset;
+        loop {
+                match chain.read(off, &mut buf) {
+                        Ok(rlen) => {
+                                if rlen != size_of::<DirEntryRaw>() {
+                                        return Err("delete_dirent_group: short read");
+                                } 
+                        },
+                        Err(msg) => {
+                                return Err(msg);
+                        }
+                }
+                if buf[0] == 0 {
+                        return Err("read_dirent_group: Invalid(Empty) DirEntry");
+                }        
+                if is_del(&buf) {
+                        off += size_of::<DirEntryExtRaw>();
+                        // return Ok(());
+                        continue;
+                }
+                buf[0] = 0xE5;
+                chain.write(off, &buf).unwrap();
+                off += size_of::<DirEntryExtRaw>();
+                if !is_ext(&buf) {
+                        return Ok(());    
+                }
         }
-        return Ok(());
 }
