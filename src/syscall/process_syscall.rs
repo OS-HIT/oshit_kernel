@@ -1,4 +1,6 @@
 //! Process related syscalls.
+use core::mem::size_of;
+
 use crate::process::{PROCESS_MANAGER, current_path, current_process, enqueue, exit_switch, get_proc_by_pid, suspend_switch};
 
 use crate::memory::{
@@ -311,7 +313,7 @@ pub fn sys_sigreturn() -> isize {
     let proc = current_process().unwrap();
     let locked_inner = proc.get_inner_locked();
     // reg2 (x2) is sp
-    let old_trap_context: TrapContext = locked_inner.layout.read_user_data(locked_inner.get_trap_context().regs[2].into());
+    let old_trap_context: TrapContext = locked_inner.layout.read_user_data((locked_inner.get_trap_context().regs[2] - size_of::<TrapContext>()).into());
     locked_inner.write_trap_context(&old_trap_context);
     0
 }

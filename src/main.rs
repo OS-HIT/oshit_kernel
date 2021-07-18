@@ -10,6 +10,8 @@
 #![feature(alloc_error_handler)]
 #![feature(map_try_insert)]
 
+use alloc::string::ToString;
+
 global_asm!(include_str!("entry.asm"));
 global_asm!(include_str!("link_app.asm"));
 
@@ -50,10 +52,9 @@ pub extern "C" fn rust_main() -> !{
     info!("Kernel hello world!");
     info!("Vendor id = {}", sbi::get_vendor_id());
     memory::init();
-    
     trap::init();
 
-    
+    fs::mount_fs("/dev".to_string(), fs::DEV_FS.clone());
 
     process::init();
     panic!("drop off from bottom!");

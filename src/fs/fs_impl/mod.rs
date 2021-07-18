@@ -13,7 +13,8 @@ pub use fs_files::{CommonFile, DirFile};
 pub use devfs::{
     DeviceFile,
 	SDA_WRAPPER,
-    BlockDeviceFile
+    BlockDeviceFile,
+    DEV_FS
 };
 pub use vfs::{
 	VirtualFileSystem,
