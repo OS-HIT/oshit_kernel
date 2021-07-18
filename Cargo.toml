@@ -17,6 +17,7 @@ k210-pac = { git = "https://github.com/Bohan-Hu/k210-pac" }
 k210-hal = { git = "https://github.com/Bohan-Hu/k210-hal" }
 k210-soc = { git = "https://github.com/Bohan-Hu/k210-soc" }
 virtio-drivers = { git = "https://github.com/rcore-os/virtio-drivers" }
+bit_field = "0.10.1"
 
 [build-dependencies]
 chrono = "0.4"

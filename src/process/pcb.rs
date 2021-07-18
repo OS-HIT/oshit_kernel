@@ -32,6 +32,7 @@ use alloc::string::{String, ToString};
 use crate::process::default_handlers::*;
 
 use bitflags::*;
+use bit_field::*;
 
 
 bitflags! {
@@ -94,7 +95,8 @@ pub struct ProcessControlBlock {
 
 #[derive(Clone, Copy)]
 pub struct SigAction {
-    pub handler: VirtAddr,
+    pub sighandler: VirtAddr,
+    pub sigaction: VirtAddr,
     pub mask: u64,
     pub flags: SignalFlags,
     pub restorer: VirtAddr // deprecated, go with zero
@@ -132,7 +134,9 @@ pub struct ProcessControlBlockInner {
     /// pending signals
     pub pending_sig: VecDeque<usize>,
     /// signal handlers
-    pub handlers: BTreeMap<usize, SigAction>
+    pub handlers: BTreeMap<usize, SigAction>,
+    /// signal masks
+    pub sig_mask: u64
 }
 
 impl ProcessControlBlockInner {
@@ -140,6 +144,13 @@ impl ProcessControlBlockInner {
     pub fn get_trap_context(&self) -> &'static mut TrapContext {
         unsafe {
             (PhysAddr::from(self.trap_context_ppn.clone()).0 as *mut TrapContext).as_mut().unwrap()
+        }
+    }
+
+    pub fn write_trap_context(&self, ctx: &TrapContext) {
+        let ptr = PhysAddr::from(self.trap_context_ppn.clone()).0 as *mut TrapContext;
+        unsafe {
+            *ptr = *ctx;
         }
     }
 
@@ -171,11 +182,11 @@ pub fn default_sig_handlers() -> BTreeMap<usize, SigAction> {
     let dump_core_va        = VirtAddr::from(def_dump_core      as usize - __alltraps as usize + TRAMPOLINE);
     let cont_va             = VirtAddr::from(def_cont           as usize - __alltraps as usize + TRAMPOLINE);
     let stop_va             = VirtAddr::from(def_stop           as usize - __alltraps as usize + TRAMPOLINE);
-    let terminate_self_va   = SigAction { handler: terminate_self_va, mask: 0, flags: SignalFlags::empty(), restorer: 0.into()};
-    let ignore_va           = SigAction { handler: ignore_va        , mask: 0, flags: SignalFlags::empty(), restorer: 0.into()};
-    let dump_core_va        = SigAction { handler: dump_core_va     , mask: 0, flags: SignalFlags::empty(), restorer: 0.into()};
-    let cont_va             = SigAction { handler: cont_va          , mask: 0, flags: SignalFlags::empty(), restorer: 0.into()};
-    let stop_va             = SigAction { handler: stop_va          , mask: 0, flags: SignalFlags::empty(), restorer: 0.into()};
+    let terminate_self_va   = SigAction { sighandler: terminate_self_va, sigaction: 0.into(), mask: 0, flags: SignalFlags::empty(), restorer: 0.into()};
+    let ignore_va           = SigAction { sighandler: ignore_va        , sigaction: 0.into(), mask: 0, flags: SignalFlags::empty(), restorer: 0.into()};
+    let dump_core_va        = SigAction { sighandler: dump_core_va     , sigaction: 0.into(), mask: 0, flags: SignalFlags::empty(), restorer: 0.into()};
+    let cont_va             = SigAction { sighandler: cont_va          , sigaction: 0.into(), mask: 0, flags: SignalFlags::empty(), restorer: 0.into()};
+    let stop_va             = SigAction { sighandler: stop_va          , sigaction: 0.into(), mask: 0, flags: SignalFlags::empty(), restorer: 0.into()};
     map.insert(SIGHUP   , terminate_self_va.clone());
     map.insert(SIGINT   , terminate_self_va.clone());
     map.insert(SIGQUIT  , terminate_self_va.clone());
@@ -257,6 +268,7 @@ impl ProcessControlBlock {
                 exit_code: 0,
                 pending_sig: VecDeque::new(),
                 handlers: default_sig_handlers(),
+                sig_mask: 0
             }),
         };
         let trap_context = pcb.get_inner_locked().get_trap_context();
@@ -307,7 +319,8 @@ impl ProcessControlBlock {
                 path: parent_arcpcb.path.clone(),
                 exit_code: 0,
                 pending_sig: parent_arcpcb.pending_sig.clone(),
-                handlers: parent_arcpcb.handlers.clone()
+                handlers: parent_arcpcb.handlers.clone(),
+                sig_mask: 0
             }),
         });
 
@@ -425,6 +438,9 @@ impl ProcessControlBlock {
         arcpcb.utime = 0;
         arcpcb.up_since = get_time();
         arcpcb.path = path[..path.rfind('/').unwrap() + 1].to_string();
+        arcpcb.pending_sig = VecDeque::new();
+        arcpcb.handlers = default_sig_handlers();
+        arcpcb.sig_mask = 0;
         let mut trap_context = TrapContext::init(
             entry, 
             user_stack_top, 

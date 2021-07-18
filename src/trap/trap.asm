@@ -112,6 +112,10 @@ __restore_to_signal_handler:
     mv sp, a0
     # make t0 points to sp in user space
     ld t0, 2*8(sp)
+    
+    # grow stack downward
+    addi t0, t0, -36*8
+
     # move everything from TrapContext to user stack.
     .set n, 0
     .rept 36
@@ -122,12 +126,10 @@ __restore_to_signal_handler:
     ld t1, 33*8(sp)
     sd t1, 33*8(t0)
     
-    # grow stack downward
-    addi sp, sp, -36*8
 
     # reset sstatus
-    ld t0, 32*8(sp)
-    csrw sstatus, t0
+    ld t1, 32*8(sp)
+    csrw sstatus, t1
     
     # set sepc to a2: handler_va
     csrw sepc, a2
@@ -143,6 +145,8 @@ __restore_to_signal_handler:
     mv a0, a3
     mv a1, a4
     li a2, 0
+    # set sp to (growed) sp (which is t0)
+    mv sp, t0
 
     # sret to user mode @ handler_va(a2)
     sret

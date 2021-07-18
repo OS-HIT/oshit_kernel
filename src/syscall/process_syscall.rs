@@ -10,8 +10,10 @@ use crate::memory::{
 
 use crate::process::{
     current_satp,
-    ProcessStatus
+    ProcessStatus,
+    SigAction
 };
+use crate::trap::TrapContext;
 
 use alloc::sync::Arc;
 use alloc::vec::Vec;
@@ -87,7 +89,7 @@ pub fn sys_exec(app_name: VirtAddr, argv: VirtAddr, envp: VirtAddr) -> isize {
                 Ok(res) => {
                     verbose!("Loaded App {}, size = {}", app_name, res);
                     let proc = current_process().unwrap();
-                    let arcpcb = proc.get_inner_locked();
+                    let locked_inner = proc.get_inner_locked();
 
                     verbose!("Loading argv");
                     let mut args: Vec<Vec<u8>> = Vec::new();
@@ -95,11 +97,11 @@ pub fn sys_exec(app_name: VirtAddr, argv: VirtAddr, envp: VirtAddr) -> isize {
                         verbose!("argv @ {:0x}", argv.0);
                         let mut iter = argv;
                         loop {
-                            let ptr: usize = arcpcb.layout.read_user_data(iter);
+                            let ptr: usize = locked_inner.layout.read_user_data(iter);
                             if ptr == 0 {
                                 break;
                             }
-                            args.push(arcpcb.layout.get_user_cstr(ptr.into()));
+                            args.push(locked_inner.layout.get_user_cstr(ptr.into()));
                             iter += core::mem::size_of::<usize>();
                         }
                     }
@@ -113,15 +115,15 @@ pub fn sys_exec(app_name: VirtAddr, argv: VirtAddr, envp: VirtAddr) -> isize {
                         verbose!("envp @ {:0x}", envp.0);
                         let mut iter = envp;
                         loop {
-                            let ptr: usize = arcpcb.layout.read_user_data(iter);
+                            let ptr: usize = locked_inner.layout.read_user_data(iter);
                             if ptr == 0 {
                                 break;
                             }
-                            envs.push(arcpcb.layout.get_user_cstr(ptr.into()));
+                            envs.push(locked_inner.layout.get_user_cstr(ptr.into()));
                             iter += core::mem::size_of::<usize>();
                         }
                     }
-                    drop(arcpcb);
+                    drop(locked_inner);
                     proc.exec(&v, app_name, args, envs)
                 },
                 Err(msg) => {
@@ -141,16 +143,16 @@ pub fn sys_exec(app_name: VirtAddr, argv: VirtAddr, envp: VirtAddr) -> isize {
 pub fn sys_waitpid(pid: isize, exit_code_ptr: VirtAddr, options: isize) -> isize {
     loop {
         let proc = current_process().unwrap();
-        let mut arcpcb = proc.get_inner_locked();
-        for (idx, child) in arcpcb.children.iter().enumerate() {
+        let mut locked_inner = proc.get_inner_locked();
+        for (idx, child) in locked_inner.children.iter().enumerate() {
             if pid == -1 || pid as usize == child.get_pid() {
-                if arcpcb.children[idx].get_inner_locked().status == ProcessStatus::Zombie {
-                    let child_proc = arcpcb.children.remove(idx);
+                if locked_inner.children[idx].get_inner_locked().status == ProcessStatus::Zombie {
+                    let child_proc = locked_inner.children.remove(idx);
                     let child_arcpcb = child_proc.get_inner_locked();
                     assert_eq!(Arc::strong_count(&child_proc), 1, "This child process seems to be referenced more then once.");
                     if exit_code_ptr.0 != 0 {
                         // TODO: properly construct wstatus
-                        arcpcb.layout.write_user_data(exit_code_ptr, &((child_arcpcb.exit_code as i32) << 8));
+                        locked_inner.layout.write_user_data(exit_code_ptr, &((child_arcpcb.exit_code as i32) << 8));
                     }
                     debug!("Zombie {} was killed, exit status = {}", child_proc.get_pid(), child_arcpcb.exit_code);
                     return child_proc.get_pid() as isize;
@@ -160,7 +162,7 @@ pub fn sys_waitpid(pid: isize, exit_code_ptr: VirtAddr, options: isize) -> isize
         if options & WNOHANG != 0 {
             return 0;
         } else {
-            drop(arcpcb);
+            drop(locked_inner);
             suspend_switch();
         }
     }
@@ -183,9 +185,9 @@ pub fn sys_getcwd(buf: VirtAddr, size: usize) -> isize {
     }
 
     let proc = current_process().unwrap();
-    let arcpcb = proc.get_inner_locked();
-    let mut buffer = arcpcb.layout.get_user_buffer(buf, size);
-    buffer.write_bytes(arcpcb.path.as_bytes(), 0);
+    let locked_inner = proc.get_inner_locked();
+    let mut buffer = locked_inner.layout.get_user_buffer(buf, size);
+    buffer.write_bytes(locked_inner.path.as_bytes(), 0);
     return buf.0 as isize;
 }
 
@@ -193,10 +195,10 @@ pub fn sys_getcwd(buf: VirtAddr, size: usize) -> isize {
 pub fn sys_chdir(buf: VirtAddr) -> isize {
     verbose!("chdir start");
     let proc = current_process().unwrap();
-    let mut arcpcb = proc.get_inner_locked();
-    if let Ok (dir_str) = core::str::from_utf8(&arcpcb.layout.get_user_cstr(buf)) {
+    let mut locked_inner = proc.get_inner_locked();
+    if let Ok (dir_str) = core::str::from_utf8(&locked_inner.layout.get_user_cstr(buf)) {
         if let Ok (_) = open(dir_str.to_string(), OpenMode::READ) {
-            arcpcb.path = dir_str.to_string();
+            locked_inner.path = dir_str.to_string();
             return 0;
         } else {
             error!("No such directory!");
@@ -214,19 +216,19 @@ pub fn sys_sbrk(sz: usize) -> isize {
         return current_process().unwrap().get_inner_locked().size as isize;
     }
     let proc = current_process().unwrap();
-    let mut arcpcb = proc.get_inner_locked();
-    let original_size = arcpcb.size;
-    arcpcb.layout.alter_segment(VirtAddr::from(original_size).to_vpn_ceil(), VirtAddr::from(sz).to_vpn_ceil());
-    arcpcb.size = sz as usize;
+    let mut locked_inner = proc.get_inner_locked();
+    let original_size = locked_inner.size;
+    locked_inner.layout.alter_segment(VirtAddr::from(original_size).to_vpn_ceil(), VirtAddr::from(sz).to_vpn_ceil());
+    locked_inner.size = sz as usize;
     return 0;
 }
 
 pub fn sys_mmap(start: VirtAddr, len: usize, prot: u8, _: usize, fd: usize, offset: usize) -> isize {
     verbose!("sys_mmap");
     let proc = current_process().unwrap();
-    let mut arcpcb = proc.get_inner_locked();
-    if let Some(file) = arcpcb.files[fd].clone() {
-        if let Ok(addr) = arcpcb.layout.add_vma(file, start, VMAFlags::from_bits(prot << 1).unwrap(), offset, len) {
+    let mut locked_inner = proc.get_inner_locked();
+    if let Some(file) = locked_inner.files[fd].clone() {
+        if let Ok(addr) = locked_inner.layout.add_vma(file, start, VMAFlags::from_bits(prot << 1).unwrap(), offset, len) {
             return addr.0 as isize;
         } 
     }
@@ -236,8 +238,8 @@ pub fn sys_mmap(start: VirtAddr, len: usize, prot: u8, _: usize, fd: usize, offs
 pub fn sys_munmap(start: VirtAddr, len: usize) -> isize {
     verbose!("sys_munmap");
     let proc = current_process().unwrap();
-    let mut arcpcb = proc.get_inner_locked();
-    match arcpcb.layout.drop_vma(start.into(), (start + len).to_vpn_ceil()) {
+    let mut locked_inner = proc.get_inner_locked();
+    match locked_inner.layout.drop_vma(start.into(), (start + len).to_vpn_ceil()) {
         Ok(()) => 0,
         Err(msg) => {
             error!("munmap failed: {}", msg);
@@ -248,8 +250,8 @@ pub fn sys_munmap(start: VirtAddr, len: usize) -> isize {
 
 pub fn sys_kill(target_pid: usize, signal: usize) -> isize {
     if let Some(proc) = get_proc_by_pid(target_pid) {
-        let mut arcpcb = proc.get_inner_locked();
-        arcpcb.pending_sig.push_back(signal);
+        let mut locked_inner = proc.get_inner_locked();
+        locked_inner.pending_sig.push_back(signal);
         0
     } else {
         error!("No such process with pid {}, failed to send signal", target_pid);
@@ -257,7 +259,59 @@ pub fn sys_kill(target_pid: usize, signal: usize) -> isize {
     }
 }
 
+// TODO: consider edge cases of act is nullptr
+// TODO: reference to https://elixir.bootlin.com/linux/latest/source/kernel/signal.c#L4015 (do_sigaction), implement reporting unsupport
 pub fn sys_sigaction(signum: usize, act: VirtAddr, oldact: VirtAddr) -> isize {
+    let proc = current_process().unwrap();
+    let mut locked_inner = proc.get_inner_locked();
     
+    let new_act: SigAction = locked_inner.layout.read_user_data(act);
+    let old_act_op = locked_inner.handlers.insert(signum, new_act);
+
+    if oldact.0 != 0 {
+        if let Some(mut old_act) = old_act_op {
+            old_act.mask = locked_inner.sig_mask;
+            locked_inner.layout.write_user_data(oldact, &old_act);
+        } else {
+            return -1;
+        }
+    }
+
+    0
+}
+
+pub const SIG_BLOCK     : isize = 0;
+pub const SIG_UNBLOCK   : isize = 1;
+pub const SIG_SETMASK   : isize = 2;
+
+pub fn sys_sigprocmask(how: isize, oldmask: VirtAddr, newmask: VirtAddr) -> isize {
+    let proc = current_process().unwrap();
+    let locked_inner = proc.get_inner_locked();
+    if oldmask.0 != 0 {
+        locked_inner.layout.write_user_data(oldmask, &locked_inner.sig_mask);
+    }
+
+    let new_mask: u64 = locked_inner.layout.read_user_data(newmask);
+
+    if how == SIG_BLOCK {
+        locked_inner.sig_mask |= new_mask;
+    } else if how == SIG_UNBLOCK {
+        locked_inner.sig_mask &= !new_mask;
+    } else if how == SIG_SETMASK {
+        locked_inner.sig_mask = new_mask;
+    } else {
+        return -1;
+    }
+
+    0
+}
+
+pub fn sys_sigreturn() -> isize {
+    // go check trap.asm -> __restore_to_signal_handler
+    let proc = current_process().unwrap();
+    let locked_inner = proc.get_inner_locked();
+    // reg2 (x2) is sp
+    let old_trap_context: TrapContext = locked_inner.layout.read_user_data(locked_inner.get_trap_context().regs[2].into());
+    locked_inner.write_trap_context(&old_trap_context);
     0
 }

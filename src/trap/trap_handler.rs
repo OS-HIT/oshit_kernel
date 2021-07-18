@@ -1,6 +1,6 @@
 //! Trap handler of oshit kernel
 use super::TrapContext;
-use crate::{memory::VirtAddr, process::current_process, syscall::syscall};
+use crate::{memory::VirtAddr, process::{current_process, default_sig_handlers}, syscall::syscall};
 use riscv::register::{
     stvec,      // s trap vector base address register
     scause::{   // s cause register
@@ -161,6 +161,11 @@ struct SigInfo {
     si_stime     :i32,	/* System time consumed */
 }
 
+
+pub const SIG_DFL: usize = 0;
+pub const SIG_IGN: usize = 1;
+pub const SIG_ERR: usize = -1isize as usize;
+
 /// Trap return function
 /// # Description
 /// Trap return funciton. Use jr for trampoline functions.
@@ -192,7 +197,22 @@ pub fn trap_return() -> ! {
     if let Some((idx, signal)) = to_process {
         arcpcb.pending_sig.remove(idx);
         let terminate_self_va = crate::process::default_handlers::def_terminate_self as usize - __alltraps as usize + TRAMPOLINE;
-        let handler_va = arcpcb.handlers.get(&signal).map_or(terminate_self_va, |handler| handler.handler.0);
+        let ignore_va = crate::process::default_handlers::def_ignore as usize - __alltraps as usize + TRAMPOLINE;
+        let handler_va = if let Some(act) = arcpcb.handlers.get(&signal) {
+            if act.flags.contains(SignalFlags::SIGINFO) {
+                act.sigaction.0
+            } else if act.sighandler.0 == SIG_DFL {
+                default_sig_handlers()[&signal].sighandler.0 as usize - __alltraps as usize + TRAMPOLINE
+            } else if act.sighandler.0 == SIG_IGN {
+                ignore_va
+            } else if act.sighandler.0 == SIG_ERR{
+                terminate_self_va
+            } else {
+                act.sighandler.0
+            }
+        } else {
+            terminate_self_va
+        };
         let sig_info = SigInfo {
             si_signo:   signal as i32,
             si_errno:   0,

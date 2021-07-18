@@ -14,7 +14,8 @@ pub use pcb::{
     ProcessControlBlock,
     ProcessStatus,
     SignalFlags,
-    default_sig_handlers
+    default_sig_handlers,
+    SigAction
 };
 pub use manager::{
     enqueue,
