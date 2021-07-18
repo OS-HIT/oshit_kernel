@@ -30,32 +30,32 @@ impl Pipe {
     }
 
     
-    pub fn read(&mut self, buffer: &mut [u8]) -> Result<u64, &'static str> {
+    pub fn read(&mut self, buffer: &mut [u8]) -> Result<usize, &'static str> {
         let len = min(buffer.len(), self.buffer.len());
         for i in 0..len {
             buffer[i] = self.buffer.pop_front().unwrap();
         }
-        Ok(len as u64)
+        Ok(len)
     }
 
-    pub fn write(&mut self, buffer: &[u8]) -> Result<u64, &'static str> {
-        let len = min(buffer.len() as u64, self.size - self.buffer.len() as u64);
+    pub fn write(&mut self, buffer: &[u8]) -> Result<usize, &'static str> {
+        let len = min(buffer.len(), self.size as usize - self.buffer.len());
         for i in 0..len {
             self.buffer.push_back(buffer[i as usize]);
         }
         Ok(len)
     }
 
-    pub fn read_user_buffer(&mut self, mut buffer: crate::memory::UserBuffer) -> Result<u64, &'static str> {
+    pub fn read_user_buffer(&mut self, mut buffer: crate::memory::UserBuffer) -> Result<usize, &'static str> {
         let len = min(buffer.len(), self.buffer.len());
         for i in 0..len {
             buffer[i] = self.buffer.pop_front().unwrap();
         }
-        Ok(len as u64)
+        Ok(len)
     }
 
-    pub fn write_user_buffer(&mut self, buffer: crate::memory::UserBuffer) -> Result<u64, &'static str> {
-        let len = min(buffer.len() as u64, self.size - self.buffer.len() as u64);
+    pub fn write_user_buffer(&mut self, buffer: crate::memory::UserBuffer) -> Result<usize, &'static str> {
+        let len = min(buffer.len(), self.size as usize - self.buffer.len());
         for i in 0..len {
             self.buffer.push_back(buffer[i as usize]);
         }
@@ -170,27 +170,27 @@ impl PipeEnd {
 }
 
 impl File for PipeEnd {
-    fn seek(&self, _: u64, _: super::SeekOp) -> Result<(), &'static str> {
+    fn seek(&self, _: isize, _: super::SeekOp) -> Result<(), &'static str> {
         Err("Cannot seek a pipe")
     }
 
-    fn get_cursor(&self) -> Result<u64, &'static str> {
+    fn get_cursor(&self) -> Result<usize, &'static str> {
         Err("Pipe has no cursor")
     }
 
-    fn read(&self, buffer: &mut [u8]) -> Result<u64, &'static str> {
+    fn read(&self, buffer: &mut [u8]) -> Result<usize, &'static str> {
         self.pipe.lock().read(buffer)
     }
 
-    fn write(&self, buffer: &[u8]) -> Result<u64, &'static str> {
+    fn write(&self, buffer: &[u8]) -> Result<usize, &'static str> {
         self.pipe.lock().write(buffer)
     }
 
-    fn read_user_buffer(&self, mut buffer: crate::memory::UserBuffer) -> Result<u64, &'static str> {
+    fn read_user_buffer(&self, mut buffer: crate::memory::UserBuffer) -> Result<usize, &'static str> {
         self.pipe.lock().read_user_buffer(buffer)
     }
 
-    fn write_user_buffer(&self, buffer: crate::memory::UserBuffer) -> Result<u64, &'static str> {
+    fn write_user_buffer(&self, buffer: crate::memory::UserBuffer) -> Result<usize, &'static str> {
         self.pipe.lock().write_user_buffer(buffer)
     }
 
@@ -210,7 +210,7 @@ impl File for PipeEnd {
         self.flags.clone()
     }
 
-    fn rename(&self, _: alloc::string::String) -> Result<(), &'static str> {
+    fn rename(&self, _: &str) -> Result<(), &'static str> {
         Err("Pipe has no name")
     }
 

@@ -49,12 +49,12 @@ impl Drop for SBITTY {
 }
 
 impl File for SBITTY {
-    fn seek(&self, offset: u64, op: crate::fs::SeekOp) -> Result<(), &'static str> {
+    fn seek(&self, offset: isize, op: crate::fs::SeekOp) -> Result<(), &'static str> {
         Err("Cannot seek a Char Device.")
     }
 
 	// TODO: implement smarter flush timing, and some how intergrate this.
-    fn read(&self, buffer: &mut [u8]) -> Result<u64, &'static str> {
+    fn read(&self, buffer: &mut [u8]) -> Result<usize, &'static str> {
 		let mut offset = 0;
 		while offset < buffer.len() {
 			self.flush();
@@ -65,14 +65,14 @@ impl File for SBITTY {
 				offset += 1;
 				// return instantly on LF
 				if b == LF {
-					return Ok(offset as u64);
+					return Ok(offset);
 				}
 			}
 		}
-		Ok(offset as u64) 
+		Ok(offset) 
     }
 
-    fn read_user_buffer(&self, mut buffer: crate::memory::UserBuffer) -> Result<u64, &'static str> {
+    fn read_user_buffer(&self, mut buffer: crate::memory::UserBuffer) -> Result<usize, &'static str> {
 		let mut offset = 0;
 		while offset < buffer.len() {
 			self.flush();
@@ -83,15 +83,15 @@ impl File for SBITTY {
 				offset += 1;
 				// return instantly on LF
 				if b == LF {
-					return Ok(offset as u64);
+					return Ok(offset);
 				}
 			}
 		}
-		Ok(offset as u64) 
+		Ok(offset) 
     }
 
 	// TODO: implement smarter flush timing
-    fn write(&self, buffer: &[u8]) -> Result<u64, &'static str> {
+    fn write(&self, buffer: &[u8]) -> Result<usize, &'static str> {
         let offset = 0;
 		while offset < buffer.len() {
 			self.flush();
@@ -100,10 +100,10 @@ impl File for SBITTY {
 				inner_locked.write_buffer.push_back(buffer[offset]);
 			}
 		}
-		Ok(offset as u64)
+		Ok(offset)
     }
 
-    fn write_user_buffer(&self, buffer: crate::memory::UserBuffer) -> Result<u64, &'static str> {
+    fn write_user_buffer(&self, buffer: crate::memory::UserBuffer) -> Result<usize, &'static str> {
         let offset = 0;
 		while offset < buffer.len() {
 			self.flush();
@@ -112,7 +112,7 @@ impl File for SBITTY {
 				inner_locked.write_buffer.push_back(buffer[offset]);
 			}
 		}
-		Ok(offset as u64)
+		Ok(offset)
     }
 
     fn to_common_file(&self) -> Option<alloc::sync::Arc<dyn crate::fs::CommonFile>> {
@@ -150,7 +150,7 @@ impl File for SBITTY {
 		}
     }
 
-    fn rename(&self, new_name: alloc::string::String) -> Result<(), &'static str> {
+    fn rename(&self, new_name: &str) -> Result<(), &'static str> {
         Err("Cannot rename tty")
     }
 
@@ -162,7 +162,7 @@ impl File for SBITTY {
      	"/tty0".to_string()
     }
 
-    fn get_cursor(&self) -> Result<u64, &'static str> {
+    fn get_cursor(&self) -> Result<usize, &'static str> {
         Err("Char device has no cursor!")
     }
 }

@@ -35,27 +35,27 @@ impl Drop for DevFSBLockFolder {
 }
 
 impl File for DevFSBLockFolder {
-    fn seek(&self, offset: u64, op: crate::fs::SeekOp) -> Result<(), &'static str> {
+    fn seek(&self, offset: isize, op: crate::fs::SeekOp) -> Result<(), &'static str> {
         Err("Cannot seek dir file")
     }
 
-    fn get_cursor(&self) -> Result<u64, &'static str> {
+    fn get_cursor(&self) -> Result<usize, &'static str> {
         Err("No cursor in dir file")
     }
 
-    fn read(&self, buffer: &mut [u8]) -> Result<u64, &'static str> {
+    fn read(&self, buffer: &mut [u8]) -> Result<usize, &'static str> {
         Err("Cannot read dir file")
     }
 
-    fn write(&self, buffer: &[u8]) -> Result<u64, &'static str> {
+    fn write(&self, buffer: &[u8]) -> Result<usize, &'static str> {
         Err("Cannot write dir file")
     }
 
-    fn read_user_buffer(&self, buffer: crate::memory::UserBuffer) -> Result<u64, &'static str> {
+    fn read_user_buffer(&self, buffer: crate::memory::UserBuffer) -> Result<usize, &'static str> {
         Err("Cannot read dir file")
     }
 
-    fn write_user_buffer(&self, buffer: crate::memory::UserBuffer) -> Result<u64, &'static str> {
+    fn write_user_buffer(&self, buffer: crate::memory::UserBuffer) -> Result<usize, &'static str> {
         Err("Cannot write dir file")
     }
 
@@ -94,7 +94,7 @@ impl File for DevFSBLockFolder {
         }
     }
 
-    fn rename(&self, new_name: String) -> Result<(), &'static str> {
+    fn rename(&self, new_name: &str) -> Result<(), &'static str> {
         Err("cannot rename in devfs")
     }
 
