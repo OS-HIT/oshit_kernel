@@ -173,6 +173,17 @@ impl ProcessControlBlockInner {
             }
         }
     }
+
+    pub fn recv_signal(&mut self, signal: usize) -> Option<()> {
+        if signal >= 64 {
+            None
+        } else if self.sig_mask.get_bit(signal) {
+            None
+        } else {
+            self.pending_sig.push_back(signal);
+            Some(())
+        }
+    }
 }
 pub fn default_sig_handlers() -> BTreeMap<usize, SigAction> {
     extern "C" {fn __alltraps(); }
@@ -430,17 +441,17 @@ impl ProcessControlBlock {
 
         user_stack_top = iter.0 - iter.0 % core::mem::size_of::<usize>();
 
-        let mut arcpcb = self.get_inner_locked();
-        arcpcb.layout = layout;     // original layout dropped, thus freed.
-        arcpcb.trap_context_ppn = trap_context_ppn;
-        arcpcb.utime = 0;
-        arcpcb.size = data_top;
-        arcpcb.utime = 0;
-        arcpcb.up_since = get_time();
-        arcpcb.path = path[..path.rfind('/').unwrap() + 1].to_string();
-        arcpcb.pending_sig = VecDeque::new();
-        arcpcb.handlers = default_sig_handlers();
-        arcpcb.sig_mask = 0;
+        let mut locked_inner = self.get_inner_locked();
+        locked_inner.layout = layout;     // original layout dropped, thus freed.
+        locked_inner.trap_context_ppn = trap_context_ppn;
+        locked_inner.utime = 0;
+        locked_inner.size = data_top;
+        locked_inner.utime = 0;
+        locked_inner.up_since = get_time();
+        locked_inner.path = path[..path.rfind('/').unwrap() + 1].to_string();
+        locked_inner.pending_sig = VecDeque::new();
+        locked_inner.handlers = default_sig_handlers();
+        locked_inner.sig_mask = 0;
         let mut trap_context = TrapContext::init(
             entry, 
             user_stack_top, 
@@ -452,7 +463,7 @@ impl ProcessControlBlock {
         trap_context.regs[11] = argv_base;
         trap_context.regs[12] = envp_base;
         verbose!("fork argc: {}", trap_context.regs[10]);
-        *arcpcb.get_trap_context() = trap_context;
+        *locked_inner.get_trap_context() = trap_context;
         return (argv_ptrs.len() - 1) as isize;
     }
 
@@ -462,10 +473,10 @@ impl ProcessControlBlock {
     /// # Example
     /// ```
     /// let proc = current_process().unwrap();
-    /// let arcpcb = proc.get_inner_locked();
-    /// // lock is held by arcpcb
+    /// let locked_inner = proc.get_inner_locked();
+    /// // lock is held by locked_inner
     /// do_something();
-    /// drop(arcpcb);
+    /// drop(locked_inner);
     /// suspend_switch();
     /// ```
     pub fn get_inner_locked(&self) -> MutexGuard<ProcessControlBlockInner> {
@@ -487,15 +498,20 @@ impl ProcessControlBlock {
     /// get pid of the precess's parent.
     /// will panic if proc0 calls this.
     pub fn get_ppid(&self) -> usize {
-        let arcpcb = self.get_inner_locked();
-        arcpcb.parent.as_ref().unwrap().upgrade().unwrap().get_pid()
+        let locked_inner = self.get_inner_locked();
+        locked_inner.parent.as_ref().unwrap().upgrade().unwrap().get_pid()
     }
 
     /// Alloc a file descriptor
     /// # Description
     /// Alloc a file descriptor. Note that this will require to lock the inner, might cause dead lock if the lock is already held.
-    pub fn alloc_fd(&mut self) -> usize {
-        let mut arcpcb = self.get_inner_locked();
-        arcpcb.alloc_fd()
+    pub fn alloc_fd(&self) -> usize {
+        let mut locked_inner = self.get_inner_locked();
+        locked_inner.alloc_fd()
+    }
+
+    pub fn recv_signal(&self, signal: usize) -> Option<()> {
+        let mut locked_inner = self.get_inner_locked();
+        locked_inner.recv_signal(signal)
     }
 }

@@ -20,6 +20,7 @@ use crate::trap::TrapContext;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use alloc::string::ToString;
+use bit_field::BitField;
 
 use crate::fs::{
     File,
@@ -250,11 +251,45 @@ pub fn sys_munmap(start: VirtAddr, len: usize) -> isize {
     }
 }
 
-pub fn sys_kill(target_pid: usize, signal: usize) -> isize {
-    if let Some(proc) = get_proc_by_pid(target_pid) {
-        let mut locked_inner = proc.get_inner_locked();
-        locked_inner.pending_sig.push_back(signal);
-        0
+pub fn sys_kill(target_pid: isize, signal: usize) -> isize {
+    if target_pid == 0 {
+        let parent = current_process().unwrap();
+        let parent_inner = parent.get_inner_locked();
+        let mut all_fail = true;
+        for child in &parent_inner.children {
+            if child.recv_signal(signal).is_some() {
+                all_fail = false;
+            }
+        }
+        if all_fail {
+            -1
+        } else {
+            0
+        }
+    } else if target_pid == -1 {
+        let pm_inner = PROCESS_MANAGER.lock();
+        let mut all_fail = true;
+        for proc in &pm_inner.processes {
+            // hard code: init process never dies.
+            if proc.pid.0 != 0 {
+                if proc.recv_signal(signal).is_some() {
+                    all_fail = false;
+                }
+            }
+        }
+        if all_fail {
+            -1
+        } else {
+            0
+        }
+    } else if target_pid < 0 {
+        // process group not implemented
+        -1
+    } else if let Some(proc) = get_proc_by_pid(target_pid as usize) {
+        match proc.recv_signal(signal) {
+            Some(_) => 0,
+            None => -1
+        }
     } else {
         error!("No such process with pid {}, failed to send signal", target_pid);
         -1
@@ -288,7 +323,7 @@ pub const SIG_SETMASK   : isize = 2;
 
 pub fn sys_sigprocmask(how: isize, oldmask: VirtAddr, newmask: VirtAddr) -> isize {
     let proc = current_process().unwrap();
-    let locked_inner = proc.get_inner_locked();
+    let mut locked_inner = proc.get_inner_locked();
     if oldmask.0 != 0 {
         locked_inner.layout.write_user_data(oldmask, &locked_inner.sig_mask);
     }

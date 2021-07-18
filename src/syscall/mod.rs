@@ -39,7 +39,8 @@ pub const SYSCALL_WAITPID       : usize = 260;
 
 pub const SYSCALL_SIGRETURN     : usize = 139;
 pub const SYSCALL_SIGACTION     : usize = 134;
-pub const SUSCALL_SIGPROCMASK   : usize = 135;
+pub const SYSCALL_SIGPROCMASK   : usize = 135;
+pub const SYSCALL_KILL          : usize = 129;
 
 mod fs_syscall;
 mod process_syscall;
@@ -70,6 +71,10 @@ pub use process_syscall::{
     sys_sbrk,
     sys_mmap,
     sys_munmap,
+    sys_sigreturn,
+    sys_sigaction,
+    sys_sigprocmask,
+    sys_kill,
 };
 pub use trivial_syscall::{
     sys_time, 
@@ -113,6 +118,11 @@ pub fn syscall(syscall_id: usize, args: [usize; 6]) -> isize {
         SYSCALL_MKDIRAT     => sys_mkdirat(args[0], args[1].into(), args[2]),
         SYSCALL_FSTAT       => sys_fstat(args[0], args[1].into()),
         SYSCALL_MUNMAP      => sys_munmap(args[0].into(), args[1]),
+
+        SYSCALL_SIGRETURN   => sys_sigreturn(),
+        SYSCALL_SIGACTION   => sys_sigaction(args[0], args[1].into(), args[2].into()),
+        SYSCALL_SIGPROCMASK => sys_sigprocmask(args[0] as isize, args[1].into(), args[2].into()),
+        SYSCALL_KILL        => sys_kill(args[0] as isize, args[1]),
         _ => {
             fatal!("Unsupported syscall_id: {}", syscall_id);
             -1

@@ -11,7 +11,7 @@ use lazy_static::*;
 
 /// The ProcessManager of choice: Round Robin.
 pub struct ProcessManager {
-    processes: VecDeque<Arc<ProcessControlBlock>>,
+    pub processes: VecDeque<Arc<ProcessControlBlock>>,
 }
 
 unsafe impl Sync for ProcessManager {}
