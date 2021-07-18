@@ -1,14 +1,11 @@
 //! Process related syscalls.
 use core::mem::size_of;
+use core::slice::{from_raw_parts, from_raw_parts_mut};
 
+use crate::config::PAGE_SIZE;
 use crate::process::{PROCESS_MANAGER, current_path, current_process, enqueue, exit_switch, get_proc_by_pid, suspend_switch};
 
-use crate::memory::{
-    VirtAddr,
-    get_user_cstr,
-    // translate_user_va,
-    VMAFlags
-};
+use crate::memory::{PhysAddr, VMAFlags, VirtAddr, alloc_continuous, get_user_cstr};
 
 use crate::process::{
     current_satp,
@@ -85,10 +82,15 @@ pub fn sys_exec(app_name: VirtAddr, argv: VirtAddr, envp: VirtAddr) -> isize {
         Ok(file) => {
             verbose!("File found {}", app_name);
             let length = file.poll().size as usize;
-            let mut v: Vec<u8> = Vec::with_capacity(length);
-            v.resize(length, 0);
+            // alloc continious pages
+            let page_holder = alloc_continuous(length / PAGE_SIZE);
+            let head_addr: PhysAddr = page_holder[0].ppn.into();
+            let head_ptr = head_addr.0 as *mut u8;
+            let arr: &mut [u8] = unsafe {
+                from_raw_parts_mut(head_ptr, length)
+            };
 
-            match file.read(&mut v) {
+            match file.read(arr) {
                 Ok(res) => {
                     verbose!("Loaded App {}, size = {}", app_name, res);
                     let proc = current_process().unwrap();
@@ -127,7 +129,7 @@ pub fn sys_exec(app_name: VirtAddr, argv: VirtAddr, envp: VirtAddr) -> isize {
                         }
                     }
                     drop(locked_inner);
-                    proc.exec(&v, app_name, args, envs)
+                    proc.exec(arr, app_name, args, envs)
                 },
                 Err(msg) => {
                     error!("Failed to read file: {}", msg);

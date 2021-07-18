@@ -30,6 +30,8 @@ trait FrameAllocator {
     /// # Description
     /// Free the physical frame in the managed area, allow it to be alloced again in the future.
     fn free(&mut self, to_free: PhysPageNum);
+
+    fn alloc_continuous(&mut self, size_in_pages: usize) -> Option<PhysPageNum>;
 }
 
 lazy_static! {
@@ -64,6 +66,15 @@ lazy_static! {
 /// Some(FrameTracker) on success, None on OOM
 pub fn alloc_frame() -> Option<FrameTracker> {
     FRAME_ALLOCATOR.lock().alloc().map(|ppn| FrameTracker::new(ppn))
+}
+
+pub fn alloc_continuous(size_in_pages: usize) -> Vec<FrameTracker> {
+    let mut res = Vec::new();
+    let start = FRAME_ALLOCATOR.lock().alloc_continuous(size_in_pages).unwrap();
+    for i in 0..size_in_pages {
+        res.push(FrameTracker::new(start + i));
+    }
+    res
 }
 
 pub fn free_frame(ppn: PhysPageNum) {
@@ -116,6 +127,17 @@ impl FrameAllocator for StackFrameAllocator {
         } else if self.current < self.end {
             self.current += 1;
             return Some(self.current - 1);
+        } else {
+            fatal!("Out Of Memory! Cannot alloc any more physical frame.");
+            // TODO: support swap out when OOM.
+            return None;
+        }
+    }
+    
+    fn alloc_continuous(&mut self, size_in_pages: usize) -> Option<PhysPageNum> {
+        if self.current + size_in_pages <= self.end {
+            self.current += size_in_pages;
+            return Some(self.current - size_in_pages);
         } else {
             fatal!("Out Of Memory! Cannot alloc any more physical frame.");
             // TODO: support swap out when OOM.

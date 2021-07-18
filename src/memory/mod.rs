@@ -101,6 +101,7 @@ pub use pagetable::{
 pub use frame_alloc::{
     FrameTracker,
     alloc_frame,
+    alloc_continuous,
     free_frame,
 };
 
