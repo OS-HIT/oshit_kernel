@@ -163,6 +163,76 @@ pub fn sys_write(fd: usize, buf: VirtAddr, len: usize) -> isize {
     }
 }
 
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct iovec {
+    pub iov_base: usize,
+    pub iov_len: usize
+}
+
+/// Write multiple buffers of data described by iov to the file descriptor
+/// # Returns
+/// How many bytes hace been really written to the fd.
+pub fn sys_writev(fd: usize, iov: VirtAddr, iovcnt: usize) -> isize {
+    let process = current_process().unwrap();
+    let arcpcb = process.get_inner_locked();
+    
+    if fd as usize > arcpcb.files.len() {
+        error!("Invalid FD");
+        return -1;
+    }
+
+    let mut ret = 0;
+    match &arcpcb.files[fd] {
+        Some(file) => {
+            let file = file.clone();
+            for i in 0..iovcnt {
+                let iov_addr = iov + size_of::<iovec>() * i;
+                let iov_struct: iovec = arcpcb.layout.read_user_data(iov_addr);
+                let buf = arcpcb.layout.get_user_buffer(VirtAddr::from(iov_struct.iov_base), iov_struct.iov_len);
+                ret += file.write(buf);
+            }
+            drop(arcpcb);
+            ret
+        },
+        None => {
+            error!("No such file descriptor!");
+            return -1;
+        }
+    }
+}
+
+/// Read multiple buffers of data described by iov to the file descriptor
+/// # Returns
+/// How many bytes hace been really read from the fd.
+pub fn sys_readv(fd: usize, iov: VirtAddr, iovcnt: usize) -> isize {
+    let process = current_process().unwrap();
+    let arcpcb = process.get_inner_locked();
+    
+    if fd as usize > arcpcb.files.len() {
+        error!("Invalid FD");
+        return -1;
+    }
+
+    let mut ret = 0;
+    match &arcpcb.files[fd] {
+        Some(file) => {
+            let file = file.clone();
+            for i in 0..iovcnt {
+                let iov_addr = iov + size_of::<iovec>() * i;
+                let iov_struct: iovec = arcpcb.layout.read_user_data(iov_addr);
+                let buf = arcpcb.layout.get_user_buffer(VirtAddr::from(iov_struct.iov_base), iov_struct.iov_len);
+                ret += file.read(buf);
+            }
+            drop(arcpcb);
+            ret
+        },
+        None => {
+            error!("No such file descriptor!");
+            return -1;
+        }
+    }
+}
 
 /// Read from spcific fd.
 /// # Returns

@@ -248,3 +248,8 @@ pub fn sys_munmap(start: VirtAddr, len: usize) -> isize {
         }
     }
 }
+
+pub fn sys_mprotect(addr: VirtAddr, len: usize, prot: isize) -> isize {
+    // TODO
+    return 0;
+}
