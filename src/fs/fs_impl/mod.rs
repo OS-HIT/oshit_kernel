@@ -1,6 +1,6 @@
 mod vfs;
 mod path;
-mod fat32;
+pub mod fat32;
 mod cache_mgr;
 mod devfs;
 mod procfs;

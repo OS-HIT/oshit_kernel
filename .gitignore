@@ -1,3 +1,5 @@
 /target
 link_app.asm
 src/version.rs
+kernel.sym
+kernel.bin

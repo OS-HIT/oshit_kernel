@@ -186,13 +186,13 @@ impl ProcessControlBlockInner {
     }
 }
 pub fn default_sig_handlers() -> BTreeMap<usize, SigAction> {
-    extern "C" {fn __alltraps(); }
+    extern "C" {fn strampoline(); }
     let mut map = BTreeMap::new();
-    let terminate_self_va   = VirtAddr::from(def_terminate_self as usize - __alltraps as usize + TRAMPOLINE);
-    let ignore_va           = VirtAddr::from(def_ignore         as usize - __alltraps as usize + TRAMPOLINE);
-    let dump_core_va        = VirtAddr::from(def_dump_core      as usize - __alltraps as usize + TRAMPOLINE);
-    let cont_va             = VirtAddr::from(def_cont           as usize - __alltraps as usize + TRAMPOLINE);
-    let stop_va             = VirtAddr::from(def_stop           as usize - __alltraps as usize + TRAMPOLINE);
+    let terminate_self_va   = VirtAddr::from(def_terminate_self as usize - strampoline as usize + TRAMPOLINE);
+    let ignore_va           = VirtAddr::from(def_ignore         as usize - strampoline as usize + TRAMPOLINE);
+    let dump_core_va        = VirtAddr::from(def_dump_core      as usize - strampoline as usize + TRAMPOLINE);
+    let cont_va             = VirtAddr::from(def_cont           as usize - strampoline as usize + TRAMPOLINE);
+    let stop_va             = VirtAddr::from(def_stop           as usize - strampoline as usize + TRAMPOLINE);
     let terminate_self_va   = SigAction { sighandler: terminate_self_va, sigaction: 0.into(), mask: 0, flags: SignalFlags::empty(), restorer: 0.into()};
     let ignore_va           = SigAction { sighandler: ignore_va        , sigaction: 0.into(), mask: 0, flags: SignalFlags::empty(), restorer: 0.into()};
     let dump_core_va        = SigAction { sighandler: dump_core_va     , sigaction: 0.into(), mask: 0, flags: SignalFlags::empty(), restorer: 0.into()};

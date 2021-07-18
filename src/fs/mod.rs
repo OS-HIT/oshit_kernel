@@ -3,7 +3,7 @@
 mod file;
 mod pipe;
 mod mount_manager;
-mod fs_impl;
+pub mod fs_impl;
 mod block_cache;
 
 pub use file::{File, SeekOp};

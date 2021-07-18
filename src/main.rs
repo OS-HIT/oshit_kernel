@@ -12,6 +12,8 @@
 
 use alloc::string::ToString;
 
+use crate::{config::TRAMPOLINE, process::default_handlers::{def_dump_core, def_ignore, def_terminate_self}};
+
 global_asm!(include_str!("entry.asm"));
 global_asm!(include_str!("link_app.asm"));
 
@@ -51,10 +53,31 @@ pub extern "C" fn rust_main() -> !{
     print!("{}", config::LOGO);
     info!("Kernel hello world!");
     info!("Vendor id = {}", sbi::get_vendor_id());
+
+    extern "C" {
+        fn __alltraps();
+        fn __restore();
+        fn __restore_to_signal_handler();
+        fn __user_restore_from_handler();
+        fn __siginfo();
+    }
+    debug!("========== mapped funcs ==========");
+    debug!("__alltraps: {:x}", __alltraps as usize);
+    debug!("__restore: {:x}", __restore as usize);
+    debug!("__restore_to_signal_handler: {:x}", __restore_to_signal_handler as usize);
+    debug!("__user_restore_from_handler: {:x}", __user_restore_from_handler as usize);
+    debug!("__siginfo: {:x}", __siginfo as usize);
+    debug!("def_terminate_self: {:x}", def_terminate_self as usize);
+    debug!("def_dump_core: {:x}", def_dump_core as usize);
+    debug!("def_ignore: {:x}", def_ignore as usize);
+    debug!("trampoline: {:x}", TRAMPOLINE);
+    debug!("==================================");
+
     memory::init();
     trap::init();
 
-    fs::mount_fs("/dev".to_string(), fs::DEV_FS.clone());
+    fs::mount_fs("/dev".to_string(), fs::DEV_FS.clone()).unwrap();
+    // fs::mount_fs("/", );
 
     process::init();
     panic!("drop off from bottom!");

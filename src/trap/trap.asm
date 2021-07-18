@@ -13,6 +13,7 @@
     .globl __alltraps
     .globl __restore
     .globl __restore_to_signal_handler
+    .globl __user_restore_from_handler
     .globl __siginfo
     .align 2
 __alltraps:

@@ -2,7 +2,8 @@
 TARGET 			:= riscv64imac-unknown-none-elf
 MODE 			:= debug
 KERNEL_ELF 		:= target/$(TARGET)/$(MODE)/oshit_kernel
-KERNEL_BIN 		:= $(KERNEL_ELF).bin
+KERNEL_BIN 		:= kernel.bin
+KERNEL_SYM 		:= kernel.sym
 DISASM_TMP 		:= target/$(TARGET)/$(MODE)/asm
 OBJDUMP 		:= rust-objdump --arch-name=riscv64
 OBJCOPY 		:= rust-objcopy --binary-architecture=riscv64
@@ -25,6 +26,8 @@ endif
 
 build: env $(KERNEL_BIN)
 
+all: $(KERNEL_BIN)
+
 env:
 	rustup component add rust-src
 	rustup component add llvm-tools-preview
@@ -32,6 +35,7 @@ env:
 	rustup target add riscv64imac-unknown-none-elf
 
 $(KERNEL_BIN): kernel
+	$(OBJDUMP) -t $(KERNEL_ELF) | sed '1,/SYMBOL TABLE/d; s/ .* / /; /^$$/d'  | sort > $(KERNEL_SYM)
 	@$(OBJCOPY) $(KERNEL_ELF) --strip-all -O binary $@
 
 kernel:
@@ -77,4 +81,4 @@ debug: build
 			-drive file=$(FS_IMG),if=none,format=raw,id=x0 \
 			-device virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0
 			
-.PHONY: build env kernel clean disasm run debug
+.PHONY: build env kernel clean disasm run debug all

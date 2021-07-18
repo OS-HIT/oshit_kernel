@@ -175,13 +175,13 @@ pub fn trap_return() -> ! {
     let trap_cx_ptr = TRAP_CONTEXT;
     let user_satp = current_satp();
     extern "C" {
-        fn __alltraps();
+        fn strampoline();
         fn __restore();
         fn __restore_to_signal_handler();
         fn __siginfo();
     }
-    let restore_va = __restore as usize - __alltraps as usize + TRAMPOLINE;
-    let restore_to_signal_handler_va = __restore_to_signal_handler as usize - __alltraps as usize + TRAMPOLINE;
+    let restore_va = __restore as usize - strampoline as usize + TRAMPOLINE;
+    let restore_to_signal_handler_va = __restore_to_signal_handler as usize - strampoline as usize + TRAMPOLINE;
     let current = current_process().unwrap();
     let mut arcpcb = current.get_inner_locked();
     
@@ -196,13 +196,13 @@ pub fn trap_return() -> ! {
 
     if let Some((idx, signal)) = to_process {
         arcpcb.pending_sig.remove(idx);
-        let terminate_self_va = crate::process::default_handlers::def_terminate_self as usize - __alltraps as usize + TRAMPOLINE;
-        let ignore_va = crate::process::default_handlers::def_ignore as usize - __alltraps as usize + TRAMPOLINE;
+        let terminate_self_va = crate::process::default_handlers::def_terminate_self as usize - strampoline as usize + TRAMPOLINE;
+        let ignore_va = crate::process::default_handlers::def_ignore as usize - strampoline as usize + TRAMPOLINE;
         let handler_va = if let Some(act) = arcpcb.handlers.get(&signal) {
             if act.flags.contains(SignalFlags::SIGINFO) {
                 act.sigaction.0
             } else if act.sighandler.0 == SIG_DFL {
-                default_sig_handlers()[&signal].sighandler.0 as usize - __alltraps as usize + TRAMPOLINE
+                default_sig_handlers()[&signal].sighandler.0 as usize - strampoline as usize + TRAMPOLINE
             } else if act.sighandler.0 == SIG_IGN {
                 ignore_va
             } else if act.sighandler.0 == SIG_ERR{
