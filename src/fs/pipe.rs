@@ -3,7 +3,7 @@ use core::cmp::min;
 use alloc::{collections::VecDeque, string::ToString, sync::{Arc, Weak}, vec::Vec};
 use spin::Mutex;
 
-use super::{File, file::FileStatus};
+use super::{CommonFile, DeviceFile, DirFile, File, file::FileStatus};
 
 /// Pipe ring buffer and end weak references.
 pub struct Pipe {
@@ -194,15 +194,15 @@ impl File for PipeEnd {
         self.pipe.lock().write_user_buffer(buffer)
     }
 
-    fn to_common_file(&self) -> Option<alloc::sync::Arc<dyn super::CommonFile>> {
+    fn to_common_file(&self) -> Option<&dyn CommonFile> {
         None
     }
 
-    fn to_dir_file(&self) -> Option<alloc::sync::Arc<dyn super::DirFile>> {
+    fn to_dir_file(&self) -> Option<&dyn DirFile> {
         None
     }
 
-    fn to_device_file(&self) -> Option<alloc::sync::Arc<dyn super::DeviceFile>> {
+    fn to_device_file(&self) -> Option<&dyn DeviceFile> {
         None
     }
 

@@ -11,7 +11,7 @@ pub enum STATE {
         DirParent,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum PathFormatError {
         NotAbs,
         NotRel,

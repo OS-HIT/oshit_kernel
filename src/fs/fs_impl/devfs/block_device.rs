@@ -1,6 +1,6 @@
 use core::{cell::Cell, sync::atomic::{AtomicUsize, Ordering}};
 
-use crate::fs::{File, file::FileStatus};
+use crate::fs::{CommonFile, DirFile, File, file::FileStatus};
 use alloc::{string::ToString, sync::Arc, vec::Vec};
 use super::{DeviceFile, device_file::BlockDeviceFile};
 use crate::drivers::BLOCK_DEVICE;
@@ -125,16 +125,16 @@ impl File for SDAWrapper {
 		Ok(offset)
     }
 
-    fn to_common_file(&self) -> Option<alloc::sync::Arc<dyn crate::fs::CommonFile>> {
+    fn to_common_file(&self) -> Option<&dyn CommonFile> {
         None
     }
 
-    fn to_dir_file(&self) -> Option<alloc::sync::Arc<dyn crate::fs::DirFile>> {
+    fn to_dir_file(&self) -> Option<&dyn DirFile> {
         None
     }
 
-    fn to_device_file(&self) -> Option<alloc::sync::Arc<dyn DeviceFile>> {
-        Some(SDA_WRAPPER.clone())
+    fn to_device_file(&self) -> Option<&dyn DeviceFile> {
+        Some(self)
     }
 
     fn poll(&self) -> crate::fs::file::FileStatus {

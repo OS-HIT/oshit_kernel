@@ -1,5 +1,5 @@
 use crate::fs::{CommonFile, DirFile, FSFlags, FSStatus, File, VirtualFileSystem, file::FileStatus, SDA_WRAPPER};
-use super::{CharDeviceFile, TTY0};
+use super::{CharDeviceFile, DeviceFile, TTY0};
 use alloc::{string::{String, ToString}, sync::Arc, vec::Vec};
 use lazy_static::*;
 
@@ -59,15 +59,15 @@ impl File for DevFSBLockFolder {
         Err("Cannot write dir file")
     }
 
-    fn to_common_file(&self) -> Option<Arc<dyn crate::fs::CommonFile>> {
+    fn to_common_file(&self) -> Option<&dyn CommonFile> {
         None
     }
 
-    fn to_dir_file(&self) -> Option<Arc<dyn crate::fs::DirFile>> {
-        Some(DEV_FS_BLOCK_FOLDER.clone())
+    fn to_dir_file(&self) -> Option<&dyn DirFile> {
+        Some(self)
     }
 
-    fn to_device_file(&self) -> Option<Arc<dyn super::DeviceFile>> {
+    fn to_device_file(&self) -> Option<&dyn DeviceFile> {
         None
     }
 

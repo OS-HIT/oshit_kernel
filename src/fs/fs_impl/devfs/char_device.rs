@@ -5,6 +5,7 @@ use lazy_static::*;
 use alloc::collections::VecDeque;
 use alloc::sync::Arc;
 use spin::Mutex;
+use crate::fs::{CommonFile, DirFile};
 use crate::fs::file::{FileStatus, FileType};
 use crate::sbi::get_byte_non_block_with_echo;
 use crate::sbi::put_byte;
@@ -115,16 +116,16 @@ impl File for SBITTY {
 		Ok(offset)
     }
 
-    fn to_common_file(&self) -> Option<alloc::sync::Arc<dyn crate::fs::CommonFile>> {
+    fn to_common_file(&self) -> Option<&dyn CommonFile> {
         None
     }
 
-    fn to_dir_file(&self) -> Option<alloc::sync::Arc<dyn crate::fs::DirFile>> {
+    fn to_dir_file(&self) -> Option<&dyn DirFile> {
         None
     }
 
-    fn to_device_file(&self) -> Option<alloc::sync::Arc<dyn DeviceFile>> {
-        Some(TTY0.clone())
+    fn to_device_file(&self) -> Option<&dyn DeviceFile> {
+        Some(self)
     }
 
     fn poll(&self) -> crate::fs::file::FileStatus {

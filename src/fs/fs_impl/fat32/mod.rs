@@ -4,6 +4,7 @@ mod chain;
 mod dirent;
 pub mod inode;
 pub mod file;
+pub mod wrapper;
 
 use dbr::DBR;
 use dbr::RAW_DBR;
@@ -22,9 +23,10 @@ use super::cache_mgr::BlockCacheManager;
 use super::cache_mgr::BLOCK_SZ;
 use super::path::parse_path;
 
-use crate::blkdevice::BlockDevice;
+use super::BlockDeviceFile;
 
 use core::mem::size_of;
+
 
 struct Fat32FSInner {
         mgr: BlockCacheManager,
@@ -37,6 +39,8 @@ pub struct Fat32FS {
         fat2: FAT,
         de_p_clst: usize,
 }
+
+unsafe impl Sync for Fat32FS {}
 
 fn get_fat(dbr: &DBR, which: usize) -> FAT {
         let block_id = match which {
@@ -55,7 +59,7 @@ fn get_fat(dbr: &DBR, which: usize) -> FAT {
 }
 
 impl Fat32FS {
-        pub fn openFat32(device: Arc<Mutex<dyn BlockDevice>>) -> Fat32FS {
+        pub fn openFat32(device: Arc<Mutex<dyn BlockDeviceFile>>) -> Fat32FS {
                 let mut mgr = BlockCacheManager::new(device);
                 let raw_dbr = mgr.get_block_cache(0).lock().get_ref::<RAW_DBR>(0).clone();
                 if raw_dbr.sign[0] != 0x55 || raw_dbr.sign[1] != 0xAA {

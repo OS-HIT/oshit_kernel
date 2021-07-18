@@ -1,13 +1,16 @@
+use core::usize;
+
+use alloc::string::String;
+use alloc::vec::Vec;
+use bit_field::BitField;
+
 use super::inode::Inode;
 use super::super::path::parse_path;
 use super::dirent::DirEntryRaw;
 use super::dirent::write_dirent_group;
 // use super::super::super::file::SeekOp;
-pub enum SeekOp {
-        SET,
-        CUR,
-        END,
-}
+use crate::fs::SeekOp;
+use crate::fs::file::FileType;
 
 pub const READ: usize = 1;
 pub const WRITE: usize = 2;
@@ -293,6 +296,47 @@ impl FileInner {
                 let mut parent = self.inode.get_parent().unwrap();
                 write_dirent_group(&mut parent.chain, &mut self.inode.group).unwrap();
                 self.inode.chain.fs.sync();
+        }
+
+        pub fn readable(&self) -> bool {
+                !self.inode.is_dir()
+        }
+
+        pub fn writable(&self) -> bool {
+                self.mode.get_bit(1) | self.mode.get_bit(2)
+        }
+
+        pub fn last_acc_time_sec(&self) -> usize {
+                self.inode.group.entry.accessed_sec as usize * 86400usize
+        }
+        
+        pub fn create_time_sec(&self) -> usize {
+                self.inode.group.entry.created_date as usize * 86400usize
+                + self.inode.group.entry.created_sec as usize
+        }
+
+        pub fn create_time_nsec(&self) -> usize {
+                self.inode.group.entry.created_minisec as usize * 1000000usize
+        }
+
+        pub fn size(&self) -> usize {
+                self.inode.get_size()
+        }
+
+        pub fn name(&self) -> String {
+                self.inode.name.clone()
+        }
+
+        pub fn ftype(&self) -> FileType {
+                if self.inode.is_dir() {
+                        FileType::Directory
+                } else {
+                        FileType::Regular
+                }
+        }
+
+        pub fn fmode(&self) -> usize {
+                self.mode
         }
 }
 

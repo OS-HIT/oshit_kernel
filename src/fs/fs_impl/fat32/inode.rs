@@ -151,7 +151,7 @@ impl Inode {
                 if !self.is_cur() || !self.is_par() {
                         return Err("realize: not fake inode");
                 }
-                self.path.purge().unwrap();
+                self.path.purge().map_err(|err| -> &str {"Path format error"})?;
                 return Ok(Inode::root(self.chain.fs.clone()).find_inode_path(&self.path).unwrap());
         }
 
