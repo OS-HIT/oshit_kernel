@@ -2,13 +2,13 @@
 //! Changing some value might have unexpected consequences, proceed with causion!
 
 /// Default kernel stack size for each process
-pub const KERNEL_STACK_SIZE : usize = 4096 * 4;
+pub const KERNEL_STACK_SIZE : usize = 4096 * 10;
 
 /// Default user stack size. Will be override by `sys_clone()` arguments
-pub const USER_STACK_SIZE   : usize = 4096 * 2;
+pub const USER_STACK_SIZE   : usize = 4096 * 10;
 
 /// Kernel heap size, used in dynamic memory allocation (like vec and String)
-pub const KERNEL_HEAP_SIZE  : usize = 0x40000;
+pub const KERNEL_HEAP_SIZE  : usize = 0x100000;
 
 /// Bits reperensenting page offset
 pub const PAGE_OFFSET       : usize = 12;

@@ -34,9 +34,9 @@ macro_rules! has {
 
 impl FileInner {
         pub fn new(mut inode: Inode, mode:usize) -> FileInner {
-                if has!(mode, TRUNCATE) {
-                        inode.set_size(0);
-                }
+                // if has!(mode, TRUNCATE) {
+                //         inode.set_size(0);
+                // }
                 FileInner {
                         inode,
                         cursor: 0,

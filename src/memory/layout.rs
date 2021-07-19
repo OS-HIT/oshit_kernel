@@ -224,7 +224,7 @@ impl Segment {
     /// ```
     #[allow(dead_code)]
     pub fn unmap_page(&mut self, pagetable: &mut PageTable, vpn: VirtPageNum) {
-        verbose!("Unmapping {:?}", vpn);
+        // verbose!("Unmapping {:?}", vpn);
         if self.map_type == MapType::Framed {
             self.frames.remove(&vpn);
         } else if self.map_type == MapType::VMA {
@@ -570,10 +570,10 @@ impl MemLayout {
                         ..
                         ph_end as usize
                         ]);
-                    verbose!("App segment mapped: {:0x} <-> {:0x}", program_header.offset() as usize, ph_end as usize);
+                    verbose!("App segment mapped: {:0x}<->{:0x} ==> {:?}<->{:?}", program_header.offset() as usize, ph_end as usize, start, stop);
                     
-                    if data_top < ph_end {
-                        data_top = ph_end
+                    if data_top < stop.0 {
+                        data_top = stop.0
                     }
                 }
             }
