@@ -324,7 +324,7 @@ pub fn rename(fs: Arc<Fat32FS>, to_rename: &str, new_name: &str) -> Result<(), &
 }
 
 pub fn sym_link(fs: Arc<Fat32FS>, target_path: &str, link_path: &str) -> Result<(), &'static str> {
-        match open(fs, link_path, file::WRITE | file::CREATE) {
+        match open(fs, link_path, file::WRITE | file::CREATE | file::NO_FOLLOW) {
                 Ok(mut file) => {
                         file.set_attr(DirEntryRaw::ATTR_SYM);
                         file.write(target_path.as_bytes()).unwrap();

@@ -146,44 +146,18 @@ impl FileInner {
                 }
                 let name = path.path.pop().unwrap();
                 if path.path.len() == 0 {
-                        let mut file = match open_d(&mut self.inode, &name, mode, dir_flag, mode & NO_FOLLOW != 0) {
-                                Ok(f) => f,
+                        match open_d(&mut self.inode, &name, mode, dir_flag, mode & NO_FOLLOW != 0) {
+                                Ok(f) => return Ok(f),
                                 Err(msg) => return Err(msg),
                         };
-                        if mode & NO_FOLLOW != 0 || !file.inode.is_slink() {
-                                return Ok(file);
-                        } else {
-                                let size = file.inode.get_size();
-                                if size > 512 {
-                                        return Err("open: link path too long");
-                                }
-                                let mut buf = [0u8; 512];
-                                file.read(&mut buf).unwrap();
-                                let root = Inode::root(self.inode.chain.fs.clone());
-                                let mut root = FileInner::new(root, 0);
-                                return root.open(core::str::from_utf8(&buf).unwrap(), mode);
-                        }
                 } else {
                         path.must_dir = true;
                         match self.inode.find_inode_path(&path){
                                 Ok(mut parent) => {
-                                        let mut file = match open_d(&mut parent, &name, mode, dir_flag, mode & NO_FOLLOW != 0) {
-                                                Ok(f) => f,
+                                        match open_d(&mut parent, &name, mode, dir_flag, mode & NO_FOLLOW != 0) {
+                                                Ok(f) => return Ok(f),
                                                 Err(msg) => return Err(msg),
                                         };
-                                        if mode & NO_FOLLOW != 0 || !file.inode.is_slink() {
-                                                return Ok(file);
-                                        } else {
-                                                let size = file.inode.get_size();
-                                                if size > 512 {
-                                                        return Err("open: link path too long");
-                                                }
-                                                let mut buf = [0u8; 512];
-                                                file.read(&mut buf).unwrap();
-                                                let root = Inode::root(self.inode.chain.fs.clone());
-                                                let mut root = FileInner::new(root, 0);
-                                                return root.open(core::str::from_utf8(&buf).unwrap(), mode);
-                                        }
                                 }
                                 Err(_) => return Err("open: parent not found"),
                         };
@@ -348,6 +322,9 @@ impl FileInner {
 
         pub fn close(&mut self) {
                 if !self.inode.is_dir() {
+                        if self.inode.group.get_start() == 0 && self.inode.chain.chain.len() != 0 {
+                                self.inode.group.entry.set_start(self.inode.chain.chain[0]);
+                        }
                         let csize = self.inode.chain.fs.cluster_size();
                         let clen = (self.inode.get_size() + csize - 1) / csize;
                         self.inode.chain.truncate(clen).unwrap();
@@ -356,7 +333,6 @@ impl FileInner {
                 write_dirent_group(&mut parent.chain, &mut self.inode.group).unwrap();
                 self.inode.chain.fs.sync();
         }
-
         pub fn readable(&self) -> bool {
                 !self.inode.is_dir()
         }

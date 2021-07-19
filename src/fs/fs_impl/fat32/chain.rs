@@ -11,7 +11,7 @@ pub struct Chain {
 }
 
 impl Chain {
-        const max_len:usize = 1024 * 1024;
+        const MAX_LEN:usize = 1024 * 1024;
 
         pub fn root(fs: Arc<Fat32FS>) -> Result<Chain, &'static str> {
                 fs.dbr.root;
@@ -61,7 +61,7 @@ impl Chain {
                         match self.get_cluster(offset) {
                                 Ok(c) => break c,
                                 Err(_msg) => {
-                                        if self.chain.len() < Chain::max_len {
+                                        if self.chain.len() < Chain::MAX_LEN {
                                                 let new = if self.chain.len() == 0 {
                                                         self.fs.alloc_cluster().unwrap()
                                                 } else {

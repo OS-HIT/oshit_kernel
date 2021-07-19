@@ -152,7 +152,12 @@ impl Inode {
         }
 
         pub fn get_parent(&self) -> Result<Inode, &'static str> {
-                return Inode::root(self.chain.fs.clone()).find_inode_path(&self.path);
+                let root = Inode::root(self.chain.fs.clone());
+                if self.path.path.len() == 0 {
+                        return Ok(root);
+                } else {
+                        return root.find_inode_path(&self.path);
+                }
         }
         
         pub fn realize(&mut self) -> Result<Inode, &'static str> {
