@@ -8,12 +8,12 @@ mod block_cache;
 
 pub use file::{File, SeekOp};
 pub use fs_impl::{
+	OpenMode,
 	CommonFile, 
     DirFile, 
     DeviceFile,
     VirtualFileSystem,
     FSFlags,
-    OpenMode,
     FSStatus,
 	SDA_WRAPPER,
 	DEV_FS,

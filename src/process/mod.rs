@@ -50,7 +50,6 @@ pub fn init() {
     init_proc0();
     verbose!("Starting hart0...");
     PROCESSOR0.run();
-    info!("Process control unit initialized.");
 }
 
 /// suspend current process and switch.

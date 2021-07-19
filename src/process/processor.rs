@@ -36,7 +36,7 @@ pub struct Processor {
 struct ProcessorInner {
     /// The current process that is being execute.
     current: Option<Arc<ProcessControlBlock>>,
-    /// Idel ProcessContext work flow context pointer, used to determin next process.
+    /// Idle ProcessContext work flow context pointer, used to determin next process.
     idle_context_ptr: usize,
 }
 

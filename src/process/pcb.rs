@@ -1,6 +1,6 @@
 //! Implementation of Process Control Block of oshit kernel
 
-use crate::fs::{File};
+use crate::fs::{File, open};
 
 use crate::memory::{
     MemLayout,
@@ -30,6 +30,7 @@ use alloc::sync::{Arc, Weak};
 use alloc::vec::Vec;
 use alloc::string::{String, ToString};
 use crate::process::default_handlers::*;
+use crate::fs::OpenMode;
 
 use bitflags::*;
 use bit_field::*;
@@ -254,7 +255,10 @@ impl ProcessControlBlock {
         let z: usize = 0;
         user_stack_top -= core::mem::size_of::<usize>();
         layout.write_user_data(user_stack_top.into(), &z);
-
+        let stdin = open("/dev/tty0".to_string(), OpenMode::READ).unwrap();
+        let stdout = open("/dev/tty0".to_string(), OpenMode::WRITE).unwrap();
+        let stderr = open("/dev/tty0".to_string(), OpenMode::WRITE).unwrap();
+        verbose!("stdio fd pre-loaded.");
         let pcb = Self {
             pid,
             kernel_stack,
@@ -270,10 +274,9 @@ impl ProcessControlBlock {
                 parent: None,
                 children: Vec::new(),
                 files: vec![
-                    // TODO: stdio fd here
-                    // Some(Arc::new(crate::fs::Stdin)), 
-                    // Some(Arc::new(crate::fs::Stdout)), 
-                    // Some(Arc::new(crate::fs::Stderr))
+                    Some(stdin),
+                    Some(stdout),
+                    Some(stderr)
                 ],
                 path: path[..path.rfind('/').unwrap() + 1].to_string(),
                 exit_code: 0,

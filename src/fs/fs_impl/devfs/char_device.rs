@@ -7,7 +7,7 @@ use alloc::sync::Arc;
 use spin::Mutex;
 use crate::fs::{CommonFile, DirFile};
 use crate::fs::file::{FileStatus, FileType};
-use crate::sbi::get_byte_non_block_with_echo;
+use crate::sbi::{get_byte, get_byte_non_block_with_echo};
 use crate::sbi::put_byte;
 use core::cell::RefCell;
 use core::usize;
@@ -56,63 +56,51 @@ impl File for SBITTY {
 
 	// TODO: implement smarter flush timing, and some how intergrate this.
     fn read(&self, buffer: &mut [u8]) -> Result<usize, &'static str> {
-		let mut offset = 0;
-		while offset < buffer.len() {
-			self.flush();
-			let mut inner_locked = self.inner.lock();
-			while !inner_locked.read_buffer.is_empty() {
-				let b = inner_locked.read_buffer.pop_front().unwrap();
-				buffer[offset] = b;
-				offset += 1;
-				// return instantly on LF
-				if b == LF {
-					return Ok(offset);
-				}
+		for (idx, b) in buffer.iter_mut().enumerate() {
+			*b = get_byte();
+			if *b == b'\n' {
+				return Ok(idx);
 			}
 		}
-		Ok(offset) 
+		Ok(buffer.len())
     }
 
     fn read_user_buffer(&self, mut buffer: crate::memory::UserBuffer) -> Result<usize, &'static str> {
-		let mut offset = 0;
-		while offset < buffer.len() {
-			self.flush();
-			let mut inner_locked = self.inner.lock();
-			while !inner_locked.read_buffer.is_empty() {
-				let b = inner_locked.read_buffer.pop_front().unwrap();
-				buffer[offset] = b;
-				offset += 1;
-				// return instantly on LF
-				if b == LF {
-					return Ok(offset);
-				}
+		for idx in 0..buffer.len() {
+			buffer[idx] = get_byte();
+			if buffer[idx] == b'\n' {
+				return Ok(idx);
 			}
 		}
-		Ok(offset) 
+		Ok(buffer.len())
     }
 
 	// TODO: implement smarter flush timing
     fn write(&self, buffer: &[u8]) -> Result<usize, &'static str> {
-        let offset = 0;
+        let mut offset = 0;
 		while offset < buffer.len() {
 			self.flush();
 			let mut inner_locked = self.inner.lock();
-			while inner_locked.write_buffer.len() < self.buffer_size as usize {
+			while inner_locked.write_buffer.len() < self.buffer_size as usize && offset < buffer.len() {
 				inner_locked.write_buffer.push_back(buffer[offset]);
+				offset += 1;
 			}
 		}
+		self.flush();
 		Ok(offset)
     }
 
     fn write_user_buffer(&self, buffer: crate::memory::UserBuffer) -> Result<usize, &'static str> {
-        let offset = 0;
+        let mut offset = 0;
 		while offset < buffer.len() {
 			self.flush();
 			let mut inner_locked = self.inner.lock();
-			while inner_locked.write_buffer.len() < self.buffer_size as usize {
+			while inner_locked.write_buffer.len() < self.buffer_size as usize && offset < buffer.len() {
 				inner_locked.write_buffer.push_back(buffer[offset]);
+				offset += 1;
 			}
 		}
+		self.flush();
 		Ok(offset)
     }
 
@@ -186,11 +174,7 @@ impl DeviceFile for SBITTY {
 
 impl CharDeviceFile for SBITTY {
     fn flush(&self) {
-		let value = get_byte_non_block_with_echo();
 		let mut inner_locked = self.inner.lock();
-        while value != 0xFFFFFFFFFFFFFFFF && inner_locked.read_buffer.len() < self.buffer_size {
-			inner_locked.read_buffer.push_back(value.try_into().unwrap());
-		}
 		while !inner_locked.write_buffer.is_empty() {
 			put_byte(inner_locked.write_buffer.pop_front().unwrap());
 		}

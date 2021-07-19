@@ -124,7 +124,8 @@ impl MountManagerInner {
     }
     
     pub fn open(&self, abs_path: String, mode: OpenMode) -> Result<Arc<dyn File>, &'static str> {
-        let (vfs, rel_path) = self.parse(abs_path)?;
+        let (vfs, rel_path) = self.parse(abs_path.clone())?;
+        verbose!("open: parsing res: path {}, relative path {}", abs_path, rel_path);
         return vfs.open(rel_path, mode);
     }
 

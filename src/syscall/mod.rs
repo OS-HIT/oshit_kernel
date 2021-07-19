@@ -89,6 +89,7 @@ use self::fs_syscall::{sys_fstat, sys_mkdirat};
 
 /// Handle and dispatch the syscalls to corresponding module.
 pub fn syscall(syscall_id: usize, args: [usize; 6]) -> isize {
+    verbose!("syscall {} received!", syscall_id);
     match syscall_id {
         SYSCALL_READ        => sys_read(args[0], args[1].into(), args[2]),
         SYSCALL_WRITE       => sys_write(args[0], VirtAddr(args[1]), args[2]),

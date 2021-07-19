@@ -55,6 +55,7 @@ pub extern "C" fn rust_main() -> !{
     info!("Vendor id = {}", sbi::get_vendor_id());
 
     extern "C" {
+        fn strampoline();
         fn __alltraps();
         fn __restore();
         fn __restore_to_signal_handler();
@@ -62,6 +63,7 @@ pub extern "C" fn rust_main() -> !{
         fn __siginfo();
     }
     debug!("========== mapped funcs ==========");
+    debug!("strampoline: {:x}", strampoline as usize);
     debug!("__alltraps: {:x}", __alltraps as usize);
     debug!("__restore: {:x}", __restore as usize);
     debug!("__restore_to_signal_handler: {:x}", __restore_to_signal_handler as usize);
@@ -77,7 +79,7 @@ pub extern "C" fn rust_main() -> !{
     trap::init();
 
     fs::mount_fs("/dev".to_string(), fs::DEV_FS.clone()).unwrap();
-    fs::mount_fs("/".to_string(), alloc::sync::Arc::new(fs::fs_impl::Fat32W::new(fs::open("/block/sda".to_string(), fs::OpenMode::SYS).unwrap()).unwrap()));
+    fs::mount_fs("".to_string(), alloc::sync::Arc::new(fs::fs_impl::Fat32W::new(fs::open("/dev/block/sda".to_string(), fs::OpenMode::SYS).unwrap()).unwrap())).unwrap();
 
     process::init();
     panic!("drop off from bottom!");

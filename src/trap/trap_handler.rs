@@ -234,6 +234,7 @@ pub fn trap_return() -> ! {
         (arcpcb.handlers.get_mut(&signal).unwrap().mask) &= 1u64 << signal;
 
         drop(arcpcb);
+        
         unsafe {
             llvm_asm!("fence.i" :::: "volatile");
             llvm_asm!(
@@ -249,6 +250,7 @@ pub fn trap_return() -> ! {
         }
     } else {
         drop(arcpcb);
+
         unsafe {
             llvm_asm!("fence.i" :::: "volatile");
             llvm_asm!("jr $0" :: "r"(restore_va), "{a0}"(trap_cx_ptr), "{a1}"(user_satp) :: "volatile");

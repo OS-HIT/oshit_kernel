@@ -37,7 +37,7 @@ pub const SIGRTMIN	: usize = 34;
 pub const SIGRTMAX	: usize = 64;
 
 #[no_mangle]
-#[link_section = ".text.trampoline"]
+#[link_section = ".text.trampoline_rust"]
 pub fn def_terminate_self(_: isize) {
     unsafe {
         asm!(
@@ -48,13 +48,13 @@ pub fn def_terminate_self(_: isize) {
 }
 
 #[no_mangle]
-#[link_section = ".text.trampoline"]
+#[link_section = ".text.trampoline_rust"]
 pub fn def_ignore(_: isize) {
 	// do nothing
 }
 
 #[no_mangle]
-#[link_section = ".text.trampoline"]
+#[link_section = ".text.trampoline_rust"]
 pub fn def_dump_core(_: isize) {
 	// do nothing. for now.
     // TODO: Add proper core dump function.
@@ -68,11 +68,11 @@ pub fn def_dump_core(_: isize) {
 }
 
 #[no_mangle]
-#[link_section = ".text.trampoline"]
+#[link_section = ".text.trampoline_rust"]
 pub static PROC_STOPPED: bool = true;
 
 #[no_mangle]
-#[link_section = ".text.trampoline"]
+#[link_section = ".text.trampoline_rust"]
 pub fn def_stop(_: isize) {
     extern "C" {
         fn strampoline();
@@ -86,7 +86,7 @@ pub fn def_stop(_: isize) {
 }
 
 #[no_mangle]
-#[link_section = ".text.trampoline"]
+#[link_section = ".text.trampoline_rust"]
 pub fn def_cont(_: isize) {
     extern "C" {
         fn strampoline();

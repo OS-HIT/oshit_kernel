@@ -20,6 +20,7 @@ pub struct Fat32W {
 
 impl Fat32W {
         pub fn new(blk: Arc<dyn File>) -> Option<Self>{
+                verbose!("Creating FAT32 fs");
                 if let Some(dev) = blk.clone().to_device_file() {
                         if let Some(blk_dev) = dev.to_blk_dev() {
                                 Some( Self {
@@ -55,6 +56,7 @@ impl VirtualFileSystem for Fat32W {
         /// we first create it's inode, then opens it.
         /// todo: maybe a specific Path struct?
         fn open(&self, abs_path: String, mode: OpenMode) -> Result<Arc<dyn File>, &'static str> {
+                verbose!("Fat32 opening: {}", abs_path);
                 let mode = OpenMode2usize(mode);
                 match fat32::open(self.inner.clone(), &abs_path, mode){
                         Ok(file) => return Ok(Arc::new(
