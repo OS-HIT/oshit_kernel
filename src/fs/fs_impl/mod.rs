@@ -6,7 +6,7 @@ mod devfs;
 mod procfs;
 mod sysfs;
 mod blkdevice;
-mod Fat32Wrapper;
+mod fat32_wrapper;
 mod utils;
 
 mod fs_files;

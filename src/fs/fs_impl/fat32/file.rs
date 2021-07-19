@@ -24,14 +24,25 @@ pub struct FileInner{
         mode: usize,
 }
 
+macro_rules! has {
+        ($x:expr, $y:expr) => {
+                {
+                        $x & $y != 0
+                }
+        };
+}
+
 impl FileInner {
-        pub fn new(inode: Inode, mode:usize) -> FileInner {
+        pub fn new(mut inode: Inode, mode:usize) -> FileInner {
+                if has!(mode, TRUNCATE) {
+                        inode.set_size(0);
+                }
                 FileInner {
                         inode,
                         cursor: 0,
                         mode,
                 }
-        }    
+        }      
 
         #[inline]
         pub fn is_dir(&self) -> bool {
@@ -90,6 +101,9 @@ impl FileInner {
                 if self.inode.is_dir() {
                         return Err("read: read directory is not allowed");
                 }
+                if !has!(self.mode, READ) {
+                        return Err("read: file not opened in read mode");
+                }
                 let left = self.inode.get_size() - self.cursor;
                 if left < buffer.len() {
                         buffer = &mut buffer[0..left];
@@ -106,6 +120,9 @@ impl FileInner {
         pub fn write(&mut self, buffer: &[u8]) -> Result<usize, &'static str> {
                 if self.inode.is_dir() {
                         return Err("write: write directory is not allowed");
+                }
+                if !has!(self.mode, WRITE) {
+                        return Err("write: file not opened in write mode");
                 }
                 match self.inode.chain.write(self.cursor, buffer) {
                         Ok(w) => {
@@ -217,6 +234,10 @@ impl FileInner {
                                 Ok(inode) => inode,
                                 Err(_) => return Err("mkdir: parent not found"),
                         };
+                        match parent.find_inode(&name) {
+                                Ok(_) => return Err("mkdir: file/dir of the same name already exist"),
+                                Err(_) => {},
+                        }
                         let inode = match parent.new_dir(&name, 0) {
                                 Ok(n) => n,
                                 Err(msg) => return Err(msg),
@@ -266,6 +287,10 @@ impl FileInner {
                                 Ok(inode) => inode,
                                 Err(_) => return Err("open: parent not found"),
                         };
+                        match parent.find_inode(&name) {
+                                Ok(_) => return Err("mkdir: file/dir of the same name already exist"),
+                                Err(_) => {},
+                        }
                         let inode = match parent.new_dir(&name, 0) {
                                 Ok(n) => n,
                                 Err(msg) => return Err(msg),
@@ -341,6 +366,11 @@ impl FileInner {
         }
 
         pub fn rename(&mut self, new_name: &str) -> Result<(), &'static str> {
+                let parent = self.inode.get_parent().unwrap();
+                match parent.find_inode(new_name) {
+                        Ok(_) => return Err("rename: file/dir of the same name exists"),
+                        Err(_) => {},
+                }
                 self.inode.group.rename(new_name).unwrap();
                 self.inode.name = String::from(new_name);
                 return Ok(());
