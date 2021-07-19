@@ -28,6 +28,8 @@ bitflags! {
         const CREATE = 1 << 2;
         // special access: opened by kernel
         const SYS = 1 << 3;
+        const DIR = 1 << 4;
+        const NO_FOLLOW = 1 << 5;
     }
 }
 

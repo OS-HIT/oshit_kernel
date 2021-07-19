@@ -29,16 +29,24 @@ impl Inode {
                 }
         }
 
+        #[inline]
         pub fn is_dir(&self) -> bool {
                 return self.group.entry.is_dir();
         }
 
+        #[inline]
         pub fn is_cur(&self) -> bool {
                 return self.group.is_cur();
         }
 
+        #[inline]
         pub fn is_par(&self) -> bool {
                 return self.group.is_par();
+        }
+
+        #[inline]
+        pub fn is_slink(&self) -> bool {
+                return self.group.entry.attr & DirEntryRaw::ATTR_SYM != 0;
         }
 
         pub fn get_size(&self) -> usize {

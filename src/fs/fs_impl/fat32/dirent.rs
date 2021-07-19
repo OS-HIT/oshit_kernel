@@ -27,10 +27,11 @@ impl DirEntryRaw {
         const ATTR_RDWR:u8 = 0x00;
         const ATTR_RDONLY:u8 = 0x01;
         const ATTR_HIDDEN:u8 = 0x02;
-        const ATTR_SYM: u8 = 0x04;
+        const ATTR_SYS: u8 = 0x04;
         const ATTR_VOL: u8 = 0x08;
         pub const ATTR_SUBDIR: u8 = 0x10;
         pub const ATTR_FILE: u8 = 0x20;
+        pub const ATTR_SYM: u8 = 0x80;
         const ATTR_LFN: u8 = 0x0f;
 
         pub fn blank() -> DirEntryRaw {

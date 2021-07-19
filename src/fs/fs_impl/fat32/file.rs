@@ -34,8 +34,29 @@ impl FileInner {
                 }
         }    
 
+        #[inline]
+        pub fn is_dir(&self) -> bool {
+                self.inode.is_dir()
+        }
+
         pub fn print(&self) {
                 self.inode.print();
+        }
+
+        pub fn set_attr(&mut self, attr: u8) {
+                self.inode.group.entry.attr |= attr;
+        }
+
+        pub fn reset_attr(&mut self, attr: u8) {
+                self.inode.group.entry.attr &= !attr;
+        }
+
+        pub fn get_attr(&self) -> u8 {
+                return self.inode.group.entry.attr;
+        }
+
+        pub fn get_path(&self) -> String {
+                self.inode.path.to_string()
         }
 
         pub fn seek(&mut self, offset: isize, op: SeekOp) -> Result<(), &'static str> {
