@@ -21,7 +21,6 @@ use alloc::vec::Vec;
 use spin::Mutex;
 use super::cache_mgr::BlockCacheManager;
 use super::cache_mgr::BLOCK_SZ;
-use super::path::parse_path;
 
 use super::BlockDeviceFile;
 
@@ -59,6 +58,8 @@ fn get_fat(dbr: &DBR, which: usize) -> FAT {
 }
 
 impl Fat32FS {
+        pub const name: &'static str = "Fat32FS (Powered by OSHIT)";
+
         pub fn openFat32(device: Arc<Mutex<dyn BlockDeviceFile>>) -> Fat32FS {
                 let mut mgr = BlockCacheManager::new(device);
                 let raw_dbr = mgr.get_block_cache(0).lock().get_ref::<RAW_DBR>(0).clone();

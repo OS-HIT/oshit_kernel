@@ -3,11 +3,11 @@ use alloc::string::String;
 use spin::Mutex;
 use crate::fs::{CommonFile, DeviceFile, DirFile, File};
 use crate::fs::{file::FileStatus, fs_impl::cache_mgr::BLOCK_SZ};
-use crate::fs::VirtualFileSystem;
+use crate::fs::fs_impl::Fat32Wrapper::Fat32W;
 use crate::fs::fs_impl::vfs::OpenMode;
 
 use super::file::FileInner;
-use super::file;
+use super::super::utils::*;
 
 pub struct FAT32File {
 	inner: Mutex<FileInner>
@@ -97,7 +97,7 @@ impl File for FAT32File {
     }
 
     fn get_vfs(&self) -> Result<Arc<dyn crate::fs::VirtualFileSystem>, &'static str> {
-        todo!()
+        return Ok(Arc::new(Fat32W { inner:self.inner.lock().get_fs() }) );
     }
 
     fn get_path(&self) -> alloc::string::String {
@@ -106,26 +106,6 @@ impl File for FAT32File {
 }
 
 impl CommonFile for FAT32File {}
-
-fn OpenMode2usize(mode: OpenMode) -> usize {
-    let mut result:usize = 0;
-    if mode.contains(OpenMode::READ) {
-        result |= file::READ;
-    }
-    if mode.contains(OpenMode::WRITE) {
-        result |= file::WRITE;
-    }
-    if mode.contains(OpenMode::CREATE) {
-        result |= file::CREATE;
-    }
-    if mode.contains(OpenMode::DIR) {
-        result |= file::DIR;
-    }
-    if mode.contains(OpenMode::NO_FOLLOW) {
-        result |= file::NO_FOLLOW;
-    }
-    return result;
-}
 
 impl DirFile for FAT32File {
         /// open files under dir

@@ -1,12 +1,11 @@
-use core::usize;
-
 use alloc::string::String;
 use alloc::vec::Vec;
+use alloc::sync::Arc;
 use bit_field::BitField;
 
+use super::Fat32FS;
 use super::inode::Inode;
 use super::super::path::parse_path;
-use super::dirent::DirEntryRaw;
 use super::dirent::write_dirent_group;
 // use super::super::super::file::SeekOp;
 use crate::fs::SeekOp;
@@ -57,6 +56,10 @@ impl FileInner {
 
         pub fn get_path(&self) -> String {
                 self.inode.path.to_string()
+        }
+
+        pub fn get_fs(&self) -> Arc<Fat32FS> {
+                return self.inode.chain.fs.clone();
         }
 
         pub fn seek(&mut self, offset: isize, op: SeekOp) -> Result<(), &'static str> {
