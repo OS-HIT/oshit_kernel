@@ -219,9 +219,16 @@ pub fn sys_sbrk(sz: usize) -> isize {
     let proc = current_process().unwrap();
     let mut arcpcb = proc.get_inner_locked();
     let original_size = arcpcb.size;
-    arcpcb.layout.alter_segment(VirtAddr::from(original_size).to_vpn_ceil(), VirtAddr::from(sz).to_vpn_ceil());
-    arcpcb.size = sz as usize;
-    return 0;
+    debug!("Original size: 0x{:x}", original_size);
+    match arcpcb.layout.alter_segment(VirtAddr::from(original_size).to_vpn_ceil(), VirtAddr::from(sz).to_vpn_ceil()) {
+        Some(_) => {
+            arcpcb.size = sz as usize;
+            0
+        },
+        None => {
+            -1
+        }
+    }
 }
 
 pub fn sys_mmap(start: VirtAddr, len: usize, prot: u8, _: usize, fd: usize, offset: usize) -> isize {

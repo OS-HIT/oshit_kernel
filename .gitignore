@@ -2,3 +2,4 @@
 link_app.asm
 src/version.rs
 kernel.bin
+kernel.sym

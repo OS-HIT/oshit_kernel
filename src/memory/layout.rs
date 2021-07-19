@@ -119,7 +119,7 @@ impl Segment {
     /// # Return
     /// Returns a new, unmapped segment.
     pub fn new(start: VirtAddr, stop: VirtAddr, map_type: MapType, segFlags: SegmentFlags, vmaFlags: VMAFlags, file: Option<Arc<dyn VirtFile + Send + Sync>>, offset: usize) -> Self {
-        verbose!("New Segment: {:?} <=> {:?}", start.to_vpn(), stop.to_vpn_ceil());
+        verbose!("New Segment:{:?} <=> {:?}, {:?} <=> {:?}", start, stop, start.to_vpn(), stop.to_vpn_ceil());
         Self {
             range   : VPNRange::new(start.to_vpn(), stop.to_vpn_ceil()),
             frames  : BTreeMap::new(),
@@ -372,11 +372,17 @@ impl MemLayout {
         return layout;
     }
 
-    pub fn alter_segment(&mut self, old_end: VirtPageNum, new_end: VirtPageNum) {
+    pub fn alter_segment(&mut self, old_end: VirtPageNum, new_end: VirtPageNum) -> Option<()> {
         if let Some((_idx, segment)) = self.segments.iter_mut().enumerate().find(|(_, seg)| seg.range.get_end() == old_end) {
             segment.adjust_end(&mut self.pagetable, new_end);
+            Some(())
         } else {
             error!("No segment end with {:?}", old_end);
+            error!("========== Mapping ==========");
+            for (idx, seg) in self.segments.iter().enumerate() {
+                error!("Segment {}: {:?}<->{:?}", idx, seg.range.get_start(), seg.range.get_end());
+            }
+            None
         }
     }
     
@@ -551,6 +557,7 @@ impl MemLayout {
                 if program_header.get_type().unwrap() == xmas_elf::program::Type::Load {
                     let start = VirtAddr::from(program_header.virtual_addr() as usize);
                     let stop = VirtAddr::from((program_header.virtual_addr() + program_header.mem_size()) as usize);
+                    verbose!("Mapping segments @ {:?} <=> {:?}", start, stop);
                     let mut segment_flags = SegmentFlags::U;
                     if program_header.flags().is_read() {
                         segment_flags |= SegmentFlags::R;
@@ -571,10 +578,10 @@ impl MemLayout {
                         ..
                         ph_end as usize
                         ]);
-                    verbose!("App segment mapped: {:0x} <-> {:0x}", program_header.offset() as usize, ph_end as usize);
+                    verbose!("App segment mapped: elf {:0x}<->{:0x} ==> {:?}<->{:?}", program_header.offset() as usize, ph_end as usize, start, stop);
                     
                     if data_top < ph_end {
-                        data_top = ph_end
+                        data_top = stop.0 as u64;
                     }
                 }
             }

@@ -11,6 +11,7 @@ fn main() {
 fn updata_version_number() -> Result<()> {
     let now: DateTime<Utc> = Utc::now();
     let mut fo = OpenOptions::new()
+        .create(true)
         .write(true)
         .open("src/version.rs")
         .unwrap();
