@@ -322,6 +322,20 @@ pub fn rename(fs: Arc<Fat32FS>, to_rename: &str, new_name: &str) -> Result<(), &
         };
 }
 
+pub fn sym_link(fs: Arc<Fat32FS>, target_path: &str, link_path: &str) -> Result<(), &'static str> {
+        match open(fs, link_path, file::WRITE | file::CREATE) {
+                Ok(mut file) => {
+                        file.set_attr(DirEntryRaw::ATTR_SYM);
+                        file.write(target_path.as_bytes()).unwrap();
+                        file.close();
+                        return Ok(());
+                },
+                Err(msg) => {
+                        return Err(msg);
+                }
+        }
+}
+
 pub fn print_file_tree(root: &Inode, indent: usize) {
         if root.is_dir() {
                 let mut indent_s = String::new();

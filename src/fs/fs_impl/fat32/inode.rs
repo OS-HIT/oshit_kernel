@@ -224,10 +224,9 @@ impl Inode {
                                                         if !empty_dir(&chain) {
                                                                 return Err("delete_inode: dir not empty");
                                                         }
-                                                } else {
-                                                        self.chain.fs.clear_chain(group.get_start()).unwrap();
-                                                        delete_dirent_group(&mut self.chain, offset).unwrap();
-                                                }
+                                                } 
+                                                self.chain.fs.clear_chain(group.get_start()).unwrap();
+                                                delete_dirent_group(&mut self.chain, offset).unwrap();
                                                 return Ok(());
                                         }
                                         offset = next;

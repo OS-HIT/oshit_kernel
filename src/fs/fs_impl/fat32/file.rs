@@ -16,6 +16,7 @@ pub const READ: usize = 1;
 pub const WRITE: usize = 2;
 pub const CREATE: usize = 4;
 pub const DIR: usize = 8;
+pub const NO_FOLLOW: usize = 16;
 // const APPEND: usize = 4;
 
 pub struct FileInner{
@@ -121,11 +122,45 @@ impl FileInner {
                 }
                 let name = path.path.pop().unwrap();
                 if path.path.len() == 0 {
-                        return open_d(&mut self.inode, &name, mode, dir_flag);
+                        let mut file = match open_d(&mut self.inode, &name, mode, dir_flag, mode & NO_FOLLOW != 0) {
+                                Ok(f) => f,
+                                Err(msg) => return Err(msg),
+                        };
+                        if mode & NO_FOLLOW != 0 || !file.inode.is_slink() {
+                                return Ok(file);
+                        } else {
+                                let size = file.inode.get_size();
+                                if size > 512 {
+                                        return Err("open: link path too long");
+                                }
+                                let mut buf = [0u8; 512];
+                                file.read(&mut buf).unwrap();
+                                let root = Inode::root(self.inode.chain.fs.clone());
+                                let mut root = FileInner::new(root, 0);
+                                return root.open(core::str::from_utf8(&buf).unwrap(), mode);
+                        }
                 } else {
                         path.must_dir = true;
                         match self.inode.find_inode_path(&path){
-                                Ok(mut parent) => return open_d(&mut parent, &name, mode, dir_flag),
+                                Ok(mut parent) => {
+                                        let mut file = match open_d(&mut parent, &name, mode, dir_flag, mode & NO_FOLLOW != 0) {
+                                                Ok(f) => f,
+                                                Err(msg) => return Err(msg),
+                                        };
+                                        if mode & NO_FOLLOW != 0 || !file.inode.is_slink() {
+                                                return Ok(file);
+                                        } else {
+                                                let size = file.inode.get_size();
+                                                if size > 512 {
+                                                        return Err("open: link path too long");
+                                                }
+                                                let mut buf = [0u8; 512];
+                                                file.read(&mut buf).unwrap();
+                                                let root = Inode::root(self.inode.chain.fs.clone());
+                                                let mut root = FileInner::new(root, 0);
+                                                return root.open(core::str::from_utf8(&buf).unwrap(), mode);
+                                        }
+                                }
                                 Err(_) => return Err("open: parent not found"),
                         };
                 }
@@ -340,9 +375,20 @@ impl FileInner {
         }
 }
 
-fn open_d(parent: &mut Inode, name: &str, mode:usize, dir_flag: bool) -> Result<FileInner, &'static str> {
+fn open_d(parent: &mut Inode, name: &str, mode:usize, dir_flag: bool, no_follow: bool) -> Result<FileInner, &'static str> {
         match parent.find_inode(&name) {
                 Ok(mut inode) => {
+                        if inode.is_slink() && !no_follow {
+                                let size = inode.get_size();
+                                if size > 512 {
+                                        return Err("open: link path too long");
+                                }
+                                let mut buf = [0u8; 512];
+                                inode.chain.read(0, &mut buf).unwrap();
+                                let root = Inode::root(parent.chain.fs.clone());
+                                let mut root = FileInner::new(root, 0);
+                                return root.open(core::str::from_utf8(&buf).unwrap(), mode);
+                        }
                         if dir_flag && !inode.is_dir() {
                                 return Err("open_d: not a directory");
                         }
