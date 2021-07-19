@@ -17,7 +17,6 @@ pub fn sys_openat(fd: i32, file_name: VirtAddr, flags: u32, _: u32) -> isize {
     let process = current_process().unwrap();
     let mut arcpcb = process.get_inner_locked();
     let mut buf = arcpcb.layout.get_user_cstr(file_name);
-
     if buf[0] == b'.' && buf[1] == b'/' {
         buf = buf[2..].iter().cloned().collect();
     }
@@ -31,9 +30,9 @@ pub fn sys_openat(fd: i32, file_name: VirtAddr, flags: u32, _: u32) -> isize {
     if flags & 0x040 != 0 {
         fs_flags |= OpenMode::CREATE;
     }
-    verbose!("syscall flag: {:x}", flags);
+    verbose!("Openat flag: {:x}", flags);
     if let Ok(path) = core::str::from_utf8(&buf) {
-        verbose!("Path: {}", path);
+        debug!("Openat path: {}", path);
         if fd == AT_FDCWD {
             verbose!("openat found AT_FDCWD!");
             let mut whole_path = arcpcb.path.clone();
@@ -61,6 +60,7 @@ pub fn sys_openat(fd: i32, file_name: VirtAddr, flags: u32, _: u32) -> isize {
                 if let Ok(new_file) = dir_file.open(path.to_string(), fs_flags) {
                     let new_fd = arcpcb.alloc_fd();
                     arcpcb.files[new_fd] = Some(new_file);
+                    verbose!("Openat success");
                     new_fd as isize
                 } else {
                     error!("Cannot open such file");

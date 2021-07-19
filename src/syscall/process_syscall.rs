@@ -146,25 +146,32 @@ pub fn sys_exec(app_name: VirtAddr, argv: VirtAddr, envp: VirtAddr) -> isize {
 
 /// Wait for a pid to end, then return it's exit status.
 pub fn sys_waitpid(pid: isize, exit_code_ptr: VirtAddr, options: isize) -> isize {
+    debug!("Waitpid called by {}!", current_process().unwrap().pid.0);
     loop {
         let proc = current_process().unwrap();
         let mut locked_inner = proc.get_inner_locked();
+        let mut corpse: Option<usize> = None;
         for (idx, child) in locked_inner.children.iter().enumerate() {
             if pid == -1 || pid as usize == child.get_pid() {
-                if locked_inner.children[idx].get_inner_locked().status == ProcessStatus::Zombie {
-                    let child_proc = locked_inner.children.remove(idx);
-                    let child_arcpcb = child_proc.get_inner_locked();
-                    assert_eq!(Arc::strong_count(&child_proc), 1, "This child process seems to be referenced more then once.");
-                    if exit_code_ptr.0 != 0 {
-                        // TODO: properly construct wstatus
-                        locked_inner.layout.write_user_data(exit_code_ptr, &((child_arcpcb.exit_code as i32) << 8));
-                    }
-                    debug!("Zombie {} was killed, exit status = {}", child_proc.get_pid(), child_arcpcb.exit_code);
-                    return child_proc.get_pid() as isize;
+                if child.get_inner_locked().status == ProcessStatus::Zombie {
+                    corpse = Some(idx);
                 }
             }
         }
-        if options & WNOHANG != 0 {
+        if let Some(idx) = corpse {
+            let child_proc = locked_inner.children.remove(idx);
+            let child_arcpcb = child_proc.get_inner_locked();
+            assert_eq!(Arc::strong_count(&child_proc), 1, "This child process seems to be referenced more then once.");
+            if exit_code_ptr.0 != 0 {
+                locked_inner.layout.write_user_data(exit_code_ptr, &((child_arcpcb.exit_code as i32) << 8));
+            }
+            debug!("Zombie {} was killed, exit status = {}", child_proc.get_pid(), child_arcpcb.exit_code);
+            debug!("Waitpid returned! (caller {}, dead child {})", current_process().unwrap().pid.0, child_proc.pid.0);
+            return child_proc.get_pid() as isize;
+        }
+        // WNOHANG @ bit 0
+        if options.get_bit(0) {
+            debug!("Nohang waitpid, instant return. options={}", options);
             return 0;
         } else {
             drop(locked_inner);
@@ -215,7 +222,7 @@ pub fn sys_chdir(buf: VirtAddr) -> isize {
     }
 }
 
-pub fn sys_sbrk(sz: usize) -> isize {
+pub fn sys_brk(sz: usize) -> isize {
     verbose!("Brk sz: {}", sz);
     if sz == 0 {
         return current_process().unwrap().get_inner_locked().size as isize;
@@ -223,9 +230,13 @@ pub fn sys_sbrk(sz: usize) -> isize {
     let proc = current_process().unwrap();
     let mut locked_inner = proc.get_inner_locked();
     let original_size = locked_inner.size;
-    locked_inner.layout.alter_segment(VirtAddr::from(original_size).to_vpn_ceil(), VirtAddr::from(sz).to_vpn_ceil());
-    locked_inner.size = sz as usize;
-    return 0;
+    if locked_inner.layout.alter_segment(VirtAddr::from(original_size).to_vpn_ceil(), VirtAddr::from(sz).to_vpn_ceil()).is_some() {
+        locked_inner.size = sz as usize;
+        0
+    } else {
+        fatal!("sbrk failed! OOM!");
+        -1
+    }
 }
 
 pub fn sys_mmap(start: VirtAddr, len: usize, prot: u8, _: usize, fd: usize, offset: usize) -> isize {
@@ -254,6 +265,7 @@ pub fn sys_munmap(start: VirtAddr, len: usize) -> isize {
 }
 
 pub fn sys_kill(target_pid: isize, signal: usize) -> isize {
+    verbose!("Kill was called.");
     if target_pid == 0 {
         let parent = current_process().unwrap();
         let parent_inner = parent.get_inner_locked();

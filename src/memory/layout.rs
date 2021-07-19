@@ -138,22 +138,28 @@ impl Segment {
     /// let mut segment: Segment = Segment::new(0x10010000.into(), 0x10020000.into(), MapType::Identity, SegmentFlags::R);
     /// segment.map_page(pagetable, VirtPageNum::From(VirtAddr::From(0x10010000)));
     /// ```
-    pub fn map_page(&mut self, pagetable: &mut PageTable, vpn: VirtPageNum) {
+    pub fn map_page(&mut self, pagetable: &mut PageTable, vpn: VirtPageNum) -> Result<(), &'static str> {
         if vpn < self.range.get_start() || vpn >= self.range.get_end() {
-            error!("Trying to map a page that is not in this Segment.");
-            return;
+            return Err("Trying to map a page that is not in this Segment.");
         }
         let ppn: PhysPageNum;
         match self.map_type {
             MapType::Identity => {
                 ppn = PhysPageNum(vpn.0);
                 pagetable.map(vpn, ppn, PTEFlags::from_bits(self.segFlags.bits).unwrap());
+                Ok(())
             },
             MapType::Framed => {
-                let frame = alloc_frame().unwrap();
-                ppn = frame.ppn;
-                self.frames.insert(vpn, frame);
-                pagetable.map(vpn, ppn, PTEFlags::from_bits(self.segFlags.bits).unwrap());
+                if let Some(frame) = alloc_frame() {
+                    ppn = frame.ppn;
+                    self.frames.insert(vpn, frame);
+                    pagetable.map(vpn, ppn, PTEFlags::from_bits(self.segFlags.bits).unwrap());
+                    verbose!("Mapped framed page: {:?}<=>{:?}, flag {:?}", vpn, ppn, PTEFlags::from_bits(self.segFlags.bits).unwrap());
+                    Ok(())
+                } else {
+                    Err("OOM!")
+                }
+                
             },
             MapType::VMA => {
                 // let frame = alloc_frame().unwrap();
@@ -161,6 +167,7 @@ impl Segment {
                 // self.frames.insert(vpn, frame);
                 // pagetable.map(vpn, ppn, PTEFlags::from_bits(self.segFlags.bits).unwrap());
                 verbose!("Lazy map, not mapping");
+                Ok(())
             }
         }
     }
@@ -196,7 +203,7 @@ impl Segment {
         Ok(())
     }
     
-    pub fn adjust_end(&mut self, pagetable: &mut PageTable, new_end: VirtPageNum) {
+    pub fn adjust_end(&mut self, pagetable: &mut PageTable, new_end: VirtPageNum) -> Option<()> {
         // We need to align the end to the 4K border of the page
         // let new_end = self.range.get_end() + (VirtAddr::from(sz)).0;
         // self.range.set_end(new_end);
@@ -207,10 +214,23 @@ impl Segment {
             for i in new_end.0..self.range.get_end().0 {
                 self.unmap_page(pagetable, i.into());
             }
+            self.range.set_end(new_end);
+            Some(())
         } else if new_end > self.range.get_end() {
-            for i in self.range.get_end().0..new_end.0 {
-                self.map_page(pagetable, i.into());
+            let original_end = self.range.get_end();
+            self.range.set_end(new_end);
+            for i in original_end.0..new_end.0 {
+                if let Err(msg) = self.map_page(pagetable, i.into()) {
+                    fatal!("segment resize failed: {}", msg);
+                    for j in original_end.0..i {
+                        self.unmap_page(pagetable, j.into())
+                    }
+                    return None;
+                }
             }
+            Some(())
+        } else {
+            Some(())
         }
     }
 
@@ -226,6 +246,7 @@ impl Segment {
     pub fn unmap_page(&mut self, pagetable: &mut PageTable, vpn: VirtPageNum) {
         // verbose!("Unmapping {:?}", vpn);
         if self.map_type == MapType::Framed {
+            verbose!("Unmapping page {:?}", vpn);
             self.frames.remove(&vpn);
         } else if self.map_type == MapType::VMA {
             verbose!("Unmapping vma");
@@ -371,11 +392,12 @@ impl MemLayout {
         return layout;
     }
 
-    pub fn alter_segment(&mut self, old_end: VirtPageNum, new_end: VirtPageNum) {
+    pub fn alter_segment(&mut self, old_end: VirtPageNum, new_end: VirtPageNum) -> Option<()> {
         if let Some((_idx, segment)) = self.segments.iter_mut().enumerate().find(|(_, seg)| seg.range.get_end() == old_end) {
-            segment.adjust_end(&mut self.pagetable, new_end);
+            segment.adjust_end(&mut self.pagetable, new_end)
         } else {
             error!("No segment end with {:?}", old_end);
+            None
         }
     }
     
@@ -570,7 +592,7 @@ impl MemLayout {
                         ..
                         ph_end as usize
                         ]);
-                    verbose!("App segment mapped: {:0x}<->{:0x} ==> {:?}<->{:?}", program_header.offset() as usize, ph_end as usize, start, stop);
+                    verbose!("App segment mapped: {:0x}<->{:0x} ==> {:?}<->{:?}, with flags={:?}", program_header.offset() as usize, ph_end as usize, start, stop, segment_flags);
                     
                     if data_top < stop.0 {
                         data_top = stop.0

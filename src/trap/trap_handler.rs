@@ -1,6 +1,7 @@
 //! Trap handler of oshit kernel
 use super::TrapContext;
 use crate::{memory::VirtAddr, process::{current_process, default_sig_handlers}, syscall::syscall};
+use alloc::sync::Arc;
 use riscv::register::{
     stvec,      // s trap vector base address register
     scause::{   // s cause register
@@ -133,6 +134,7 @@ pub fn user_trap(_cx: &mut TrapContext) -> ! {
                 current_trap_context().sepc,
             );
             exit_switch(-2);
+            // current_process().unwrap().recv_signal(crate::process::default_handlers::SIGSEGV);
         }
         Trap::Exception(Exception::IllegalInstruction) => {
             error!("IllegalInstruction in application, core dumped.");
@@ -172,19 +174,9 @@ pub const SIG_ERR: usize = -1isize as usize;
 #[no_mangle]
 pub fn trap_return() -> ! {
     set_user_trap_entry();
-    let trap_cx_ptr = TRAP_CONTEXT;
-    let user_satp = current_satp();
-    extern "C" {
-        fn strampoline();
-        fn __restore();
-        fn __restore_to_signal_handler();
-        fn __siginfo();
-    }
-    let restore_va = __restore as usize - strampoline as usize + TRAMPOLINE;
-    let restore_to_signal_handler_va = __restore_to_signal_handler as usize - strampoline as usize + TRAMPOLINE;
+
     let current = current_process().unwrap();
-    let mut arcpcb = current.get_inner_locked();
-    
+    let mut arcpcb = current.get_inner_locked();    
     let mut to_process: Option<(usize, usize)> = None;
 
     for sig in arcpcb.pending_sig.iter().enumerate() {
@@ -195,6 +187,16 @@ pub fn trap_return() -> ! {
     }
 
     if let Some((idx, signal)) = to_process {
+        let trap_cx_ptr = TRAP_CONTEXT;
+        let user_satp = current_satp();
+        extern "C" {
+            fn strampoline();
+            fn __restore();
+            fn __restore_to_signal_handler();
+            fn __siginfo();
+        }
+        let restore_to_signal_handler_va = __restore_to_signal_handler as usize - strampoline as usize + TRAMPOLINE;
+
         arcpcb.pending_sig.remove(idx);
         let terminate_self_va = crate::process::default_handlers::def_terminate_self as usize - strampoline as usize + TRAMPOLINE;
         let ignore_va = crate::process::default_handlers::def_ignore as usize - strampoline as usize + TRAMPOLINE;
@@ -234,6 +236,8 @@ pub fn trap_return() -> ! {
         (arcpcb.handlers.get_mut(&signal).unwrap().mask) &= 1u64 << signal;
 
         drop(arcpcb);
+        drop(current);
+        drop(to_process);
         
         unsafe {
             llvm_asm!("fence.i" :::: "volatile");
@@ -250,6 +254,16 @@ pub fn trap_return() -> ! {
         }
     } else {
         drop(arcpcb);
+        drop(current);
+        drop(to_process);
+        
+        let trap_cx_ptr = TRAP_CONTEXT;
+        let user_satp = current_satp();
+        extern "C" {
+            fn strampoline();
+            fn __restore();
+        }
+        let restore_va = __restore as usize - strampoline as usize + TRAMPOLINE;
 
         unsafe {
             llvm_asm!("fence.i" :::: "volatile");

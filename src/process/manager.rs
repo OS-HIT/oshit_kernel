@@ -73,7 +73,7 @@ pub fn get_proc_by_pid(pid: usize) -> Option<Arc<ProcessControlBlock>> {
         .get_idle_proc_by_pid(pid)
         .map_or(
             if current_process().unwrap().pid.0 == pid {
-                current_process().clone()
+                current_process()
             } else {
                 None
             }, 
