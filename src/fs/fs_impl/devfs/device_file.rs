@@ -1,3 +1,5 @@
+use alloc::sync::Arc;
+
 use crate::fs::CommonFile;
 
 use super::super::super::File;
@@ -5,6 +7,10 @@ use super::super::super::File;
 pub trait DeviceFile : File {
     /// Good old IOCTL, device spcific commands.
     fn ioctl(&self, op: u64) -> Result<u64, &'static str>;
+
+    fn to_char_dev<'a>(self: Arc<Self>) -> Option<Arc<dyn CharDeviceFile + 'a>> where Self: 'a ;
+
+    fn to_blk_dev<'a>(self: Arc<Self>) -> Option<Arc<dyn BlockDeviceFile + 'a>> where Self: 'a ;
 }
 
 pub trait CharDeviceFile : DeviceFile {

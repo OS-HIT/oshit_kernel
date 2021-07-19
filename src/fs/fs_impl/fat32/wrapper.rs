@@ -3,14 +3,14 @@ use alloc::string::String;
 use spin::Mutex;
 use crate::fs::{CommonFile, DeviceFile, DirFile, File};
 use crate::fs::{file::FileStatus, fs_impl::cache_mgr::BLOCK_SZ};
-use crate::fs::fs_impl::Fat32Wrapper::Fat32W;
+use crate::fs::fs_impl::fat32_wrapper::Fat32W;
 use crate::fs::fs_impl::vfs::OpenMode;
 
 use super::file::FileInner;
 use super::super::utils::*;
 
 pub struct FAT32File {
-	inner: Mutex<FileInner>
+	pub inner: Mutex<FileInner>
 }
 
 unsafe impl Sync for FAT32File {}
@@ -51,11 +51,11 @@ impl File for FAT32File {
 		self.inner.lock().write(&mut temp_arr)
     }
 
-    fn to_common_file(&self) -> Option<&dyn CommonFile> {
+    fn to_common_file<'a>(self: Arc<Self>) -> Option<Arc<dyn CommonFile + 'a>> where Self: 'a {
         Some(self)
     }
 
-    fn to_dir_file(&self) -> Option<&dyn DirFile> {
+    fn to_dir_file<'a>(self: Arc<Self>) -> Option<Arc<dyn DirFile + 'a>> where Self: 'a {
         if self.inner.lock().is_dir() {
             return Some(self);
         } else {
@@ -63,7 +63,7 @@ impl File for FAT32File {
         }
     }
 
-    fn to_device_file(&self) -> Option<&dyn DeviceFile> {
+    fn to_device_file<'a>(self: Arc<Self>) -> Option<Arc<dyn DeviceFile + 'a>> where Self: 'a {
 		None	
     }
 
@@ -152,7 +152,7 @@ impl DirFile for FAT32File {
 
         /// list
         fn list(&self) -> Vec<Arc<dyn File>> {
-            let result = Vec::<Arc<dyn File>>::new();
+            let mut result = Vec::<Arc<dyn File>>::new();
             let files = match self.inner.lock().list() {
                 Ok(f) => f,
                 Err(msg) => return result,

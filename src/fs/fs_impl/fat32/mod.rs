@@ -60,7 +60,7 @@ fn get_fat(dbr: &DBR, which: usize) -> FAT {
 impl Fat32FS {
         pub const name: &'static str = "Fat32FS (Powered by OSHIT)";
 
-        pub fn openFat32(device: Arc<Mutex<dyn BlockDeviceFile>>) -> Fat32FS {
+        pub fn openFat32(device: Arc<dyn BlockDeviceFile>) -> Fat32FS {
                 let mut mgr = BlockCacheManager::new(device);
                 let raw_dbr = mgr.get_block_cache(0).lock().get_ref::<RAW_DBR>(0).clone();
                 if raw_dbr.sign[0] != 0x55 || raw_dbr.sign[1] != 0xAA {

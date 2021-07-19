@@ -756,10 +756,10 @@ impl MemLayout {
     /// Add a VMA segment to the layout
     pub fn add_vma(&mut self, file: Arc<dyn File>, start: VirtAddr, flag: VMAFlags, offset: usize, length: usize) -> Result<VirtAddr, &'static str> {
         if start.0 == 0 {
-            return self.add_vma_anywhere(file, flag, offset, length);
+            return self.add_vma_anywhere(file.clone(), flag, offset, length);
         }
         verbose!("Mapping VMA: [{:?}, {:?}), length = {}", VirtPageNum::from(start), (start + length).to_vpn_ceil(), length);
-        let inner = file.to_common_file().unwrap();
+        let inner = file.clone().to_common_file().unwrap();
         let start_vpn = start.to_vpn();
         let stop_vpn = (min(start + inner.poll().size as usize, start + length)).to_vpn_ceil();
         // check overlap

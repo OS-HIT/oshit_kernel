@@ -76,17 +76,17 @@ pub trait File: Drop + Send + Sync {
     /// cast down to common file
     /// HACK: It is unclear how this will coop with Arc<File>, recommand no holding this but Arc<File>.
     /// return casted on success
-    fn to_common_file(&self) -> Option<&dyn CommonFile>;
+    fn to_common_file<'a>(self: Arc<Self>) -> Option<Arc<dyn CommonFile + 'a>> where Self: 'a;
 
     /// cast down to common file
     /// HACK: It is unclear how this will coop with Arc<File>, recommand no holding this but Arc<File>.
     /// return casted on success
-    fn to_dir_file(&self) -> Option<&dyn DirFile>;
+    fn to_dir_file<'a>(self: Arc<Self>) -> Option<Arc<dyn DirFile + 'a>> where Self: 'a;
 
     /// cast down to device file
     /// HACK: It is unclear how this will coop with Arc<File>, recommand no holding this but Arc<File>.
     /// return casted on success
-    fn to_device_file(&self) -> Option<&dyn DeviceFile>;
+    fn to_device_file<'a>(self: Arc<Self>) -> Option<Arc<dyn DeviceFile + 'a>> where Self: 'a;
 
     /// Get file status
     fn poll(&self) -> FileStatus;

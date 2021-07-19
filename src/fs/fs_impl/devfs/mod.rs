@@ -17,4 +17,8 @@ pub use devfs::{
     DEV_FS
 };
 
+pub use block_device::{
+    CommonFileAsBlockDevice
+};
+
 pub use block_device::SDA_WRAPPER;

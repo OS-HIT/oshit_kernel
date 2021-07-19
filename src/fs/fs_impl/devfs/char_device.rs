@@ -116,15 +116,15 @@ impl File for SBITTY {
 		Ok(offset)
     }
 
-    fn to_common_file(&self) -> Option<&dyn CommonFile> {
+    fn to_common_file<'a>(self: Arc<Self>) -> Option<Arc<dyn CommonFile + 'a>> where Self: 'a {
         None
     }
 
-    fn to_dir_file(&self) -> Option<&dyn DirFile> {
+    fn to_dir_file<'a>(self: Arc<Self>) -> Option<Arc<dyn DirFile + 'a>> where Self: 'a {
         None
     }
 
-    fn to_device_file(&self) -> Option<&dyn DeviceFile> {
+    fn to_device_file<'a>(self: Arc<Self>) -> Option<Arc<dyn DeviceFile + 'a>> where Self: 'a {
         Some(self)
     }
 
@@ -173,6 +173,14 @@ impl DeviceFile for SBITTY {
         todo!()
 		// TODO: Check tty's ioctl
 		
+    }
+
+    fn to_char_dev<'a>(self: Arc<Self>) -> Option<Arc<dyn CharDeviceFile + 'a>> where Self: 'a  {
+        Some(self)
+    }
+
+    fn to_blk_dev<'a>(self: Arc<Self>) -> Option<Arc<dyn super::BlockDeviceFile + 'a>> where Self: 'a  {
+        None
     }
 }
 

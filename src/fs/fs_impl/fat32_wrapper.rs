@@ -2,6 +2,9 @@ use alloc::sync::Arc;
 use alloc::string::String;
 use spin::Mutex;
 
+use super::BlockDeviceFile;
+use super::cache_mgr::BLOCK_SZ;
+use super::devfs::CommonFileAsBlockDevice;
 use super::fat32;
 use super::fat32::Fat32FS;
 use super::fat32::wrapper::FAT32File;
@@ -13,6 +16,24 @@ use crate::fs::File;
 
 pub struct Fat32W {
         pub inner: Arc<Fat32FS>,
+}
+
+impl Fat32W {
+        pub fn new(blk: Arc<dyn File>) -> Option<Self>{
+                if let Some(dev) = blk.clone().to_device_file() {
+                        if let Some(blk_dev) = dev.to_blk_dev() {
+                                Some( Self {
+                                        inner: Arc::new(Fat32FS::openFat32(blk_dev)),
+                                })
+                        } else {
+                                None
+                        }
+                } else {
+                        Some( Self{
+                                inner: Arc::new(Fat32FS::openFat32(Arc::new(CommonFileAsBlockDevice::new(blk.clone(), BLOCK_SZ))))
+                        })
+                }
+        }
 }
 
 impl VirtualFileSystem for Fat32W {

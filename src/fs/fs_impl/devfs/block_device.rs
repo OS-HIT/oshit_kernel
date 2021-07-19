@@ -1,8 +1,8 @@
 use core::{cell::Cell, sync::atomic::{AtomicUsize, Ordering}};
 
-use crate::fs::{CommonFile, DirFile, File, file::FileStatus};
+use crate::fs::{CommonFile, DirFile, File, SeekOp, file::FileStatus};
 use alloc::{string::ToString, sync::Arc, vec::Vec};
-use super::{DeviceFile, device_file::BlockDeviceFile};
+use super::{CharDeviceFile, DeviceFile, device_file::BlockDeviceFile};
 use crate::drivers::BLOCK_DEVICE;
 use lazy_static::*;
 
@@ -40,7 +40,16 @@ impl BlockDeviceFile for SDAWrapper {
 
 impl DeviceFile for SDAWrapper {
     fn ioctl(&self, op: u64) -> Result<u64, &'static str> {
-        todo!()
+        warning!("IOCTL logged for /block/sda: op={}", op);
+        Err("not implemented")
+    }
+
+    fn to_char_dev<'a>(self: Arc<Self>) -> Option<Arc<dyn CharDeviceFile + 'a>> where Self: 'a  {
+        None
+    }
+
+    fn to_blk_dev<'a>(self: Arc<Self>) -> Option<Arc<dyn BlockDeviceFile + 'a>> where Self: 'a  {
+        Some(self)
     }
 }
 
@@ -125,15 +134,15 @@ impl File for SDAWrapper {
 		Ok(offset)
     }
 
-    fn to_common_file(&self) -> Option<&dyn CommonFile> {
+    fn to_common_file<'a>(self: Arc<Self>) -> Option<Arc<dyn CommonFile + 'a>> where Self: 'a {
         None
     }
 
-    fn to_dir_file(&self) -> Option<&dyn DirFile> {
+    fn to_dir_file<'a>(self: Arc<Self>) -> Option<Arc<dyn DirFile + 'a>> where Self: 'a {
         None
     }
 
-    fn to_device_file(&self) -> Option<&dyn DeviceFile> {
+    fn to_device_file<'a>(self: Arc<Self>) -> Option<Arc<dyn DeviceFile + 'a>> where Self: 'a {
         Some(self)
     }
 
@@ -176,5 +185,118 @@ impl File for SDAWrapper {
 impl Drop for SDAWrapper {
     fn drop(&mut self) {
         panic!("SDA wrapper dropped? what happened?")
+    }
+}
+
+pub struct CommonFileAsBlockDevice {
+    inner: Arc<dyn File>,
+    blk_sz: usize
+}
+
+impl CommonFileAsBlockDevice {
+    pub fn new(file: Arc<dyn File>, blk_sz: usize) -> Self {
+        if blk_sz & (blk_sz - 1) != 0 {
+            panic!("Block size must be power of 2!")
+        }
+
+        Self {
+            inner: file,
+            blk_sz
+        }
+    }
+}
+
+impl Drop for CommonFileAsBlockDevice {
+    fn drop(&mut self) {
+        // auto drop
+    }
+}
+
+impl File for CommonFileAsBlockDevice {
+    fn seek(&self, offset: isize, op: crate::fs::SeekOp) -> Result<(), &'static str> {
+        self.inner.seek(offset, op)
+    }
+
+    fn get_cursor(&self) -> Result<usize, &'static str> {
+        self.inner.get_cursor()
+    }
+
+    fn read(&self, buffer: &mut [u8]) -> Result<usize, &'static str> {
+        self.inner.read(buffer)
+    }
+
+    fn write(&self, buffer: &[u8]) -> Result<usize, &'static str> {
+        self.inner.write(buffer)
+    }
+
+    fn read_user_buffer(&self, buffer: crate::memory::UserBuffer) -> Result<usize, &'static str> {
+        self.inner.read_user_buffer(buffer)
+    }
+
+    fn write_user_buffer(&self, buffer: crate::memory::UserBuffer) -> Result<usize, &'static str> {
+        self.inner.write_user_buffer(buffer)
+    }
+
+    fn to_common_file<'a>(self: Arc<Self>) -> Option<Arc<dyn CommonFile + 'a>> where Self: 'a {
+        None
+    }
+
+    fn to_dir_file<'a>(self: Arc<Self>) -> Option<Arc<dyn DirFile + 'a>> where Self: 'a {
+        None
+    }
+
+    fn to_device_file<'a>(self: Arc<Self>) -> Option<Arc<dyn DeviceFile + 'a>> where Self: 'a {
+        Some(self)
+    }
+
+    fn poll(&self) -> FileStatus {
+        self.inner.poll()
+    }
+
+    fn rename(&self, new_name: &str) -> Result<(), &'static str> {
+        self.rename(new_name)
+    }
+
+    fn get_vfs(&self) -> Result<Arc<dyn crate::fs::VirtualFileSystem>, &'static str> {
+        self.get_vfs()
+    }
+
+    fn get_path(&self) -> alloc::string::String {
+        self.get_path()
+    }
+}
+
+impl DeviceFile for CommonFileAsBlockDevice {
+    fn ioctl(&self, op: u64) -> Result<u64, &'static str> {
+        Err("mimiced block device")
+    }
+
+    fn to_char_dev<'a>(self: Arc<Self>) -> Option<Arc<dyn CharDeviceFile + 'a>> where Self: 'a  {
+        None
+    }
+
+    fn to_blk_dev<'a>(self: Arc<Self>) -> Option<Arc<dyn BlockDeviceFile + 'a>> where Self: 'a  {
+        Some(self)
+    }
+}
+
+impl BlockDeviceFile for CommonFileAsBlockDevice {
+    fn read_block(&self, block_id: usize, buf: &mut [u8]) {
+        assert_eq!(buf.len(), self.blk_sz, "Buffer size != blk_sz!");
+        self.seek((self.blk_sz * block_id) as isize, SeekOp::SET);
+        self.read(buf);
+    }
+
+    fn write_block(&self, block_id: usize, buf: &[u8]) {
+        assert_eq!(buf.len(), self.blk_sz, "Buffer size != blk_sz!");
+        self.seek((self.blk_sz * block_id) as isize, SeekOp::SET);
+        self.write(buf);
+    }
+
+    fn clear_block(&self, block_id: usize) {
+        self.seek((self.blk_sz * block_id) as isize, SeekOp::SET);
+        let mut v: Vec<u8> = Vec::new();
+        v.resize(self.blk_sz, 0);
+        self.write(&v);
     }
 }

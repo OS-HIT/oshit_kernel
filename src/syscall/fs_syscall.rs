@@ -260,8 +260,8 @@ pub fn sys_getdents64(fd: usize, buf: VirtAddr, len: usize) -> isize {
         return -1;
     }
     
-    if let Some(file) = &arcpcb.files[fd] {
-        if let Some(mut dir) = file.to_dir_file() {
+    if let Some(file) = arcpcb.files[fd].clone() {
+        if let Some(dir) = file.to_dir_file() {
             for f in dir.list() {
                 let f_stat = f.poll();
                 let mut dirent_item = dirent {
@@ -321,7 +321,7 @@ pub fn sys_unlink(dirfd: i32, file_name: VirtAddr, _: usize) -> isize{
             };
         }
 
-        if let Some(dir) = &arcpcb.files[dirfd as usize] {
+        if let Some(dir) = arcpcb.files[dirfd as usize].clone() {
             if let Some(dir_file) = dir.to_dir_file() {
                 verbose!("Deleting file at {}", path);
                 match dir_file.remove(path.to_string()) {
@@ -368,7 +368,7 @@ pub fn sys_mkdirat(dirfd: usize, path: VirtAddr, _: usize) -> isize {
             };
         }
 
-        if let Some(dir) = &arcpcb.files[dirfd as usize] {
+        if let Some(dir) = arcpcb.files[dirfd as usize].clone() {
             if let Some(dir_file) = dir.to_dir_file() {
                 match dir_file.mkdir(path.to_string()) {
                     Ok(_) => return 0,
@@ -411,7 +411,7 @@ pub fn sys_fstat(fd: usize, ptr: VirtAddr) -> isize {
     let proc = current_process().unwrap();
     let arcpcb = proc.get_inner_locked();
     if let Some(op_file) = arcpcb.files.get(fd) {
-        if let Some(file) = op_file {
+        if let Some(file) = op_file.clone() {
             if let Some(fs_file) = file.to_common_file() {
                 let f_stat = fs_file.poll();
                 let stat = FStat {

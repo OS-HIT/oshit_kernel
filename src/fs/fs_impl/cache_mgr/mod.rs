@@ -16,12 +16,12 @@ const BLOCK_CACHE_SIZE: usize = 16;
 pub struct BlockCacheManager {
         /// vector queue of block cache  
         queue: VecDeque<(usize, Arc<Mutex<BlockCache>>)>,
-        device: Arc<Mutex<dyn BlockDeviceFile>>,
+        device: Arc<dyn BlockDeviceFile>,
 }
 
 impl BlockCacheManager {
         /// Create new block cache
-        pub fn new(device: Arc<Mutex<dyn BlockDeviceFile>>) -> Self {
+        pub fn new(device: Arc<dyn BlockDeviceFile>) -> Self {
                 Self { 
                         queue: VecDeque::new(),
                         device: device.clone(),
@@ -72,7 +72,7 @@ impl BlockCacheManager {
                 if let Some(pair) = self.queue.iter().find(|pair| pair.0 == block_id) {
                         pair.1.lock().clear();
                 }
-                self.device.lock().clear_block(block_id);
+                self.device.clear_block(block_id);
                 return;
         }
 

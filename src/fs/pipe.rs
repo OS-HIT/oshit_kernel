@@ -194,15 +194,15 @@ impl File for PipeEnd {
         self.pipe.lock().write_user_buffer(buffer)
     }
 
-    fn to_common_file(&self) -> Option<&dyn CommonFile> {
+    fn to_common_file<'a>(self: Arc<Self>) -> Option<Arc<dyn CommonFile + 'a>> where Self: 'a {
         None
     }
 
-    fn to_dir_file(&self) -> Option<&dyn DirFile> {
+    fn to_dir_file<'a>(self: Arc<Self>) -> Option<Arc<dyn DirFile + 'a>> where Self: 'a {
         None
     }
 
-    fn to_device_file(&self) -> Option<&dyn DeviceFile> {
+    fn to_device_file<'a>(self: Arc<Self>) -> Option<Arc<dyn DeviceFile + 'a>> where Self: 'a {
         None
     }
 

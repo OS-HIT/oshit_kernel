@@ -59,15 +59,15 @@ impl File for DevFSBLockFolder {
         Err("Cannot write dir file")
     }
 
-    fn to_common_file(&self) -> Option<&dyn CommonFile> {
+    fn to_common_file<'a>(self: Arc<Self>) -> Option<Arc<dyn CommonFile + 'a>> where Self: 'a {
         None
     }
 
-    fn to_dir_file(&self) -> Option<&dyn DirFile> {
+    fn to_dir_file<'a>(self: Arc<Self>) -> Option<Arc<dyn DirFile + 'a>> where Self: 'a {
         Some(self)
     }
 
-    fn to_device_file(&self) -> Option<&dyn DeviceFile> {
+    fn to_device_file<'a>(self: Arc<Self>) -> Option<Arc<dyn DeviceFile + 'a>> where Self: 'a {
         None
     }
 

@@ -16,7 +16,7 @@ pub use fs_impl::{
     OpenMode,
     FSStatus,
 	SDA_WRAPPER,
-	DEV_FS
+	DEV_FS,
 };
 
 pub use mount_manager::{

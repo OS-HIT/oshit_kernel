@@ -77,7 +77,7 @@ pub extern "C" fn rust_main() -> !{
     trap::init();
 
     fs::mount_fs("/dev".to_string(), fs::DEV_FS.clone()).unwrap();
-    // fs::mount_fs("/", );
+    fs::mount_fs("/".to_string(), alloc::sync::Arc::new(fs::fs_impl::Fat32W::new(fs::open("/block/sda".to_string(), fs::OpenMode::SYS).unwrap()).unwrap()));
 
     process::init();
     panic!("drop off from bottom!");

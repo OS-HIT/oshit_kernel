@@ -15,7 +15,7 @@ pub struct BlockCache {
         block_id: usize,
         /// Indecate whe the block has been modified
         modified: bool,
-        device: Arc<Mutex<dyn BlockDeviceFile>>,
+        device: Arc<dyn BlockDeviceFile>,
 }
 
 impl BlockCache {
@@ -24,11 +24,11 @@ impl BlockCache {
         /// Load a new BlockCache from disk.
         pub fn new(
                 block_id: usize,
-                device: Arc<Mutex<dyn BlockDeviceFile>>,
+                device: Arc<dyn BlockDeviceFile>,
         ) -> Self {
 
                 let mut cache = [0u8; BLOCK_SZ];
-                device.lock().read_block(block_id, &mut cache);
+                device.read_block(block_id, &mut cache);
                 Self {
                         cache,
                         block_id,
@@ -93,7 +93,7 @@ impl BlockCache {
         pub fn sync(&mut self) {
                 if self.modified {
                         self.modified = false;
-                        self.device.lock().write_block(self.block_id, &self.cache);
+                        self.device.write_block(self.block_id, &self.cache);
                 }
         }
 
