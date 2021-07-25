@@ -21,6 +21,7 @@ use super::{
     KernelStack,
     alloc_pid,
 };
+use _core::mem::size_of;
 use alloc::collections::{BTreeMap, VecDeque};
 use spin::{
     Mutex,
@@ -47,6 +48,47 @@ bitflags! {
         const UNSUPPORTED = 0x00000400;
         const RESETHAND   = 0x80000000;
     }
+}
+
+#[repr(usize)]
+#[derive(Clone, Copy)]
+pub enum AuxType {
+    NULL            = 0 ,       /* end of vector */
+    IGNORE          = 1 ,       /* entry should be ignored */
+    EXECFD          = 2 ,       /* file descriptor of program */
+    PHDR            = 3 ,       /* program headers for program */
+    PHENT           = 4 ,       /* size of program header entry */
+    PHNUM           = 5 ,       /* number of program headers */
+    PAGESZ          = 6 ,       /* system page size */
+    BASE            = 7 ,       /* base address of interpreter */
+    FLAGS           = 8 ,       /* flags */
+    ENTRY           = 9 ,       /* entry point of program */
+    NOTELF          = 10,       /* program is not ELF */
+    UID             = 11,       /* real uid */
+    EUID            = 12,       /* effective uid */
+    GID             = 13,       /* real gid */
+    EGID            = 14,       /* effective gid */
+    PLATFORM        = 15,       /* string identifying CPU for optimizations */
+    HWCAP           = 16,       /* arch dependent hints at CPU capabilities */
+    CLKTCK          = 17,       /* frequency at which times() increments */
+    /* 18 through 22 are reserved */
+    SECURE          = 23,       /* secure mode boolean */
+    BASE_PLATFORM   = 24,       /* string identifying real platform, may differ from AT_PLATFORM. */
+    RANDOM          = 25,       /* address of 16 random bytes */
+    HWCAP2          = 26,       /* extension of AT_HWCAP */
+    EXECFN          = 31,       /* filename of program */
+    NULL28          = 0x28,
+    NULL29          = 0x29,
+    NULL2a          = 0x2a,
+    NULL2b          = 0x2b,
+    NULL2c          = 0x2c,
+    NULL2d          = 0x2d,
+}
+
+#[repr(C)]
+pub struct AuxHeader {
+    pub aux_type: AuxType,
+    pub value   : usize
 }
 
 
@@ -244,7 +286,7 @@ impl ProcessControlBlock {
     /// # Return
     /// Return the new process control block
     pub fn new(elf_data: &[u8], path: String) -> Self {
-        let (layout, data_top, mut user_stack_top, entry) = MemLayout::new_elf(elf_data);
+        let (layout, data_top, mut user_stack_top, entry, _auxv) = MemLayout::new_elf(elf_data);
         let trap_context_ppn = layout.translate(VirtAddr::from(TRAP_CONTEXT).into()).unwrap().ppn();
         let pid = alloc_pid();
         let kernel_stack = KernelStack::new(&pid);
@@ -399,50 +441,158 @@ impl ProcessControlBlock {
     /// # Return
     /// Return the argc, for this will subtitude the syscall return value.
     pub fn exec(&self, elf_data: &[u8], path: String, argv: Vec<Vec<u8>>, envp: Vec<Vec<u8>>) -> isize {
-        let (layout, data_top, mut user_stack_top, entry) = MemLayout::new_elf(elf_data);
+        let (layout, data_top, mut user_stack_top, entry, mut auxv) = MemLayout::new_elf(elf_data);
         let trap_context_ppn = layout.translate(VirtAddr::from(TRAP_CONTEXT).into()).unwrap().ppn();
 
-        // user_stack_top -= (argv.len() + 1) * core::mem::size_of::<usize>();
-        let envp_base = user_stack_top - (envp.len() + 1) * core::mem::size_of::<usize>();
-        let argv_base = envp_base - (argv.len() + 1) * core::mem::size_of::<usize>();
-        let strs_base = argv_base;
-        let mut iter: VirtAddr = strs_base.into();
+        // // user_stack_top -= (argv.len() + 1) * core::mem::size_of::<usize>();
+        // let envp_base = user_stack_top - (envp.len() + 1) * core::mem::size_of::<usize>();
+        // let argv_base = envp_base - (argv.len() + 1) * core::mem::size_of::<usize>();
+        // let strs_base = argv_base;
+        // let mut iter: VirtAddr = strs_base.into();
 
-        let mut argv_ptrs: Vec<VirtAddr> = Vec::new();
-        for arg in argv {
-            iter -= arg.len();
-            argv_ptrs.push(iter);
-            let mut arg_buf = layout.get_user_buffer(iter.into(), arg.len());
-            arg_buf.write_bytes(&arg, 0);
-            verbose!("Arg: {}, len: {}", core::str::from_utf8(&arg).unwrap(), arg.len());
+        // let mut argv_ptrs: Vec<VirtAddr> = Vec::new();
+        // for arg in argv {
+        //     iter -= arg.len();
+        //     argv_ptrs.push(iter);
+        //     let mut arg_buf = layout.get_user_buffer(iter.into(), arg.len());
+        //     arg_buf.write_bytes(&arg, 0);
+        //     verbose!("Arg: {}, len: {}", core::str::from_utf8(&arg).unwrap(), arg.len());
+        // }
+        // argv_ptrs.push(0.into());
+
+        // let mut envp_ptrs: Vec<VirtAddr> = Vec::new();
+        // for env in envp {
+        //     iter -= env.len();
+        //     argv_ptrs.push(iter);
+        //     let mut arg_buf = layout.get_user_buffer(iter.into(), env.len());
+        //     arg_buf.write_bytes(&env, 0);
+        //     verbose!("Env: {}, len: {}", core::str::from_utf8(&env).unwrap(), env.len());
+        // }
+        // envp_ptrs.push(0.into());
+
+        // let mut envp_buf = layout.get_user_buffer(envp_base.into(), envp_ptrs.len() * core::mem::size_of::<usize>());
+        // let mut offset = 0;
+        // for ptr in envp_ptrs {
+        //     envp_buf.write(offset, &ptr.0);
+        //     offset += core::mem::size_of::<usize>();
+        // }
+
+        // let mut argv_buf = layout.get_user_buffer(argv_base.into(), argv_ptrs.len() * core::mem::size_of::<usize>());
+        // let mut offset = 0;
+        // for ptr in argv_ptrs.iter() {
+        //     argv_buf.write(offset, &ptr.0);
+        //     offset += core::mem::size_of::<usize>();
+        // }
+
+        // user_stack_top = iter.0 - iter.0 % core::mem::size_of::<usize>();
+
+        //  ================================= file name =================================
+        let name = &argv[0];
+        user_stack_top -= name.len();
+        let mut ptr = user_stack_top;
+        for b in name {
+            layout.write_user_data(ptr.into(), &b);
+            ptr += 1;
         }
-        argv_ptrs.push(0.into());
 
-        let mut envp_ptrs: Vec<VirtAddr> = Vec::new();
-        for env in envp {
-            iter -= env.len();
-            argv_ptrs.push(iter);
-            let mut arg_buf = layout.get_user_buffer(iter.into(), env.len());
-            arg_buf.write_bytes(&env, 0);
-            verbose!("Env: {}, len: {}", core::str::from_utf8(&env).unwrap(), env.len());
-        }
-        envp_ptrs.push(0.into());
-
-        let mut envp_buf = layout.get_user_buffer(envp_base.into(), envp_ptrs.len() * core::mem::size_of::<usize>());
-        let mut offset = 0;
-        for ptr in envp_ptrs {
-            envp_buf.write(offset, &ptr.0);
-            offset += core::mem::size_of::<usize>();
+        //  ================================= envp strs =================================
+        let mut envp_ptrs: Vec<usize> = Vec::with_capacity(envp.len() + 1);
+        envp_ptrs.resize(envp.len() + 1, 0);
+        for (idx, bytes) in envp.iter().enumerate() {
+            user_stack_top -= bytes.len();
+            envp_ptrs[idx] = user_stack_top;
+            let mut ptr = user_stack_top;
+            for b in bytes {
+                layout.write_user_data(ptr.into(), b);
+                ptr += 1;
+            }
+            layout.write_user_data(ptr.into(), &(0u8));
         }
 
-        let mut argv_buf = layout.get_user_buffer(argv_base.into(), argv_ptrs.len() * core::mem::size_of::<usize>());
-        let mut offset = 0;
-        for ptr in argv_ptrs.iter() {
-            argv_buf.write(offset, &ptr.0);
-            offset += core::mem::size_of::<usize>();
+        user_stack_top -= user_stack_top % size_of::<usize>();
+
+        //  ================================= argv strs =================================
+        let mut argv_ptrs: Vec<usize> = Vec::with_capacity(argv.len() + 1);
+        argv_ptrs.resize(argv.len() + 1, 0);
+        for (idx, bytes) in argv.iter().enumerate() {
+            user_stack_top -= bytes.len();
+            argv_ptrs[idx] = user_stack_top;
+            let mut ptr = user_stack_top;
+            for b in bytes {
+                layout.write_user_data(ptr.into(), b);
+                ptr += 1;
+            }
+            layout.write_user_data(ptr.into(), &(0u8));
         }
 
-        user_stack_top = iter.0 - iter.0 % core::mem::size_of::<usize>();
+        // =================================   align   =================================
+        user_stack_top -= user_stack_top % size_of::<usize>();
+
+        //  ================================= platfrom =================================
+        user_stack_top -= PLATFROM.len() + 1;
+        user_stack_top -= user_stack_top % size_of::<usize>();
+        let mut ptr = user_stack_top;
+        for b in PLATFROM {
+            layout.write_user_data(ptr.into(), b);
+            ptr += 1;
+        }
+        layout.write_user_data(ptr.into(), &0u8);
+
+        //  ================================= rand bytes =================================
+        user_stack_top -= 16;
+        let mut ptr = user_stack_top;
+        for i in 0u8..0xfu8 {
+            layout.write_user_data(ptr.into(), &i);
+            ptr += 1;
+        }
+
+        // ================================= padding =================================
+        user_stack_top -= user_stack_top % 16;
+
+        // ================================= auxv content =================================
+        auxv.push(AuxHeader{aux_type: AuxType::EXECFN,  value: argv_ptrs[0]});
+        auxv.push(AuxHeader{aux_type: AuxType::NULL,    value: 0});
+        user_stack_top -= auxv.len() * size_of::<AuxHeader>();
+        let auxv_base = user_stack_top;
+        for (idx, header) in auxv.iter().enumerate() {
+            let mut ptr = user_stack_top + size_of::<AuxHeader>() * idx;
+            layout.write_user_data(ptr.into(), &(header.aux_type as usize));
+            ptr += size_of::<usize>();
+            layout.write_user_data(ptr.into(), &header.value);
+        }
+
+        // ================================= envp =================================
+        user_stack_top -= (envp_ptrs.len()) * size_of::<usize>();
+        let envp_base = user_stack_top;
+        // layout.write_user_data((user_stack_top + envp.len() * size_of::<usize>()).into(), &0usize);
+        // write from high to low
+        for (idx, p) in envp_ptrs.iter().enumerate() {
+            layout.write_user_data((user_stack_top + idx * size_of::<usize>()).into(), p);
+        }
+
+        // ================================= argv =================================
+        user_stack_top -= (argv_ptrs.len()) * size_of::<usize>();
+        let argv_base = user_stack_top;
+        // layout.write_user_data((user_stack_top + argv.len() * size_of::<usize>()).into(), &0usize);
+        // write from high to low
+        for (idx, p) in argv_ptrs.iter().enumerate() {
+            layout.write_user_data((user_stack_top + idx * size_of::<usize>()).into(), p);
+        }
+
+        // ================================= argc =================================
+        user_stack_top -= size_of::<usize>();
+        layout.write_user_data(user_stack_top.into(), &(argv.len()));
+
+        assert!(user_stack_top % size_of::<usize>() == 0, "SP not aligned!");
+
+        verbose!("argv.len(): {:x}", argv.len());
+        verbose!("argv_base : {:x}", argv_base );
+        verbose!("envp_base : {:x}", envp_base );
+        verbose!("auxv_base : {:x}", auxv_base );
+
+        for i in 0..100 {
+            verbose!("Stack +  {:2} ({:x}): {:16x}", i, user_stack_top + i*size_of::<usize>(), layout.read_user_data::<usize>((user_stack_top + i*size_of::<usize>()).into()));
+        }
 
         let mut locked_inner = self.get_inner_locked();
         locked_inner.layout = layout;     // original layout dropped, thus freed.
@@ -461,11 +611,12 @@ impl ProcessControlBlock {
             KERNEL_MEM_LAYOUT.lock().get_satp(), 
             self.kernel_stack.top().0, 
             user_trap as usize
-        );
-        trap_context.regs[10] = argv_ptrs.len() - 1;
+        );  
+        trap_context.regs[10] = argv.len();
         trap_context.regs[11] = argv_base;
         trap_context.regs[12] = envp_base;
-        verbose!("fork argc: {}", trap_context.regs[10]);
+        trap_context.regs[13] = auxv_base;
+
         *locked_inner.get_trap_context() = trap_context;
         return (argv_ptrs.len() - 1) as isize;
     }

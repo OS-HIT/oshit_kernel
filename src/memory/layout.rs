@@ -21,6 +21,7 @@ use alloc::vec::Vec;
 use bitflags::*;
 use crate::config::*;
 use crate::fs::{File, SeekOp};
+use crate::process::{AuxHeader, AuxType};
 use core::cmp::min;
 use crate::utils::StepByOne;
 use lazy_static::*;
@@ -154,7 +155,7 @@ impl Segment {
                     ppn = frame.ppn;
                     self.frames.insert(vpn, frame);
                     pagetable.map(vpn, ppn, PTEFlags::from_bits(self.segFlags.bits).unwrap());
-                    verbose!("Mapped framed page: {:?}<=>{:?}, flag {:?}", vpn, ppn, PTEFlags::from_bits(self.segFlags.bits).unwrap());
+                    // verbose!("Mapped framed page: {:?}<=>{:?}, flag {:?}", vpn, ppn, PTEFlags::from_bits(self.segFlags.bits).unwrap());
                     Ok(())
                 } else {
                     Err("OOM!")
@@ -559,13 +560,15 @@ impl MemLayout {
     /// # Description
     /// Construct a new user memory layout, including all elf segments, user stacks and trampoline.  
     /// Also can use bare bin file for compatbility.
-    pub fn new_elf(elf_data: &[u8]) -> (Self, usize, usize, usize) {
+    pub fn new_elf(elf_data: &[u8]) -> (Self, usize, usize, usize, Vec<AuxHeader>) {
         let mut layout = Self::new();
         layout.map_trampoline();
         let mut end_vpn = VirtPageNum::from(0);
         let mut data_top = 0;
         let mut entry_point: usize = 0;
         if let Ok(elf) = xmas_elf::ElfFile::new(elf_data) {
+            debug!("ELF parsed!");
+            // debug!("header: {}", elf.header);
             // map segments
             for i in 0..elf.header.pt2.ph_count() {
                 let program_header = elf.program_header(i).unwrap();
@@ -613,6 +616,7 @@ impl MemLayout {
                     0
                 )
             );
+            verbose!("Trapcontext mapped.");
             // map guard page
             let guard_page_high_end = VirtAddr::from(TRAP_CONTEXT);
             let guard_page_low_end = guard_page_high_end - PAGE_SIZE;
@@ -627,6 +631,7 @@ impl MemLayout {
                     0
                 )
             );
+            verbose!("GuardPage mapped.");
             // map user stacks
             let stack_high_end = guard_page_low_end;
             let stack_low_end = stack_high_end - USER_STACK_SIZE;
@@ -641,8 +646,29 @@ impl MemLayout {
                     0
                 )
             );
-
-            return (layout, data_top as usize, stack_high_end.0, elf.header.pt2.entry_point() as usize);
+            verbose!("UserStack mapped.");
+            // debug!(".text address: {}", elf.find_section_by_name(".text").unwrap().address());
+            // debug!("ph_entry_size: {}", elf.header.pt2.ph_entry_size());
+            // debug!("ph_count:      {}", elf.header.pt2.ph_count());
+            // let ph_head_addr = (elf.find_section_by_name(".text").unwrap().address() as usize ) - (elf.header.pt2.ph_entry_size() as usize) * (elf.header.pt2.ph_count() as usize);
+            // let ph_head_addr = 0;
+            let mut auxv: Vec<AuxHeader> = Vec::new();
+            auxv.push(AuxHeader{aux_type: AuxType::PHDR,        value: elf.header.pt2.ph_offset() as usize});
+            auxv.push(AuxHeader{aux_type: AuxType::PHENT,       value: elf.header.pt2.ph_entry_size() as usize}); // ELF64 header 64bytes
+            auxv.push(AuxHeader{aux_type: AuxType::PHNUM,       value: elf.header.pt2.ph_count() as usize});
+            auxv.push(AuxHeader{aux_type: AuxType::PAGESZ,      value: PAGE_SIZE as usize});
+            auxv.push(AuxHeader{aux_type: AuxType::BASE,        value: 0 as usize});
+            auxv.push(AuxHeader{aux_type: AuxType::FLAGS,       value: 0 as usize});
+            auxv.push(AuxHeader{aux_type: AuxType::ENTRY,       value: elf.header.pt2.entry_point() as usize});
+            auxv.push(AuxHeader{aux_type: AuxType::UID,         value: 0 as usize});
+            auxv.push(AuxHeader{aux_type: AuxType::EUID,        value: 0 as usize});
+            auxv.push(AuxHeader{aux_type: AuxType::GID,         value: 0 as usize});
+            auxv.push(AuxHeader{aux_type: AuxType::EGID,        value: 0 as usize});
+            auxv.push(AuxHeader{aux_type: AuxType::PLATFORM,    value: 0 as usize});
+            auxv.push(AuxHeader{aux_type: AuxType::HWCAP,       value: 0 as usize});
+            auxv.push(AuxHeader{aux_type: AuxType::CLKTCK,      value: 100 as usize});
+    
+            return (layout, data_top as usize, stack_high_end.0, elf.header.pt2.entry_point() as usize, auxv);
         }
         panic!("Invlid elf format.");
     }
@@ -829,10 +855,10 @@ impl MemLayout {
     }
 
     pub fn lazy_copy_vma(&mut self, address: VirtAddr, access_flag: VMAFlags) -> Result<(), &'static str> {
-        verbose!("Lazy copy triggered for {:?}", address);
         for seg in self.segments.iter_mut() {
             if seg.map_type == MapType::VMA && seg.range.get_start() <= address.to_vpn() && address.to_vpn() < seg.range.get_end() {
                 if !(access_flag & seg.vmaFlags).is_empty() {
+                    verbose!("lazy copy triggered for {:?}", address);
                     return seg.map_lazy_vma(&mut self.pagetable, address);
                 }
             }

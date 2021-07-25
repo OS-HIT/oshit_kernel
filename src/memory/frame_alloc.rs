@@ -100,7 +100,7 @@ impl FrameTracker {
 /// Implement drop, so that we can automatically collect used pages.
 impl Drop for FrameTracker {
     fn drop(&mut self) {
-        verbose!("{:?} has been dropped.", self.ppn);
+        // verbose!("{:?} has been dropped.", self.ppn);
         FRAME_ALLOCATOR.lock().free(self.ppn)
     }
 }

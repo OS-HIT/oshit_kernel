@@ -98,8 +98,9 @@ pub fn user_trap(_cx: &mut TrapContext) -> ! {
             let mut arcpcb = proc.get_inner_locked();
             if let Err(msg) = arcpcb.layout.lazy_copy_vma(stval.into(), VMAFlags::W) {
                 error!(
-                    "{:?} in application, bad addr = {:#x}, bad instruction = {:#x}, {}",
+                    "{:?} in application {}, bad addr = {:#x}, bad instruction = {:#x}, {}",
                     scause.cause(),
+                    proc.pid.0,
                     stval,
                     arcpcb.get_trap_context().sepc,
                     msg
@@ -250,13 +251,13 @@ pub fn trap_return() -> ! {
                 "{a3}"(signal),
                 "{a4}"(__siginfo as usize) :: 
                 "volatile"
-            );
+            );  
         }
     } else {
         drop(arcpcb);
         drop(current);
         drop(to_process);
-        
+
         let trap_cx_ptr = TRAP_CONTEXT;
         let user_satp = current_satp();
         extern "C" {

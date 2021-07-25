@@ -15,7 +15,9 @@ pub use pcb::{
     ProcessStatus,
     SignalFlags,
     default_sig_handlers,
-    SigAction
+    SigAction,
+    AuxType,
+    AuxHeader
 };
 pub use manager::{
     enqueue,

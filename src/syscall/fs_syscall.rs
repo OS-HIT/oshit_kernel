@@ -125,23 +125,27 @@ pub fn sys_write(fd: usize, buf: VirtAddr, len: usize) -> isize {
         error!("Invalid FD");
         return -1;
     }
-
-    match &arcpcb.files[fd] {
-        Some(file) => {
-            let file = file.clone();
-            drop(arcpcb);
-            match file.write_user_buffer(buf) {
-                Ok(size) => size as isize,
-                Err(msg) => {
-                    error!("Write failed with msg \"{}\"", msg);
-                    -1
+    if let Some(fd_slot) = arcpcb.files.get(fd) {
+        match fd_slot {
+            Some(file) => {
+                let file = file.clone();
+                drop(arcpcb);
+                match file.write_user_buffer(buf) {
+                    Ok(size) => size as isize,
+                    Err(msg) => {
+                        error!("Write failed with msg \"{}\"", msg);
+                        -1
+                    }
                 }
+            },
+            None => {
+                error!("No such file descriptor!");
+                return -1;
             }
-        },
-        None => {
-            error!("No such file descriptor!");
-            return -1;
         }
+    } else {
+        error!("No such file descriptor!");
+        return -1;
     }
 }
 
@@ -159,22 +163,27 @@ pub fn sys_read(fd: usize, buf: VirtAddr, len: usize) -> isize {
         return -1;
     }
 
-    match &arcpcb.files[fd] {
-        Some(file) => {
-            let file = file.clone();
-            drop(arcpcb);
-            match file.read_user_buffer(buf) {
-                Ok(size) => size as isize,
-                Err(msg) => {
-                    error!("Read failed with msg \"{}\"", msg);
-                    -1
+    if let Some(fd_slot) = arcpcb.files.get(fd) {
+        match fd_slot {
+            Some(file) => {
+                let file = file.clone();
+                drop(arcpcb);
+                match file.read_user_buffer(buf) {
+                    Ok(size) => size as isize,
+                    Err(msg) => {
+                        error!("Read failed with msg \"{}\"", msg);
+                        -1
+                    }
                 }
+            },
+            None => {
+                error!("No such file descriptor!");
+                return -1;
             }
-        },
-        None => {
-            error!("No such file descriptor!");
-            return -1;
         }
+    } else {
+        error!("No such file descriptor!");
+        return -1;
     }
 }
 

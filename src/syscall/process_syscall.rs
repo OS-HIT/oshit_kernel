@@ -83,7 +83,7 @@ pub fn sys_exec(app_name: VirtAddr, argv: VirtAddr, envp: VirtAddr) -> isize {
             verbose!("File found {}", app_name);
             let length = file.poll().size as usize;
             // alloc continious pages
-            let page_holder = alloc_continuous(length / PAGE_SIZE);
+            let page_holder = alloc_continuous(length / PAGE_SIZE + 1);
             let head_addr: PhysAddr = page_holder[0].ppn.into();
             let head_ptr = head_addr.0 as *mut u8;
             let arr: &mut [u8] = unsafe {
@@ -127,6 +127,9 @@ pub fn sys_exec(app_name: VirtAddr, argv: VirtAddr, envp: VirtAddr) -> isize {
                             envs.push(locked_inner.layout.get_user_cstr(ptr.into()));
                             iter += core::mem::size_of::<usize>();
                         }
+                    }
+                    for (idx, a) in envs.iter().enumerate() {
+                        verbose!("envp [{}]: {}", idx, core::str::from_utf8(a).unwrap())
                     }
                     drop(locked_inner);
                     proc.exec(arr, app_name, args, envs)

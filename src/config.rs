@@ -18,7 +18,8 @@ pub const PAGE_SIZE         : usize = 1 << PAGE_OFFSET;
 
 /// This is where the physical memory ends.
 /// ref: [k210-sdk-stuff/memory_map.md](https://github.com/laanwj/k210-sdk-stuff/blob/master/doc/memory_map.md)
-pub const MEM_END           : usize = 0x80800000;  
+// pub const MEM_END           : usize = 0x80800000;  
+pub const MEM_END           : usize = 0x90000000;  
 
 /// Position of Trampoline, which is a piece of code use for context switching when we switch priviledge levels (`ecall`/`sret`)
 #[no_mangle]
@@ -86,3 +87,5 @@ pub const LOGO: &str = r#"
 ╚██████╔╝███████║      ██║  ██║██║   ██║   
  ╚═════╝ ╚══════╝      ╚═╝  ╚═╝╚═╝   ╚═╝  
 "#;
+
+pub const PLATFROM: &[u8; 8] = b"RISC-V64";
