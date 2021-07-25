@@ -2,13 +2,13 @@
 //! Changing some value might have unexpected consequences, proceed with causion!
 
 /// Default kernel stack size for each process
-pub const KERNEL_STACK_SIZE : usize = 4096 * 4;
+pub const KERNEL_STACK_SIZE : usize = 4096 * 10;
 
 /// Default user stack size. Will be override by `sys_clone()` arguments
-pub const USER_STACK_SIZE   : usize = 4096 * 2;
+pub const USER_STACK_SIZE   : usize = 4096 * 10;
 
 /// Kernel heap size, used in dynamic memory allocation (like vec and String)
-pub const KERNEL_HEAP_SIZE  : usize = 0x40000;
+pub const KERNEL_HEAP_SIZE  : usize = 0x100000;
 
 /// Bits reperensenting page offset
 pub const PAGE_OFFSET       : usize = 12;
@@ -18,13 +18,16 @@ pub const PAGE_SIZE         : usize = 1 << PAGE_OFFSET;
 
 /// This is where the physical memory ends.
 /// ref: [k210-sdk-stuff/memory_map.md](https://github.com/laanwj/k210-sdk-stuff/blob/master/doc/memory_map.md)
-pub const MEM_END           : usize = 0x80800000;  
+// pub const MEM_END           : usize = 0x80800000;  
+pub const MEM_END           : usize = 0x90000000;  
 
 /// Position of Trampoline, which is a piece of code use for context switching when we switch priviledge levels (`ecall`/`sret`)
-pub const TRAMPOLINE        : usize = usize::MAX - PAGE_SIZE + 1;
+#[no_mangle]
+#[link_section = ".trampoline"]
+pub static TRAMPOLINE        : usize = usize::MAX - PAGE_SIZE + 1;
 
 /// Position of TrapContext, which is just below the trampoline and takes up an entire page.
-pub const TRAP_CONTEXT      : usize = TRAMPOLINE - PAGE_SIZE;
+pub static TRAP_CONTEXT      : usize = TRAMPOLINE - PAGE_SIZE;
 
 /// Max pipe ring buffer size. Same as linux.
 pub const PIP_BUF_MAX       : usize = 65536;
@@ -42,7 +45,7 @@ pub const SYSNAME       : &[u8] = b"OSHIT Kernel (Pre-Alpha)\0";
 /// UName constants
 pub const NODENAME      : &[u8] = b"Network currently unsupported\0";
 /// UName constants, OS version
-pub const RELEASE       : &[u8] = b"0.0.1-alpha\0";
+pub const RELEASE       : &[u8] = b"0.0.2-alpha\0";
 /// UName constants
 pub const MACHINE       : &[u8] = b"UNKNOWN MACHINE\0";
 /// UName constants
@@ -84,3 +87,5 @@ pub const LOGO: &str = r#"
 ╚██████╔╝███████║      ██║  ██║██║   ██║   
  ╚═════╝ ╚══════╝      ╚═╝  ╚═╝╚═╝   ╚═╝  
 "#;
+
+pub const PLATFROM: &[u8; 8] = b"RISC-V64";

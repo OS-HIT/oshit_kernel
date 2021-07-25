@@ -1,9 +1,10 @@
 //! Wrappers of file system related syscalls.
-use super::super::fs::file::FILE;
-use crate::fs::block_cache::BLOCK_SZ;
-use crate::fs::{self, FTYPE, FileWithLock, make_pipe};
+// use super::super::fs::file::FILE;
+// use crate::fs::block_cache::BLOCK_SZ;
+use crate::fs::{self, File, OpenMode, make_pipe, mkdir, open, remove};
 use crate::memory::{VirtAddr};
 use crate::process::{current_process};
+use alloc::string::ToString;
 // use alloc::vec::Vec;
 use alloc::sync::Arc;
 use core::{convert::TryInto, mem::size_of};
@@ -16,23 +17,22 @@ pub fn sys_openat(fd: i32, file_name: VirtAddr, flags: u32, _: u32) -> isize {
     let process = current_process().unwrap();
     let mut arcpcb = process.get_inner_locked();
     let mut buf = arcpcb.layout.get_user_cstr(file_name);
-
     if buf[0] == b'.' && buf[1] == b'/' {
         buf = buf[2..].iter().cloned().collect();
     }
-    let mut fs_flags = FILE::FMOD_READ;
+    let mut fs_flags = OpenMode::READ;
     if flags & 0x001 != 0 {
-        fs_flags = FILE::FMOD_WRITE;
+        fs_flags = OpenMode::WRITE;
     }
     if flags & 0x002 != 0 {
-        fs_flags |= FILE::FMOD_WRITE;
+        fs_flags |= OpenMode::WRITE;
     }
     if flags & 0x040 != 0 {
-        fs_flags |= FILE::FMOD_CREATE;
+        fs_flags |= OpenMode::CREATE;
     }
-    verbose!("syscall flag: {:x}", flags);
+    verbose!("Openat flag: {:x}", flags);
     if let Ok(path) = core::str::from_utf8(&buf) {
-        verbose!("Path: {}", path);
+        debug!("Openat path: {}", path);
         if fd == AT_FDCWD {
             verbose!("openat found AT_FDCWD!");
             let mut whole_path = arcpcb.path.clone();
@@ -40,30 +40,13 @@ pub fn sys_openat(fd: i32, file_name: VirtAddr, flags: u32, _: u32) -> isize {
             verbose!("Openat path: {} + {}", arcpcb.path.clone(), path);
  
 
-            let file = if fs_flags & 0x200000 != 0 {
-                match FILE::open_dir(path, fs_flags) {
-                    Ok(dir) => dir,
-                    Err(msg) => {
-                        error!("{}", msg);
-                        return -1;
-                    }
-                }
-            } else {
-                match FILE::open_file(whole_path.as_str(), fs_flags) {
-                    Ok(file) => file,
-                    Err(_) => {
-                        match FILE::open_dir(path, fs_flags) {
-                            Ok(dir) => dir,
-                            Err(msg) => {
-                                error!("{}", msg);
-                                return -1;
-                            }
-                        }
-                    }
-                }
+            let res = open(path.to_string(), fs_flags);
+            let file = match res {
+                Ok(f) => f,
+                Err(e) => return -1,
             };
             let new_fd = arcpcb.alloc_fd();
-            arcpcb.files[new_fd] = Some(Arc::new(FileWithLock::new(file)));
+            arcpcb.files[new_fd] = Some(file);
             return new_fd.try_into().unwrap();
         }
 
@@ -73,25 +56,18 @@ pub fn sys_openat(fd: i32, file_name: VirtAddr, flags: u32, _: u32) -> isize {
         }
 
         if let Some(dir) = arcpcb.files[fd as usize].clone() {
-            if let Ok(dir_file) = dir.to_fs_file_locked() {
-                if dir_file.ftype == fs::FTYPE::TDir {
-                    match dir_file.open_file_from(path, fs_flags) {
-                        Ok(fs_file) => {
-                            let new_fd = arcpcb.alloc_fd();
-                            arcpcb.files[new_fd] = Some(Arc::new(FileWithLock::new(fs_file)));
-                            return new_fd as isize;
-                        }
-                        Err(err_msg) => {
-                            error!("{}, flags: {:x}", err_msg, fs_flags);
-                            return -1;
-                        }
-                    }
+            if let Some(dir_file) = dir.to_dir_file() {
+                if let Ok(new_file) = dir_file.open(path.to_string(), fs_flags) {
+                    let new_fd = arcpcb.alloc_fd();
+                    arcpcb.files[new_fd] = Some(new_file);
+                    verbose!("Openat success");
+                    new_fd as isize
                 } else {
-                    error!("Not a directory!");
+                    error!("Cannot open such file");
                     -1
                 }
             } else {
-                error!("Not a file!");
+                error!("Not a directory!");
                 -1
             }
         } else {
@@ -149,17 +125,27 @@ pub fn sys_write(fd: usize, buf: VirtAddr, len: usize) -> isize {
         error!("Invalid FD");
         return -1;
     }
-
-    match &arcpcb.files[fd] {
-        Some(file) => {
-            let file = file.clone();
-            drop(arcpcb);
-            return file.write(buf);
-        },
-        None => {
-            error!("No such file descriptor!");
-            return -1;
+    if let Some(fd_slot) = arcpcb.files.get(fd) {
+        match fd_slot {
+            Some(file) => {
+                let file = file.clone();
+                drop(arcpcb);
+                match file.write_user_buffer(buf) {
+                    Ok(size) => size as isize,
+                    Err(msg) => {
+                        error!("Write failed with msg \"{}\"", msg);
+                        -1
+                    }
+                }
+            },
+            None => {
+                error!("No such file descriptor!");
+                return -1;
+            }
         }
+    } else {
+        error!("No such file descriptor!");
+        return -1;
     }
 }
 
@@ -177,16 +163,27 @@ pub fn sys_read(fd: usize, buf: VirtAddr, len: usize) -> isize {
         return -1;
     }
 
-    match &arcpcb.files[fd] {
-        Some(file) => {
-            let file = file.clone();
-            drop(arcpcb);
-            return file.read(buf);
-        },
-        None => {
-            error!("No such file descriptor!");
-            return -1;
+    if let Some(fd_slot) = arcpcb.files.get(fd) {
+        match fd_slot {
+            Some(file) => {
+                let file = file.clone();
+                drop(arcpcb);
+                match file.read_user_buffer(buf) {
+                    Ok(size) => size as isize,
+                    Err(msg) => {
+                        error!("Read failed with msg \"{}\"", msg);
+                        -1
+                    }
+                }
+            },
+            None => {
+                error!("No such file descriptor!");
+                return -1;
+            }
         }
+    } else {
+        error!("No such file descriptor!");
+        return -1;
     }
 }
 
@@ -272,32 +269,21 @@ pub fn sys_getdents64(fd: usize, buf: VirtAddr, len: usize) -> isize {
         return -1;
     }
     
-    if let Some(file) = &arcpcb.files[fd] {
-        if let Ok(mut dir) = file.to_fs_file_locked() {
-            loop{
-                match dir.get_dirent() {
-                    Ok((dirent, _name)) => {
-                        if last_ptr - buf > len {
-                            error!("Memory out of bound");
-                            return -1;
-                        }
-
-                        let mut dirent_item = dirent {
-                            // TODO: d_ino
-                            d_ino : 0,
-                            d_off : size_of::<dirent> as i64,
-                            d_reclen: dirent.get_name().len() as u16,
-                            d_type: dirent.attr,
-                            d_name: [0; 128],   // How to do this?
-                        };
-                        dirent_item.d_name[0..dirent.name.len()].copy_from_slice(&dirent.name);
-                        arcpcb.layout.write_user_data(last_ptr, &dirent_item);
-                        last_ptr = buf + size_of::<dirent>();
-                    },
-                    Err(_) => {
-                        break;
-                    }
-                }
+    if let Some(file) = arcpcb.files[fd].clone() {
+        if let Some(dir) = file.to_dir_file() {
+            for f in dir.list() {
+                let f_stat = f.poll();
+                let mut dirent_item = dirent {
+                    // TODO: d_ino
+                    d_ino : 0,
+                    d_off : size_of::<dirent> as i64,
+                    d_reclen: f_stat.name.len() as u16,
+                    d_type: f_stat.ftype as u8,
+                    d_name: [0; 128],   // How to do this?
+                };
+                dirent_item.d_name[0..f_stat.name.as_bytes().len()].copy_from_slice(&f_stat.name.as_bytes());
+                arcpcb.layout.write_user_data(last_ptr, &dirent_item);
+                last_ptr = buf + size_of::<dirent>();
             }
             verbose!("Getdents64 returns {}", (last_ptr - buf));
             (last_ptr - buf) as i32 as isize
@@ -325,7 +311,7 @@ pub fn sys_unlink(dirfd: i32, file_name: VirtAddr, _: usize) -> isize{
             }
             whole_path.push_str(path);
             verbose!("Deleting at_fdcwd path {}", whole_path);
-            match FILE::delete_file(whole_path.as_str()) {
+            match remove(whole_path) {
                 Ok(_) => return 0,
                 Err(msg) => {
                     error!("{}", msg);
@@ -335,7 +321,7 @@ pub fn sys_unlink(dirfd: i32, file_name: VirtAddr, _: usize) -> isize{
         }
 
         if buf[0] == b'/' {
-            match FILE::delete_file(path) {
+            match remove(path.to_string()) {
                 Ok(_) => return 0,
                 Err(msg) => {
                     error!("{}", msg);
@@ -344,16 +330,14 @@ pub fn sys_unlink(dirfd: i32, file_name: VirtAddr, _: usize) -> isize{
             };
         }
 
-        if let Some(dir) = &arcpcb.files[dirfd as usize] {
-            if let Ok(dir_file) = dir.to_fs_file_locked() {
-                if dir_file.ftype == FTYPE::TDir {
-                    verbose!("Deleting file at {}", path);
-                    match dir_file.delete_file_from(path) {
-                        Ok(_) => return 0,
-                        Err(msg) => {
-                            error!("{}", msg);
-                            return -1;
-                        }
+        if let Some(dir) = arcpcb.files[dirfd as usize].clone() {
+            if let Some(dir_file) = dir.to_dir_file() {
+                verbose!("Deleting file at {}", path);
+                match dir_file.remove(path.to_string()) {
+                    Ok(_) => return 0,
+                    Err(msg) => {
+                        error!("{}", msg);
+                        return -1;
                     }
                 }
             }
@@ -374,7 +358,7 @@ pub fn sys_mkdirat(dirfd: usize, path: VirtAddr, _: usize) -> isize {
             whole_path.push_str(path);
             verbose!("Whole path = {}", whole_path);
 
-            match FILE::make_dir(whole_path.as_str()) {
+            match mkdir(whole_path) {
                 Ok(_) => return 0,
                 Err(msg) => {
                     error!("{}", msg);
@@ -384,7 +368,7 @@ pub fn sys_mkdirat(dirfd: usize, path: VirtAddr, _: usize) -> isize {
         }
 
         if buf[0] == b'/' {
-            match FILE::make_dir(path) {
+            match mkdir(path.to_string()) {
                 Ok(_) => return 0,
                 Err(msg) => {
                     error!("{}", msg);
@@ -393,17 +377,16 @@ pub fn sys_mkdirat(dirfd: usize, path: VirtAddr, _: usize) -> isize {
             };
         }
 
-        if let Some(dir) = &arcpcb.files[dirfd as usize] {
-            if let Ok(dir_file) = dir.to_fs_file_locked() {
-                if dir_file.ftype == FTYPE::TDir {
-                    match dir_file.make_dir_from(path) {
-                        Ok(_) => return 0,
-                        Err(msg) => {
-                            error!("{}", msg);
-                            return -1;
-                        }
+        if let Some(dir) = arcpcb.files[dirfd as usize].clone() {
+            if let Some(dir_file) = dir.to_dir_file() {
+                match dir_file.mkdir(path.to_string()) {
+                    Ok(_) => return 0,
+                    Err(msg) => {
+                        error!("{}", msg);
+                        return -1;
                     }
                 }
+                
             }
         }
     }
@@ -437,28 +420,28 @@ pub fn sys_fstat(fd: usize, ptr: VirtAddr) -> isize {
     let proc = current_process().unwrap();
     let arcpcb = proc.get_inner_locked();
     if let Some(op_file) = arcpcb.files.get(fd) {
-        if let Some(file) = op_file {
-            if let Ok(fs_file) = file.to_fs_file_locked() {
-                let inode = if fs_file.fchain.len() == 0 { !0u64} else {fs_file.fchain[0] as u64};
+        if let Some(file) = op_file.clone() {
+            if let Some(fs_file) = file.to_common_file() {
+                let f_stat = fs_file.poll();
                 let stat = FStat {
-                    st_dev: 0,
-                    st_ino: inode,
-                    st_mode: 0,
+                    st_dev: f_stat.dev_no,
+                    st_ino: f_stat.inode,
+                    st_mode: f_stat.mode,
                     st_nlink: 1,
-                    st_uid: 0,
-                    st_gid: 0,
+                    st_uid: f_stat.uid,
+                    st_gid: f_stat.gid,
                     st_rdev: 0,
                     __pad: 0,
-                    st_size: fs_file.fsize,
-                    st_blksize: BLOCK_SZ as u32,
+                    st_size: f_stat.size as u32,
+                    st_blksize: f_stat.block_sz,
                     __pad2: 0,
-                    st_blocks: fs_file.fsize as u64 / BLOCK_SZ as u64,
-                    st_atime_sec: 0,
-                    st_atime_nsec: 0,
-                    st_mtime_sec: 0,
-                    st_mtime_nsec: 0,
-                    st_ctime_sec: 0,
-                    st_ctime_nsec: 0,
+                    st_blocks: f_stat.blocks,
+                    st_atime_sec:   f_stat.atime_sec,
+                    st_atime_nsec:  f_stat.atime_nsec,
+                    st_mtime_sec:   f_stat.mtime_sec,
+                    st_mtime_nsec:  f_stat.mtime_nsec,
+                    st_ctime_sec:   f_stat.ctime_sec,
+                    st_ctime_nsec:  f_stat.ctime_nsec,
                     __unused: [0u8; 2],
                 };
                 arcpcb.layout.write_user_data(ptr, &stat);

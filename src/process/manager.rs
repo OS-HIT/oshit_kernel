@@ -1,7 +1,7 @@
 //! The process manager for oshit kernel
 
 // use super::ProcessContext;
-use super::ProcessControlBlock;
+use super::{ProcessControlBlock, current_process};
 use alloc::collections::VecDeque;
 use alloc::sync::Arc;
 use spin::Mutex;
@@ -11,7 +11,7 @@ use lazy_static::*;
 
 /// The ProcessManager of choice: Round Robin.
 pub struct ProcessManager {
-    processes: VecDeque<Arc<ProcessControlBlock>>,
+    pub processes: VecDeque<Arc<ProcessControlBlock>>,
 }
 
 unsafe impl Sync for ProcessManager {}
@@ -44,6 +44,15 @@ impl ProcessManager {
             return None;
         }
     }
+
+    pub fn get_idle_proc_by_pid(&self, pid: usize) -> Option<Arc<ProcessControlBlock>> {
+        for proc in &self.processes {
+            if proc.pid.0 == pid {
+                return Some(proc.clone())
+            }
+        }
+        None
+    }
 }
 
 /// enqueue a new process, i.e. mark it ready and is waiting for execution.  
@@ -52,8 +61,24 @@ pub fn enqueue(process: Arc<ProcessControlBlock>) {
     PROCESS_MANAGER.lock().enqueue(process);
 }
 
-    /// dequeue a new process, i.e. it's either running or dead.
+/// dequeue a new process, i.e. it's either running or dead.
 /// Use locked to access the manager, to prevent data racing.
 pub fn dequeue() -> Option<Arc<ProcessControlBlock>> {
     return PROCESS_MANAGER.lock().dequeue();
+}
+
+pub fn get_proc_by_pid(pid: usize) -> Option<Arc<ProcessControlBlock>> {
+    PROCESS_MANAGER
+        .lock()
+        .get_idle_proc_by_pid(pid)
+        .map_or(
+            if current_process().unwrap().pid.0 == pid {
+                current_process()
+            } else {
+                None
+            }, 
+            |found| {
+                Some(found.clone())
+            }
+        )
 }

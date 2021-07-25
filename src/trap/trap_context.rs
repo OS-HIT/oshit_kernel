@@ -1,6 +1,7 @@
 use riscv::register::sstatus::{Sstatus, self, SPP};
 
 /// The trap context, including all registers and some CSRs for context switching.
+#[derive(Clone, Copy)]
 pub struct TrapContext {
     pub regs            : [usize; 32],
     pub sstatus         : Sstatus,

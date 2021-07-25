@@ -1,6 +1,7 @@
 //! Trap handler of oshit kernel
 use super::TrapContext;
-use crate::{process::current_process, syscall::syscall};
+use crate::{memory::VirtAddr, process::{current_process, default_sig_handlers}, syscall::syscall};
+use alloc::sync::Arc;
 use riscv::register::{
     stvec,      // s trap vector base address register
     scause::{   // s cause register
@@ -17,7 +18,7 @@ use crate::sbi::{
 };
 use crate::process::{suspend_switch, exit_switch};
 use crate::config::*;
-use crate::process::{current_trap_context, current_satp};
+use crate::process::{current_trap_context, current_satp, SignalFlags};
 use crate::memory::VMAFlags;
 
 global_asm!(include_str!("./trap.asm"));
@@ -97,8 +98,9 @@ pub fn user_trap(_cx: &mut TrapContext) -> ! {
             let mut arcpcb = proc.get_inner_locked();
             if let Err(msg) = arcpcb.layout.lazy_copy_vma(stval.into(), VMAFlags::W) {
                 error!(
-                    "{:?} in application, bad addr = {:#x}, bad instruction = {:#x}, {}",
+                    "{:?} in application {}, bad addr = {:#x}, bad instruction = {:#x}, {}",
                     scause.cause(),
+                    proc.pid.0,
                     stval,
                     arcpcb.get_trap_context().sepc,
                     msg
@@ -133,6 +135,7 @@ pub fn user_trap(_cx: &mut TrapContext) -> ! {
                 current_trap_context().sepc,
             );
             exit_switch(-2);
+            // current_process().unwrap().recv_signal(crate::process::default_handlers::SIGSEGV);
         }
         Trap::Exception(Exception::IllegalInstruction) => {
             error!("IllegalInstruction in application, core dumped.");
@@ -148,22 +151,125 @@ pub fn user_trap(_cx: &mut TrapContext) -> ! {
     trap_return();
 }
 
+#[allow(unused)]
+struct SigInfo {
+    si_signo     :i32,	/* Signal number */
+    si_errno     :i32,	/* An errno value */
+    si_code      :i32,	/* Signal code */
+    si_trapno    :i32,	/* Trap number that caused hardware-generated signal (unused on most architectures) */
+    si_pid       :u32,	/* Sending process ID */
+    si_uid       :u32,	/* Real user ID of sending process */
+    si_status    :i32,	/* Exit value or signal */
+    si_utime     :i32,	/* User time consumed */
+    si_stime     :i32,	/* System time consumed */
+}
+
+
+pub const SIG_DFL: usize = 0;
+pub const SIG_IGN: usize = 1;
+pub const SIG_ERR: usize = -1isize as usize;
+
 /// Trap return function
 /// # Description
 /// Trap return funciton. Use jr for trampoline functions.
 #[no_mangle]
 pub fn trap_return() -> ! {
     set_user_trap_entry();
-    let trap_cx_ptr = TRAP_CONTEXT;
-    let user_satp = current_satp();
-    extern "C" {
-        fn __alltraps();
-        fn __restore();
+
+    let current = current_process().unwrap();
+    let mut arcpcb = current.get_inner_locked();    
+    let mut to_process: Option<(usize, usize)> = None;
+
+    for sig in arcpcb.pending_sig.iter().enumerate() {
+        if 1u64 << sig.1 & &arcpcb.handlers[sig.1].mask != 0 {
+            to_process = Some((sig.0, *sig.1));
+            break;
+        }
     }
-    let restore_va = __restore as usize - __alltraps as usize + TRAMPOLINE;
-    unsafe {
-        llvm_asm!("fence.i" :::: "volatile");
-        llvm_asm!("jr $0" :: "r"(restore_va), "{a0}"(trap_cx_ptr), "{a1}"(user_satp) :: "volatile");
+
+    if let Some((idx, signal)) = to_process {
+        let trap_cx_ptr = TRAP_CONTEXT;
+        let user_satp = current_satp();
+        extern "C" {
+            fn strampoline();
+            fn __restore();
+            fn __restore_to_signal_handler();
+            fn __siginfo();
+        }
+        let restore_to_signal_handler_va = __restore_to_signal_handler as usize - strampoline as usize + TRAMPOLINE;
+
+        arcpcb.pending_sig.remove(idx);
+        let terminate_self_va = crate::process::default_handlers::def_terminate_self as usize - strampoline as usize + TRAMPOLINE;
+        let ignore_va = crate::process::default_handlers::def_ignore as usize - strampoline as usize + TRAMPOLINE;
+        let handler_va = if let Some(act) = arcpcb.handlers.get(&signal) {
+            if act.flags.contains(SignalFlags::SIGINFO) {
+                act.sigaction.0
+            } else if act.sighandler.0 == SIG_DFL {
+                default_sig_handlers()[&signal].sighandler.0 as usize - strampoline as usize + TRAMPOLINE
+            } else if act.sighandler.0 == SIG_IGN {
+                ignore_va
+            } else if act.sighandler.0 == SIG_ERR{
+                terminate_self_va
+            } else {
+                act.sighandler.0
+            }
+        } else {
+            terminate_self_va
+        };
+        let sig_info = SigInfo {
+            si_signo:   signal as i32,
+            si_errno:   0,
+            si_code:    32767,     // SI_NOINFO
+            si_trapno:  0,
+            si_pid:     0,
+            si_uid:     0,
+            si_status:  0,
+            si_utime:   0,
+            si_stime:   0,
+        };
+        arcpcb.layout.write_user_data(VirtAddr::from(__siginfo as usize), &sig_info);
+        
+        if arcpcb.handlers.get(&signal).unwrap().flags.contains(SignalFlags::RESETHAND) {
+            arcpcb.handlers.insert(signal, crate::process::default_sig_handlers()[&signal]);
+        }
+        
+        // mask itself
+        (arcpcb.handlers.get_mut(&signal).unwrap().mask) &= 1u64 << signal;
+
+        drop(arcpcb);
+        drop(current);
+        drop(to_process);
+        
+        unsafe {
+            llvm_asm!("fence.i" :::: "volatile");
+            llvm_asm!(
+                "jr $0" :: 
+                "r"(restore_to_signal_handler_va), 
+                "{a0}"(trap_cx_ptr), 
+                "{a1}"(user_satp), 
+                "{a2}"(handler_va),
+                "{a3}"(signal),
+                "{a4}"(__siginfo as usize) :: 
+                "volatile"
+            );  
+        }
+    } else {
+        drop(arcpcb);
+        drop(current);
+        drop(to_process);
+
+        let trap_cx_ptr = TRAP_CONTEXT;
+        let user_satp = current_satp();
+        extern "C" {
+            fn strampoline();
+            fn __restore();
+        }
+        let restore_va = __restore as usize - strampoline as usize + TRAMPOLINE;
+
+        unsafe {
+            llvm_asm!("fence.i" :::: "volatile");
+            llvm_asm!("jr $0" :: "r"(restore_va), "{a0}"(trap_cx_ptr), "{a1}"(user_satp) :: "volatile");
+        }
     }
     unreachable!("Unreachable in trap_return!");
 }

@@ -7,7 +7,7 @@ mod timer;
 
 pub use sbi_funcs::{
     set_timer,
-    get_byte,
+    get_byte,get_byte_non_block_with_echo,
     put_byte,
     shutdown,
     sbi_call,

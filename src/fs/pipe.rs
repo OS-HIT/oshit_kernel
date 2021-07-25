@@ -1,22 +1,14 @@
-//! Pipe implementation for oshit-kernel
-use _core::convert::TryInto;
-use bitflags::*;
-use alloc::sync::{Arc, Weak};
-use alloc::collections::VecDeque;
-use alloc::vec::Vec;
-use spin::{Mutex, MutexGuard};
-use crate::{memory::UserBuffer, process::suspend_switch};
+use core::cmp::min;
 
-bitflags! {
-    /// Flags to mark read/write end of pipe.
-    pub struct PipeFlags: u8 {
-        const R = 1 << 0;
-        const W = 1 << 1;
-    }
-}
+use alloc::{collections::VecDeque, string::ToString, sync::{Arc, Weak}, vec::Vec};
+use spin::Mutex;
+
+use super::{CommonFile, DeviceFile, DirFile, File, file::FileStatus};
 
 /// Pipe ring buffer and end weak references.
 pub struct Pipe {
+    /// buffer max size
+    size: u64,
     /// The ring buffer.
     buffer: VecDeque<u8>,
     /// weak reference to read ends of pipe
@@ -25,29 +17,11 @@ pub struct Pipe {
     write_ends: Vec<Weak<PipeEnd>>,
 }
 
-/// Pipe read/write end. Maybe we should use two different struuct but whatever.
-pub struct PipeEnd {
-    /// Flags to indicate read/write privilege
-    flags: PipeFlags,
-    /// shared, locked reference to Pipe (The ring buffer)
-    pipe:  Arc<Mutex<Pipe>>
-}
-
 impl Pipe {
-    /// create a pipe ring buffer
-    /// # Description
-    /// Create a pipe ring buffer and wrap it in a arc and spin lock
-    /// # Examples
-    /// ```
-    /// let pipe = Pipe::new();
-    /// let read = PipeEnd::new_read(&pipe);
-    /// let write = PipeEnd::new_write(&pipe);
-    /// ```
-    /// # Return
-    /// A new pipe, wrapped in an Arc and spin lock
     pub fn new() -> Arc<Mutex<Self>> {
         Arc::new(Mutex::new(
             Pipe{
+                size: 4096,
                 buffer:VecDeque::new(),
                 read_ends: Vec::new(),
                 write_ends: Vec::new()
@@ -55,47 +29,39 @@ impl Pipe {
         ))
     }
 
-    /// write to the pipe ring buffer
-    /// # Description
-    /// Write data from `buf: UserBuffer` with offset to pipe ring buffer.  
-    /// Note that buffer overflow will cause the opration to fail.
-    /// # return
-    /// return how many bytes has been written into the buffer. -1 on fail.
-    pub fn write(&mut self, buf: &UserBuffer, offset: usize) -> isize {
-        if buf.len() + self.buffer.len() + offset > crate::config::PIP_BUF_MAX {
-            error!("Buffer Overflow!");     // TODO: change to write as much as possible
-            return -1;
+    
+    pub fn read(&mut self, buffer: &mut [u8]) -> Result<usize, &'static str> {
+        let len = min(buffer.len(), self.buffer.len());
+        for i in 0..len {
+            buffer[i] = self.buffer.pop_front().unwrap();
         }
-        let len = buf.len() - offset;
-        for idx in offset..buf.len() {
-            self.buffer.push_back(buf[idx]);
-        }
-        return len.try_into().unwrap();
+        Ok(len)
     }
 
-
-    /// Read from the pipe ring buffer
-    /// # Description
-    /// Read data from pipe ring buffer to `buf: UserBuffer` with offset.  
-    /// # return
-    /// return how many bytes has been written into the buffer.
-    pub fn read(&mut self, buf: &mut UserBuffer, offset: usize) -> isize {
-        let mut idx = offset;
-        loop {
-            if idx < buf.len() {
-                if let Some(byte) = self.buffer.pop_front() {
-                    buf[idx] = byte;
-                    idx += 1;
-                } else {
-                    break;
-                }
-            } else {
-                break;
-            }
+    pub fn write(&mut self, buffer: &[u8]) -> Result<usize, &'static str> {
+        let len = min(buffer.len(), self.size as usize - self.buffer.len());
+        for i in 0..len {
+            self.buffer.push_back(buffer[i as usize]);
         }
-        return idx.try_into().unwrap();
+        Ok(len)
     }
 
+    pub fn read_user_buffer(&mut self, mut buffer: crate::memory::UserBuffer) -> Result<usize, &'static str> {
+        let len = min(buffer.len(), self.buffer.len());
+        for i in 0..len {
+            buffer[i] = self.buffer.pop_front().unwrap();
+        }
+        Ok(len)
+    }
+
+    pub fn write_user_buffer(&mut self, buffer: crate::memory::UserBuffer) -> Result<usize, &'static str> {
+        let len = min(buffer.len(), self.size as usize - self.buffer.len());
+        for i in 0..len {
+            self.buffer.push_back(buffer[i as usize]);
+        }
+        Ok(len)
+    }
+    
     /// Register read end for pipe
     /// # Description
     /// Register a weak reference of read end in the pipe.  
@@ -137,10 +103,37 @@ impl Pipe {
     }
 }
 
+/// Pipe read/write end. Maybe we should use two different struuct but whatever.
+pub struct PipeEnd {
+    /// Flags to indicate read/write privilege
+    flags: FileStatus,
+    /// shared, locked reference to Pipe (The ring buffer)
+    pipe:  Arc<Mutex<Pipe>>
+}
+
 impl PipeEnd {
     fn new_read(pipe: &Arc<Mutex<Pipe>>) -> Arc<Self> {
         let ret = Arc::new(Self {
-            flags: PipeFlags::R,
+            flags: FileStatus {
+                readable: true,
+                writeable: false,
+                size: 0,
+                name: "".to_string(),
+                ftype: super::file::FileType::FIFO,
+                inode: 0,
+                dev_no: 0,
+                mode: 0,
+                block_sz: 0,
+                blocks: 0,
+                uid: 0,
+                gid: 0,
+                atime_sec:  0,
+                atime_nsec: 0,
+                mtime_sec:  0,
+                mtime_nsec: 0,
+                ctime_sec:  0,
+                ctime_nsec: 0,
+            },
             pipe: pipe.clone()
         });
         pipe.lock().register_read(&ret);
@@ -149,7 +142,26 @@ impl PipeEnd {
 
     fn new_write(pipe: &Arc<Mutex<Pipe>>) -> Arc<Self> {
         let ret = Arc::new(Self {
-            flags: PipeFlags::W,
+            flags: FileStatus {
+                readable: false,
+                writeable: true,
+                size: 0,
+                name: "".to_string(),
+                ftype: super::file::FileType::FIFO,
+                inode: 0,
+                dev_no: 0,
+                mode: 0,
+                block_sz: 0,
+                blocks: 0,
+                uid: 0,
+                gid: 0,
+                atime_sec:  0,
+                atime_nsec: 0,
+                mtime_sec:  0,
+                mtime_nsec: 0,
+                ctime_sec:  0,
+                ctime_nsec: 0,
+            },
             pipe: pipe.clone()
         });
         pipe.lock().register_write(&ret);
@@ -157,57 +169,63 @@ impl PipeEnd {
     }
 }
 
-impl super::VirtFile for PipeEnd {
-    /// Read from Pipe read end
-    fn read(&self, mut buf: UserBuffer) -> isize {
-        verbose!("Reading from pipe.");
-        if !self.flags.contains(PipeFlags::R) {
-            error!("no priviledge.");
-            return -1;
-        }
-        let mut read_size = 0;
-        let mut offset = 0;
-        loop {
-            // verbose!("Trying to lock.");
-            let mut pipe = self.pipe.lock();
-            // verbose!("locked.");
-            if pipe.empty() {
-                // verbose!("is empty.");
-                if pipe.all_write_closed() {
-                    // verbose!("all write closed.");
-                    return read_size;
-                } else {
-                    drop(pipe);
-                    // verbose!("unlocked, waiting.");
-                    suspend_switch();
-                    continue;
-                }
-            }
-            let len = pipe.read(&mut buf, offset);
-            read_size += len;
-            if read_size == buf.len() as isize {
-                break;
-            } else {
-                offset += len as usize;
-            }
-        }
-        return read_size;
+impl File for PipeEnd {
+    fn seek(&self, _: isize, _: super::SeekOp) -> Result<(), &'static str> {
+        Err("Cannot seek a pipe")
     }
 
-    /// Write to Pipe write end
-    fn write(&self, buf: UserBuffer) -> isize {
-        verbose!("Writing to pipe.");
-        if !self.flags.contains(PipeFlags::W) {
-            error!("no priviledge.");
-            return -1;
-        }
-        verbose!("Trying to lock.");
-        let res = self.pipe.lock().write(&buf, 0);
-        verbose!("write done");
-        return res;
+    fn get_cursor(&self) -> Result<usize, &'static str> {
+        Err("Pipe has no cursor")
     }
-    fn to_fs_file_locked(&self) -> Result<MutexGuard<super::FILE>, &str> {
-        Err("Not a file")
+
+    fn read(&self, buffer: &mut [u8]) -> Result<usize, &'static str> {
+        self.pipe.lock().read(buffer)
+    }
+
+    fn write(&self, buffer: &[u8]) -> Result<usize, &'static str> {
+        self.pipe.lock().write(buffer)
+    }
+
+    fn read_user_buffer(&self, mut buffer: crate::memory::UserBuffer) -> Result<usize, &'static str> {
+        self.pipe.lock().read_user_buffer(buffer)
+    }
+
+    fn write_user_buffer(&self, buffer: crate::memory::UserBuffer) -> Result<usize, &'static str> {
+        self.pipe.lock().write_user_buffer(buffer)
+    }
+
+    fn to_common_file<'a>(self: Arc<Self>) -> Option<Arc<dyn CommonFile + 'a>> where Self: 'a {
+        None
+    }
+
+    fn to_dir_file<'a>(self: Arc<Self>) -> Option<Arc<dyn DirFile + 'a>> where Self: 'a {
+        None
+    }
+
+    fn to_device_file<'a>(self: Arc<Self>) -> Option<Arc<dyn DeviceFile + 'a>> where Self: 'a {
+        None
+    }
+
+    fn poll(&self) -> super::file::FileStatus {
+        self.flags.clone()
+    }
+
+    fn rename(&self, _: &str) -> Result<(), &'static str> {
+        Err("Pipe has no name")
+    }
+
+    fn get_vfs(&self) -> Result<Arc<(dyn super::VirtualFileSystem + 'static)>, &'static str> {
+        Err("Pipe has no vfs")
+    }
+
+    fn get_path(&self) -> alloc::string::String {
+        "".to_string()
+    }
+}
+
+impl Drop for PipeEnd {
+    fn drop(&mut self) {
+        // just die.
     }
 }
 
