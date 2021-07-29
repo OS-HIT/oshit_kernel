@@ -16,7 +16,7 @@ use crate::trap::TrapContext;
 
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use alloc::string::ToString;
+use alloc::string::{String, ToString};
 use bit_field::BitField;
 
 use crate::fs::{

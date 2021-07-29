@@ -647,16 +647,25 @@ impl MemLayout {
                 )
             );
             verbose!("UserStack mapped.");
-            // debug!(".text address: {}", elf.find_section_by_name(".text").unwrap().address());
-            // debug!("ph_entry_size: {}", elf.header.pt2.ph_entry_size());
-            // debug!("ph_count:      {}", elf.header.pt2.ph_count());
+            debug!(".text address: {}", elf.find_section_by_name(".text").unwrap().address());
+            debug!("ph_entry_size: {}", elf.header.pt2.ph_entry_size());
+            debug!("ph_count:      {}", elf.header.pt2.ph_count());
             // let ph_head_addr = (elf.find_section_by_name(".text").unwrap().address() as usize ) - (elf.header.pt2.ph_entry_size() as usize) * (elf.header.pt2.ph_count() as usize);
             // let ph_head_addr = 0;
             let mut auxv: Vec<AuxHeader> = Vec::new();
+            auxv.push(AuxHeader{aux_type: AuxType::SYSINFO_EHDR,value: 0});
+            auxv.push(AuxHeader{aux_type: AuxType::NULL28,      value: 0});
+            auxv.push(AuxHeader{aux_type: AuxType::NULL29,      value: 0});
+            auxv.push(AuxHeader{aux_type: AuxType::NULL2a,      value: 0});
+            auxv.push(AuxHeader{aux_type: AuxType::NULL2b,      value: 0});
+            auxv.push(AuxHeader{aux_type: AuxType::NULL2c,      value: 0});
+            auxv.push(AuxHeader{aux_type: AuxType::NULL2d,      value: 0});
+            auxv.push(AuxHeader{aux_type: AuxType::HWCAP,       value: 0 as usize});
+            auxv.push(AuxHeader{aux_type: AuxType::PAGESZ,      value: PAGE_SIZE as usize});
+            auxv.push(AuxHeader{aux_type: AuxType::CLKTCK,      value: 100 as usize});
             auxv.push(AuxHeader{aux_type: AuxType::PHDR,        value: elf.header.pt2.ph_offset() as usize});
             auxv.push(AuxHeader{aux_type: AuxType::PHENT,       value: elf.header.pt2.ph_entry_size() as usize}); // ELF64 header 64bytes
             auxv.push(AuxHeader{aux_type: AuxType::PHNUM,       value: elf.header.pt2.ph_count() as usize});
-            auxv.push(AuxHeader{aux_type: AuxType::PAGESZ,      value: PAGE_SIZE as usize});
             auxv.push(AuxHeader{aux_type: AuxType::BASE,        value: 0 as usize});
             auxv.push(AuxHeader{aux_type: AuxType::FLAGS,       value: 0 as usize});
             auxv.push(AuxHeader{aux_type: AuxType::ENTRY,       value: elf.header.pt2.entry_point() as usize});
@@ -664,9 +673,7 @@ impl MemLayout {
             auxv.push(AuxHeader{aux_type: AuxType::EUID,        value: 0 as usize});
             auxv.push(AuxHeader{aux_type: AuxType::GID,         value: 0 as usize});
             auxv.push(AuxHeader{aux_type: AuxType::EGID,        value: 0 as usize});
-            auxv.push(AuxHeader{aux_type: AuxType::PLATFORM,    value: 0 as usize});
-            auxv.push(AuxHeader{aux_type: AuxType::HWCAP,       value: 0 as usize});
-            auxv.push(AuxHeader{aux_type: AuxType::CLKTCK,      value: 100 as usize});
+            auxv.push(AuxHeader{aux_type: AuxType::SECURE,      value: 0 as usize});
     
             return (layout, data_top as usize, stack_high_end.0, elf.header.pt2.entry_point() as usize, auxv);
         }
@@ -764,7 +771,7 @@ impl MemLayout {
             vpn.step();
             iter = 0;
         }
-        bytes.push(0);
+        // bytes.push(0);
         return bytes;
     }
 

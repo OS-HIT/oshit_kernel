@@ -53,30 +53,31 @@ bitflags! {
 #[repr(usize)]
 #[derive(Clone, Copy)]
 pub enum AuxType {
-    NULL            = 0 ,       /* end of vector */
-    IGNORE          = 1 ,       /* entry should be ignored */
-    EXECFD          = 2 ,       /* file descriptor of program */
-    PHDR            = 3 ,       /* program headers for program */
-    PHENT           = 4 ,       /* size of program header entry */
-    PHNUM           = 5 ,       /* number of program headers */
-    PAGESZ          = 6 ,       /* system page size */
-    BASE            = 7 ,       /* base address of interpreter */
-    FLAGS           = 8 ,       /* flags */
-    ENTRY           = 9 ,       /* entry point of program */
-    NOTELF          = 10,       /* program is not ELF */
-    UID             = 11,       /* real uid */
-    EUID            = 12,       /* effective uid */
-    GID             = 13,       /* real gid */
-    EGID            = 14,       /* effective gid */
-    PLATFORM        = 15,       /* string identifying CPU for optimizations */
-    HWCAP           = 16,       /* arch dependent hints at CPU capabilities */
-    CLKTCK          = 17,       /* frequency at which times() increments */
+    NULL            = 0x00 ,       /* end of vector */
+    IGNORE          = 0x01 ,       /* entry should be ignored */
+    EXECFD          = 0x02 ,       /* file descriptor of program */
+    PHDR            = 0x03 ,       /* program headers for program */
+    PHENT           = 0x04 ,       /* size of program header entry */
+    PHNUM           = 0x05 ,       /* number of program headers */
+    PAGESZ          = 0x06 ,       /* system page size */
+    BASE            = 0x07 ,       /* base address of interpreter */
+    FLAGS           = 0x08 ,       /* flags */
+    ENTRY           = 0x09 ,       /* entry point of program */
+    NOTELF          = 0x0a,       /* program is not ELF */
+    UID             = 0x0b,       /* real uid */
+    EUID            = 0x0c,       /* effective uid */
+    GID             = 0x0d,       /* real gid */
+    EGID            = 0x0e,       /* effective gid */
+    PLATFORM        = 0x0f,       /* string identifying CPU for optimizations */
+    HWCAP           = 0x10,       /* arch dependent hints at CPU capabilities */
+    CLKTCK          = 0x11,       /* frequency at which times() increments */
     /* 18 through 22 are reserved */
-    SECURE          = 23,       /* secure mode boolean */
-    BASE_PLATFORM   = 24,       /* string identifying real platform, may differ from AT_PLATFORM. */
-    RANDOM          = 25,       /* address of 16 random bytes */
-    HWCAP2          = 26,       /* extension of AT_HWCAP */
-    EXECFN          = 31,       /* filename of program */
+    SECURE          = 0x17,       /* secure mode boolean */
+    BASE_PLATFORM   = 0x18,       /* string identifying real platform, may differ from AT_PLATFORM. */
+    RANDOM          = 0x19,       /* address of 16 random bytes */
+    HWCAP2          = 0x1a,       /* extension of AT_HWCAP */
+    EXECFN          = 0x1f,       /* filename of program */
+    SYSINFO_EHDR    = 0x21,
     NULL28          = 0x28,
     NULL29          = 0x29,
     NULL2a          = 0x2a,
@@ -489,9 +490,10 @@ impl ProcessControlBlock {
         //  ================================= file name =================================
         let name = &argv[0];
         user_stack_top -= name.len();
+        let name_ptr = user_stack_top;
         let mut ptr = user_stack_top;
         for b in name {
-            layout.write_user_data(ptr.into(), &b);
+            layout.write_user_data(ptr.into(), b);
             ptr += 1;
         }
 
@@ -506,7 +508,7 @@ impl ProcessControlBlock {
                 layout.write_user_data(ptr.into(), b);
                 ptr += 1;
             }
-            layout.write_user_data(ptr.into(), &(0u8));
+            // layout.write_user_data(ptr.into(), &(0u8));
         }
 
         user_stack_top -= user_stack_top % size_of::<usize>();
@@ -522,7 +524,7 @@ impl ProcessControlBlock {
                 layout.write_user_data(ptr.into(), b);
                 ptr += 1;
             }
-            layout.write_user_data(ptr.into(), &(0u8));
+            // layout.write_user_data(ptr.into(), &(0u8));
         }
 
         // =================================   align   =================================
@@ -545,12 +547,18 @@ impl ProcessControlBlock {
             layout.write_user_data(ptr.into(), &i);
             ptr += 1;
         }
+        let random_ptr = user_stack_top;
 
         // ================================= padding =================================
-        user_stack_top -= user_stack_top % 16;
+        let padded_user_stack_top = user_stack_top - (16 + user_stack_top % 16);
+        for i in user_stack_top..padded_user_stack_top {
+            layout.write_user_data(i.into(), &(0 as u8));
+        }
+        user_stack_top = padded_user_stack_top;
 
         // ================================= auxv content =================================
-        auxv.push(AuxHeader{aux_type: AuxType::EXECFN,  value: argv_ptrs[0]});
+        auxv.push(AuxHeader{aux_type: AuxType::RANDOM,  value: user_stack_top});
+        auxv.push(AuxHeader{aux_type: AuxType::EXECFN,  value: name_ptr});
         auxv.push(AuxHeader{aux_type: AuxType::NULL,    value: 0});
         user_stack_top -= auxv.len() * size_of::<AuxHeader>();
         let auxv_base = user_stack_top;
