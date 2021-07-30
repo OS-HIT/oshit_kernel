@@ -5,7 +5,7 @@ use core::slice::{from_raw_parts, from_raw_parts_mut};
 use crate::config::PAGE_SIZE;
 use crate::process::{PROCESS_MANAGER, current_path, current_process, enqueue, exit_switch, get_proc_by_pid, suspend_switch};
 
-use crate::memory::{PhysAddr, VMAFlags, VirtAddr, alloc_continuous, get_user_cstr};
+use crate::memory::{PhysAddr, Segment, VMAFlags, VirtAddr, alloc_continuous, get_user_cstr, SegmentFlags};
 
 use crate::process::{
     current_satp,
@@ -246,7 +246,10 @@ pub fn sys_mmap(start: VirtAddr, len: usize, prot: u8, _: usize, fd: usize, offs
     verbose!("sys_mmap");
     let proc = current_process().unwrap();
     let mut locked_inner = proc.get_inner_locked();
-    if let Some(file) = locked_inner.files[fd].clone() {
+    if fd == usize::MAX {
+        locked_inner.layout.add_segment(Segment::new(start, start + len, crate::memory::MapType::Framed, SegmentFlags::R | SegmentFlags::W | SegmentFlags::U, VMAFlags::empty(), None, 0));
+        return start.0 as isize;
+    } else if let Some(file) = locked_inner.files[fd].clone() {
         if let Ok(addr) = locked_inner.layout.add_vma(file, start, VMAFlags::from_bits(prot << 1).unwrap(), offset, len) {
             return addr.0 as isize;
         } 
