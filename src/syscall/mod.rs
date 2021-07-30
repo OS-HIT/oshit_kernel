@@ -18,6 +18,8 @@ pub const SYSCALL_PIPE2         : usize = 59;
 pub const SYSCALL_GETDENTS64    : usize = 61;
 pub const SYSCALL_READ          : usize = 63;
 pub const SYSCALL_WRITE         : usize = 64;
+pub const SYSCALL_READV         : usize = 65;
+pub const SYSCALL_WRITEV        : usize = 66;
 pub const SYSCALL_FSTAT         : usize = 80;
 pub const SYSCALL_EXIT          : usize = 93;
 pub const SYSCALL_NANOSLEEP     : usize = 101;
@@ -27,6 +29,11 @@ pub const SYSCALL_UNAME         : usize = 160;
 pub const SYSCALL_GETTIMEOFDAY  : usize = 169;
 pub const SYSCALL_GETPID        : usize = 172;
 pub const SYSCALL_GETPPID       : usize = 173;
+pub const SYSCALL_GETUID        : usize = 174;
+pub const SYSCALL_GETEUID       : usize = 175;
+pub const SYSCALL_GETGID        : usize = 176;
+pub const SYSCALL_GETEGID       : usize = 177;
+pub const SYSCALL_SYSINFO       : usize = 179;
 pub const SYSCALL_BRK           : usize = 214;
 pub const SYSCALL_MUNMAP        : usize = 215;
 pub const SYSCALL_CLONE         : usize = 220;  // is this sys_fork?
@@ -49,6 +56,8 @@ mod trivial_syscall;
 pub use fs_syscall::{
     sys_write, 
     sys_read,
+    sys_writev,
+    sys_readv,
     sys_openat,
     sys_close,
     sys_pipe,
@@ -81,6 +90,11 @@ pub use trivial_syscall::{
     sys_uname,
     sys_gettimeofday,
     sys_nanosleep,
+    sys_info,
+    sys_getuid,
+    sys_geteuid,
+    sys_getgid,
+    sys_getegid,
 };
 
 use crate::memory::VirtAddr;
@@ -119,6 +133,13 @@ pub fn syscall(syscall_id: usize, args: [usize; 6]) -> isize {
         SYSCALL_MKDIRAT     => sys_mkdirat(args[0], args[1].into(), args[2]),
         SYSCALL_FSTAT       => sys_fstat(args[0], args[1].into()),
         SYSCALL_MUNMAP      => sys_munmap(args[0].into(), args[1]),
+        SYSCALL_READV       => sys_readv(args[0], args[1].into(), args[2]),
+        SYSCALL_WRITEV      => sys_writev(args[0], args[1].into(), args[2]),
+        SYSCALL_SYSINFO     => sys_info(VirtAddr(args[0])),
+        SYSCALL_GETUID      => sys_getuid(),
+        SYSCALL_GETEUID     => sys_geteuid(),
+        SYSCALL_GETGID      => sys_getgid(),
+        SYSCALL_GETEGID     => sys_getegid(),
 
         SYSCALL_SIGRETURN   => sys_sigreturn(),
         SYSCALL_SIGACTION   => sys_sigaction(args[0], args[1].into(), args[2].into()),

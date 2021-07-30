@@ -369,3 +369,8 @@ pub fn sys_sigreturn() -> isize {
     locked_inner.write_trap_context(&old_trap_context);
     0
 }
+
+pub fn sys_mprotect(addr: VirtAddr, len: usize, prot: isize) -> isize {
+    // TODO
+    return 0;
+}

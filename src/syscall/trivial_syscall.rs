@@ -100,3 +100,21 @@ pub fn sys_nanosleep(req: VirtAddr, _: VirtAddr) -> isize{
 
     0
 }
+
+pub fn sys_info(sysinfo: VirtAddr) -> isize {
+    // TODO
+    return 0;
+}
+
+pub fn sys_getuid() -> isize {
+    return 0;
+}
+pub fn sys_geteuid() -> isize {
+    return 0;
+}
+pub fn sys_getgid() -> isize {
+    return 0;
+}
+pub fn sys_getegid() -> isize {
+    return 0;
+}
