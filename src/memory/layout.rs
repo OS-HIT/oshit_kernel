@@ -84,6 +84,7 @@ bitflags! {
 /// Representing a continuous segment in the memroy layout.  
 /// For example, data segments/text segments in the user program.
 pub struct Segment {
+    pub head_offset: usize,
     /// range of the Segment, [range.start()..range.end())
     pub range   : VPNRange,
     /// allocated physical frames, aloneside with their virtual page number.  
@@ -121,6 +122,7 @@ impl Segment {
     pub fn new(start: VirtAddr, stop: VirtAddr, map_type: MapType, segFlags: SegmentFlags, vmaFlags: VMAFlags, file: Option<Arc<dyn File>>, offset: usize) -> Self {
         verbose!("New Segment: {:?} <=> {:?}", start.to_vpn(), stop.to_vpn_ceil());
         Self {
+            head_offset: start.0 % PAGE_SIZE,
             range   : VPNRange::new(start.to_vpn(), stop.to_vpn_ceil()),
             frames  : BTreeMap::new(),
             map_type,
@@ -322,6 +324,19 @@ impl Segment {
         let mut data_i: usize = 0;
         let mut vpn_i = self.range.get_start();
         let len = data.len();
+
+        // copy first page with head_offset first
+        let src1 = &data[data_i..min(data_i + PAGE_SIZE - self.head_offset, len)];
+        let dst1: &mut [u8];
+        if let Some(ppn) = pagetable.translate(vpn_i) {     // TODO: Isn't it the same to use that BTreeMap?
+            dst1 = &mut ppn.ppn().page_ptr()[self.head_offset..self.head_offset+src1.len()];
+        } else {
+            panic!("{:?} hasn't been mapped.", vpn_i);
+        }
+        dst1.copy_from_slice(src1);
+        vpn_i.step();
+        data_i += min(data_i + PAGE_SIZE - self.head_offset, len);
+
         while data_i < len {
             let src = &data[data_i..min(data_i + PAGE_SIZE, len)];
             let dst: &mut [u8];
@@ -341,6 +356,7 @@ impl Segment {
     /// Clone a Segment from another Segment. The new segment will be unmapped and need to be mapped with another pagetable.
     pub fn clone_from(src: &Segment) -> Self {
         Self {
+            head_offset: src.head_offset,
             range: VPNRange::new(
                 src.range.get_start(),
                 src.range.get_end()
@@ -442,6 +458,21 @@ impl MemLayout {
     pub fn add_segment_with_source(&mut self, mut segment: Segment, data: &[u8]) {
         segment.map_pages(&mut self.pagetable);
         segment.write(&mut self.pagetable, data);
+        verbose!("add_segment_with_source Mapping Segment with start = {:?}, end = {:?}", VirtAddr::from(segment.range.get_start()), VirtAddr::from(segment.range.get_end()));
+        verbose!("================================ contents ================================");
+        for (idx, byte) in data.iter().enumerate() {
+            let addr = VirtAddr::from(segment.range.get_start()).0 + idx;
+            if addr >= 0x182330 && addr < 0x182330 + 128 {
+                if idx % 16 == 0 {
+                    print!("\n0x{:08x}: ", addr);
+                }
+                if idx % 4 == 0 {
+                    print!("\t0x");
+                }
+                print!("{:02x}", *byte);
+            }
+        }
+        verbose!("==========================================================================");
         self.segments.push(segment);
     }
 
@@ -560,6 +591,7 @@ impl MemLayout {
     /// # Description
     /// Construct a new user memory layout, including all elf segments, user stacks and trampoline.  
     /// Also can use bare bin file for compatbility.
+    // todo: no kernel panic on user's fault -- just fail it's syscall. use a Result to wrap the return value.
     pub fn new_elf(elf_data: &[u8]) -> (Self, usize, usize, usize, Vec<AuxHeader>) {
         let mut layout = Self::new();
         layout.map_trampoline();
@@ -653,7 +685,7 @@ impl MemLayout {
             // let ph_head_addr = (elf.find_section_by_name(".text").unwrap().address() as usize ) - (elf.header.pt2.ph_entry_size() as usize) * (elf.header.pt2.ph_count() as usize);
             // let ph_head_addr = 0;
             let mut auxv: Vec<AuxHeader> = Vec::new();
-            auxv.push(AuxHeader{aux_type: AuxType::SYSINFO_EHDR,value: 0});
+            auxv.push(AuxHeader{aux_type: AuxType::SYSINFO_EHDR,value: 0}); // no vdso here...
             auxv.push(AuxHeader{aux_type: AuxType::NULL28,      value: 0});
             auxv.push(AuxHeader{aux_type: AuxType::NULL29,      value: 0});
             auxv.push(AuxHeader{aux_type: AuxType::NULL2a,      value: 0});
