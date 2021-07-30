@@ -695,7 +695,8 @@ impl MemLayout {
             auxv.push(AuxHeader{aux_type: AuxType::HWCAP,       value: 0 as usize});
             auxv.push(AuxHeader{aux_type: AuxType::PAGESZ,      value: PAGE_SIZE as usize});
             auxv.push(AuxHeader{aux_type: AuxType::CLKTCK,      value: 100 as usize});
-            auxv.push(AuxHeader{aux_type: AuxType::PHDR,        value: elf.header.pt2.ph_offset() as usize});
+            //HACK: is this correct?
+            auxv.push(AuxHeader{aux_type: AuxType::PHDR,        value: elf.program_header(0).unwrap().virtual_addr() as usize + elf.header.pt2.ph_offset() as usize});
             auxv.push(AuxHeader{aux_type: AuxType::PHENT,       value: elf.header.pt2.ph_entry_size() as usize}); // ELF64 header 64bytes
             auxv.push(AuxHeader{aux_type: AuxType::PHNUM,       value: elf.header.pt2.ph_count() as usize});
             auxv.push(AuxHeader{aux_type: AuxType::BASE,        value: 0 as usize});
