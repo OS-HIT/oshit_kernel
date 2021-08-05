@@ -17,7 +17,8 @@ pub use pcb::{
     default_sig_handlers,
     SigAction,
     AuxType,
-    AuxHeader
+    AuxHeader,
+    CloneFlags
 };
 pub use manager::{
     enqueue,

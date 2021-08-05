@@ -1,4 +1,7 @@
 //! Kernel stack for each process
+use alloc::sync::Arc;
+use spin::Mutex;
+
 use crate::memory::{
     VirtAddr,
     KERNEL_MEM_LAYOUT,
@@ -32,15 +35,17 @@ impl KernelStack {
         KERNEL_MEM_LAYOUT
             .lock()
             .add_segment(
-                Segment::new(
-                    kernel_stack_bottom, 
-                    kernel_stack_top,
-                    MapType::Framed,
-                    SegmentFlags::R | SegmentFlags::W,
-                    VMAFlags::empty(),
-                    None,
-                    0
-                )
+                Arc::new(Mutex::new(
+                    Segment::new(
+                        kernel_stack_bottom, 
+                        kernel_stack_top,
+                        MapType::Framed,
+                        SegmentFlags::R | SegmentFlags::W,
+                        VMAFlags::empty(),
+                        None,
+                        0
+                    )
+                ))
             );
         return KernelStack {
             pid: pid.0

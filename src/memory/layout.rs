@@ -19,9 +19,10 @@ use _core::i32;
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
 use bitflags::*;
+use k210_pac::spi0::msticr;
 use crate::config::*;
 use crate::fs::{File, SeekOp};
-use crate::process::{AuxHeader, AuxType};
+use crate::process::{AuxHeader, AuxType, CloneFlags};
 use core::cmp::min;
 use crate::utils::StepByOne;
 use lazy_static::*;
@@ -376,7 +377,7 @@ pub struct MemLayout {
     /// The pagetable of this memory layout.
     pagetable   : PageTable,
     /// The segments in this memory layout.
-    pub segments    : Vec<Segment>,
+    pub segments    : Vec<Arc<Mutex<Segment>>>,
 }
 
 impl MemLayout {
@@ -397,9 +398,10 @@ impl MemLayout {
     pub fn fork_from_user(src: &MemLayout) -> Self {
         let mut layout = Self::new();
         layout.map_trampoline();
-        for segment in src.segments.iter() {
-            let new_segment = Segment::clone_from(segment);
-            layout.add_segment(new_segment);
+        for m_segment in src.segments.iter() {
+            let mut segment = m_segment.lock();
+            let new_segment = Segment::clone_from(&segment);
+            layout.add_segment(Arc::new(Mutex::new(new_segment)));
             for vpn in segment.range {
                 let src_ppn = src.translate(vpn).unwrap().ppn();
                 let dst_ppn = layout.translate(vpn).unwrap().ppn();
@@ -409,13 +411,35 @@ impl MemLayout {
         return layout;
     }
 
-    pub fn alter_segment(&mut self, old_end: VirtPageNum, new_end: VirtPageNum) -> Option<()> {
-        if let Some((_idx, segment)) = self.segments.iter_mut().enumerate().find(|(_, seg)| seg.range.get_end() == old_end) {
-            segment.adjust_end(&mut self.pagetable, new_end)
-        } else {
-            error!("No segment end with {:?}", old_end);
-            None
+    pub fn clone_from_user(src: &MemLayout, flags: CloneFlags)-> Self {
+        let mut layout = Self::new();
+        layout.map_trampoline();
+        for m_segment in src.segments.iter() {
+            let mut segment = m_segment.lock();
+            if flags.contains(CloneFlags::VM) {
+                layout.add_segment(m_segment.clone());
+            } else {
+                let new_segment = Segment::clone_from(&segment);
+                layout.add_segment(Arc::new(Mutex::new(new_segment)));
+                for vpn in segment.range {
+                    let src_ppn = src.translate(vpn).unwrap().ppn();
+                    let dst_ppn = layout.translate(vpn).unwrap().ppn();
+                    dst_ppn.page_ptr().copy_from_slice(src_ppn.page_ptr());
+                }
+            }
         }
+        return layout;
+    }
+
+    pub fn alter_segment(&mut self, old_end: VirtPageNum, new_end: VirtPageNum) -> Option<()> {
+        for (idx, m_segment) in self.segments.iter_mut().enumerate() {
+            let mut segment = m_segment.lock();
+            if segment.range.get_end() == old_end {
+                return segment.adjust_end(&mut self.pagetable, new_end)
+            }
+        }
+        error!("No segment end with {:?}", old_end);
+        None
     }
     
     /// Activate the memory layout as kernel memory layout
@@ -439,8 +463,8 @@ impl MemLayout {
     /// Add a segment to this layout.
     /// # Description
     /// Add a segment to this layout, map it and allocate corresponding physical pages.
-    pub fn add_segment(&mut self, mut segment: Segment) {
-        segment.map_pages(&mut self.pagetable);
+    pub fn add_segment(&mut self, mut segment: Arc<Mutex<Segment>>) {
+        segment.lock().map_pages(&mut self.pagetable);
         self.segments.push(segment);
     }
 
@@ -473,7 +497,7 @@ impl MemLayout {
             }
         }
         verbose!("==========================================================================");
-        self.segments.push(segment);
+        self.segments.push(Arc::new(Mutex::new(segment)));
     }
 
     /// Construct a new kernel memory layout
@@ -499,86 +523,98 @@ impl MemLayout {
         
         verbose!("Mapping .text...");
         layout.add_segment(
-            Segment::new(
-                VirtAddr::from(stext as usize), 
-                VirtAddr::from(etext as usize),
-                MapType::Identity,
-                SegmentFlags::R | SegmentFlags::X,
-                VMAFlags::empty(),
-                None,
-                0
-            )
+            Arc::new(Mutex::new(
+                Segment::new(
+                    VirtAddr::from(stext as usize), 
+                    VirtAddr::from(etext as usize),
+                    MapType::Identity,
+                    SegmentFlags::R | SegmentFlags::X,
+                    VMAFlags::empty(),
+                    None,
+                    0
+                )
+            ))
         );
         debug!(".text mapped @ 0x{:X} ~ 0x{:X} (identity), R-X-.", stext as usize, etext as usize);
         
         verbose!("Mapping .rodata...");
         layout.add_segment(
-            Segment::new(
-                VirtAddr::from(srodata as usize), 
-                VirtAddr::from(erodata as usize),
-                MapType::Identity,
-                SegmentFlags::R | SegmentFlags::X,
-                VMAFlags::empty(),
-                None,
-                0
-            )
+            Arc::new(Mutex::new(
+                Segment::new(
+                    VirtAddr::from(srodata as usize), 
+                    VirtAddr::from(erodata as usize),
+                    MapType::Identity,
+                    SegmentFlags::R | SegmentFlags::X,
+                    VMAFlags::empty(),
+                    None,
+                    0
+                )
+            ))
         );
         debug!(".rodata mapped @ 0x{:X} ~ 0x{:X} (identity), R-X-.", srodata as usize, erodata as usize);
         
         verbose!("Mapping .data...");
         layout.add_segment(
-            Segment::new(
-                VirtAddr::from(sdata as usize), 
-                VirtAddr::from(edata as usize),
-                MapType::Identity,
-                SegmentFlags::R,
-                VMAFlags::empty(),
-                None,
-                0
-            )
+            Arc::new(Mutex::new(
+                Segment::new(
+                    VirtAddr::from(sdata as usize), 
+                    VirtAddr::from(edata as usize),
+                    MapType::Identity,
+                    SegmentFlags::R,
+                    VMAFlags::empty(),
+                    None,
+                    0
+                )
+            ))
         );
         debug!(".data mapped @ 0x{:X} ~ 0x{:X} (identity), R---.", sdata as usize, edata as usize);
         
         verbose!("Mapping .bss...");
         layout.add_segment(
-            Segment::new(
-                VirtAddr::from(sbss_with_stack as usize), 
-                VirtAddr::from(ebss as usize),
-                MapType::Identity,
-                SegmentFlags::R | SegmentFlags::W,
-                VMAFlags::empty(),
-                None,
-                0
-            )
-        );
-        debug!(".bss mapped @ 0x{:X} ~ 0x{:X} (identity), RW--.", sbss_with_stack as usize, sbss_with_stack as usize);
-        
-        verbose!("Mapping rest physical memory as identical...");
-        layout.add_segment(
-            Segment::new(
-                VirtAddr::from(ekernel as usize), 
-                VirtAddr::from(MEM_END),
-                MapType::Identity,
-                SegmentFlags::R | SegmentFlags::W,
-                VMAFlags::empty(),
-                None,
-                0
-            )
-        );
-        debug!("Physical memory mapped @ 0x{:X} ~ 0x{:X} (identity), RW--.", ekernel as usize, MEM_END);
-
-        verbose!("Mapping MMIO...");
-        for pair in MMIO {
-            layout.add_segment(
+            Arc::new(Mutex::new(
                 Segment::new(
-                    (*pair).0.into(),
-                    ((*pair).0 + (*pair).1).into(),
+                    VirtAddr::from(sbss_with_stack as usize), 
+                    VirtAddr::from(ebss as usize),
                     MapType::Identity,
                     SegmentFlags::R | SegmentFlags::W,
                     VMAFlags::empty(),
                     None,
                     0
                 )
+            ))
+        );
+        debug!(".bss mapped @ 0x{:X} ~ 0x{:X} (identity), RW--.", sbss_with_stack as usize, sbss_with_stack as usize);
+        
+        verbose!("Mapping rest physical memory as identical...");
+        layout.add_segment(
+            Arc::new(Mutex::new(
+                Segment::new(
+                    VirtAddr::from(ekernel as usize), 
+                    VirtAddr::from(MEM_END),
+                    MapType::Identity,
+                    SegmentFlags::R | SegmentFlags::W,
+                    VMAFlags::empty(),
+                    None,
+                    0
+                )
+            ))
+        );
+        debug!("Physical memory mapped @ 0x{:X} ~ 0x{:X} (identity), RW--.", ekernel as usize, MEM_END);
+
+        verbose!("Mapping MMIO...");
+        for pair in MMIO {
+            layout.add_segment(
+                Arc::new(Mutex::new(
+                    Segment::new(
+                        (*pair).0.into(),
+                        ((*pair).0 + (*pair).1).into(),
+                        MapType::Identity,
+                        SegmentFlags::R | SegmentFlags::W,
+                        VMAFlags::empty(),
+                        None,
+                        0
+                    )
+                ))
             );
             debug!("MMIO mapped @ 0x{:X} ~ 0x{:X} (identity), RW--.", (*pair).0, (*pair).0 + (*pair).1);
         }
@@ -638,45 +674,51 @@ impl MemLayout {
             entry_point = elf.header.pt2.entry_point() as usize;
             // map trapcontext
             layout.add_segment(
-                Segment::new(
-                    TRAP_CONTEXT.into(),
-                    TRAMPOLINE.into(),
-                    MapType::Framed,
-                    SegmentFlags::R | SegmentFlags::W,
-                    VMAFlags::empty(),
-                    None,
-                    0
-                )
+                Arc::new(Mutex::new(
+                    Segment::new(
+                        TRAP_CONTEXT.into(),
+                        TRAMPOLINE.into(),
+                        MapType::Framed,
+                        SegmentFlags::R | SegmentFlags::W,
+                        VMAFlags::empty(),
+                        None,
+                        0
+                    )
+                ))
             );
             verbose!("Trapcontext mapped.");
             // map guard page
             let guard_page_high_end = VirtAddr::from(TRAP_CONTEXT);
             let guard_page_low_end = guard_page_high_end - PAGE_SIZE;
             layout.add_segment(
-                Segment::new(
-                    guard_page_low_end,
-                    guard_page_high_end, 
-                    MapType::Framed, 
-                    SegmentFlags::R |SegmentFlags::W,
-                    VMAFlags::empty(),
-                    None,
-                    0
-                )
+                Arc::new(Mutex::new(
+                    Segment::new(
+                        guard_page_low_end,
+                        guard_page_high_end, 
+                        MapType::Framed, 
+                        SegmentFlags::R |SegmentFlags::W,
+                        VMAFlags::empty(),
+                        None,
+                        0
+                    )
+                ))
             );
             verbose!("GuardPage mapped.");
             // map user stacks
             let stack_high_end = guard_page_low_end;
             let stack_low_end = stack_high_end - USER_STACK_SIZE;
             layout.add_segment(
-                Segment::new(
-                    stack_low_end, 
-                    stack_high_end,
-                    MapType::Framed, 
-                    SegmentFlags::R |SegmentFlags::W |SegmentFlags::U,
-                    VMAFlags::empty(),
-                    None,
-                    0
-                )
+                Arc::new(Mutex::new(
+                    Segment::new(
+                        stack_low_end, 
+                        stack_high_end,
+                        MapType::Framed, 
+                        SegmentFlags::R |SegmentFlags::W |SegmentFlags::U,
+                        VMAFlags::empty(),
+                        None,
+                        0
+                    )
+                ))
             );
             verbose!("UserStack mapped.");
             debug!(".text address: {}", elf.find_section_by_name(".text").unwrap().address());
@@ -726,7 +768,7 @@ impl MemLayout {
             PhysAddr::from(strampoline as usize).into(),
             PTEFlags::R | PTEFlags::X
         );
-        verbose!("Trampoline mapped {:?} <=> {:?}, R-X-", VirtAddr::from(TRAMPOLINE), PhysAddr::from(strampoline as usize))
+        verbose!("Trampoline mapped {:?} <=> {:?}, R-X-", VirtAddr::from(TRAMPOLINE), PhysAddr::from(strampoline as usize));
     }
 
     /// Translate a vpn to a pte
@@ -747,11 +789,14 @@ impl MemLayout {
     /// # Description
     /// Drop a segment in the memory layout identified by the first virtual page number, and free all the corresponding physical pages.
     pub fn drop_segment(&mut self, start: VirtPageNum) {
-        if let Some((idx, segment)) = self.segments
-        .iter_mut().enumerate()
-        .find(|(_, seg)| seg.range.get_start() == start) {
-            segment.unmap_pages(&mut self.pagetable);
-            self.segments.remove(idx);
+        for (idx, m_segment) in self.segments.iter().enumerate() {
+            let mut segment = m_segment.lock();
+            if segment.range.get_start() == start {
+                segment.unmap_pages(&mut self.pagetable);
+                drop(segment);
+                self.segments.remove(idx);
+                return
+            }
         }
     }
 
@@ -851,7 +896,8 @@ impl MemLayout {
         let start_vpn = start.to_vpn();
         let stop_vpn = (min(start + inner.poll().size as usize, start + length)).to_vpn_ceil();
         // check overlap
-        for seg in self.segments.iter() {
+        for m_seg in self.segments.iter() {
+            let mut seg = m_seg.lock();
             if seg.range.get_start() <= start_vpn && start_vpn < seg.range.get_end() {
                 error!("Overlapped mmap segment");
                 return Err("Overlapped mmap segment");
@@ -869,7 +915,7 @@ impl MemLayout {
             Some(file.clone()),
             offset
         );
-        self.add_segment(segment);
+        self.add_segment(Arc::new(Mutex::new(segment)));
         Ok(start)
     }
 
@@ -882,7 +928,8 @@ impl MemLayout {
             start_vpn = (i - file.poll().size as usize / PAGE_SIZE).into();
             
             // check overlap
-            for seg in self.segments.iter() {
+            for m_seg in self.segments.iter() {
+                let mut seg = m_seg.lock();
                 if seg.range.get_start() - 1 <= start_vpn && start_vpn < seg.range.get_end() + 1 {
                     continue 'outer;
                 } else if seg.range.get_start() - 1 < stop_vpn && stop_vpn < seg.range.get_end() + 1 {
@@ -895,7 +942,8 @@ impl MemLayout {
     }
 
     pub fn lazy_copy_vma(&mut self, address: VirtAddr, access_flag: VMAFlags) -> Result<(), &'static str> {
-        for seg in self.segments.iter_mut() {
+        for m_seg in self.segments.iter_mut() {
+            let mut seg = m_seg.lock();
             if seg.map_type == MapType::VMA && seg.range.get_start() <= address.to_vpn() && address.to_vpn() < seg.range.get_end() {
                 if !(access_flag & seg.vmaFlags).is_empty() {
                     verbose!("lazy copy triggered for {:?}", address);
@@ -910,7 +958,8 @@ impl MemLayout {
         verbose!("munmapping [{:?}, {:?})", drop_start, drop_end);
         let mut hit_idx = 0;
         let mut found = false;
-        for (idx, seg) in self.segments.iter().enumerate() {
+        for (idx, m_seg) in self.segments.iter().enumerate() {
+            let seg = m_seg.lock();
             let seg_start = seg.range.get_start();
             let seg_end = seg.range.get_end();
             let start_ok = seg_start <= drop_start && drop_start < seg_end;
@@ -926,12 +975,13 @@ impl MemLayout {
         if !found {
             return Err("No such VMA Region");
         }
-        let seg = &self.segments[hit_idx];
+        let seg = self.segments[hit_idx].lock();
         let file = seg.file.clone().unwrap();
         let offset = seg.offset;
         let seg_start = seg.range.get_start();
         let seg_end = seg.range.get_end();
         let flags = seg.vmaFlags;
+        drop(seg);  // release lock
         self.drop_segment(seg_start);
         
         // map leading part

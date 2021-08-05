@@ -3,7 +3,7 @@ use core::mem::size_of;
 use core::slice::{from_raw_parts, from_raw_parts_mut};
 
 use crate::config::PAGE_SIZE;
-use crate::process::{PROCESS_MANAGER, current_path, current_process, enqueue, exit_switch, get_proc_by_pid, suspend_switch};
+use crate::process::{CloneFlags, PROCESS_MANAGER, current_path, current_process, enqueue, exit_switch, get_proc_by_pid, suspend_switch};
 
 use crate::memory::{PhysAddr, Segment, VMAFlags, VirtAddr, alloc_continuous, get_user_cstr, SegmentFlags};
 
@@ -18,6 +18,7 @@ use alloc::sync::Arc;
 use alloc::vec::Vec;
 use alloc::string::{String, ToString};
 use bit_field::BitField;
+use spin::Mutex;
 
 use crate::fs::{
     File,
@@ -43,9 +44,10 @@ pub fn sys_exit(code: i32) -> ! {
 }
 
 /// Process fork a copyed version of itself as child 
+#[deprecated]
 pub fn sys_fork() -> isize {
     let current_proc = current_process().unwrap();
-    let new_proc = current_proc.fork();
+    let new_proc = current_proc.fork(CloneFlags::from_bits_truncate(0));
     let new_pid = new_proc.pid.0;
     // return 0 for child process in a0
     new_proc.get_inner_locked().get_trap_context().regs[10] = 0;
@@ -55,17 +57,33 @@ pub fn sys_fork() -> isize {
 
 /// Process fork a copyed version of itself as child, with more arguments
 /// TODO: Finish it.
-pub fn sys_clone(_: usize, stack: usize, _: usize, _: usize, _: usize) -> isize {
+pub fn sys_clone(clone_flags: CloneFlags, stack: usize, parent_tid_ptr: VirtAddr, _tls: usize, child_tid_ptr: VirtAddr) -> isize {
     let current_proc = current_process().unwrap();
-    let new_proc = current_proc.fork();
+    let new_proc = current_proc.fork(clone_flags);
     let new_pid = new_proc.pid.0;
     // return 0 for child process in a0
     new_proc.get_inner_locked().get_trap_context().regs[10] = 0;
     if stack != 0 {
         new_proc.get_inner_locked().get_trap_context().regs[2] = stack;
     }
+    if clone_flags.contains(CloneFlags::PARENT_SETTID) {
+        current_proc.get_inner_locked().layout.write_user_data(parent_tid_ptr, &current_proc.tgid);
+    }
+    if clone_flags.contains(CloneFlags::CHILD_SETTID) {
+        new_proc.get_inner_locked().layout.write_user_data(child_tid_ptr, &current_proc.tgid);
+    }
+    if clone_flags.contains(CloneFlags::CHILD_CLEARTID) {
+        new_proc.get_inner_locked().layout.write_user_data(child_tid_ptr, &(0 as usize));
+    }
     enqueue(new_proc);
     return new_pid as isize;
+}
+
+pub fn sys_set_tid_address(tidptr: VirtAddr) -> isize {
+    let current_proc = current_process().unwrap();
+    let locked_inner = current_proc.get_inner_locked();
+    locked_inner.layout.write_user_data(tidptr, &current_proc.pid.0);
+    return current_proc.pid.0 as isize;
 }
 
 /// Execute a program in the process
@@ -111,7 +129,7 @@ pub fn sys_exec(app_name: VirtAddr, argv: VirtAddr, envp: VirtAddr) -> isize {
                         }
                     }
                     for (idx, a) in args.iter().enumerate() {
-                        verbose!("argc [{}]: {}", idx, core::str::from_utf8(a).unwrap())
+                        verbose!("argc [{}]: {}", idx, core::str::from_utf8(a).unwrap());
                     }
 
                     verbose!("Loading envp");
@@ -129,7 +147,7 @@ pub fn sys_exec(app_name: VirtAddr, argv: VirtAddr, envp: VirtAddr) -> isize {
                         }
                     }
                     for (idx, a) in envs.iter().enumerate() {
-                        verbose!("envp [{}]: {}", idx, core::str::from_utf8(a).unwrap())
+                        verbose!("envp [{}]: {}", idx, core::str::from_utf8(a).unwrap());
                     }
                     drop(locked_inner);
                     proc.exec(arr, app_name, args, envs)
@@ -247,7 +265,17 @@ pub fn sys_mmap(start: VirtAddr, len: usize, prot: u8, _: usize, fd: usize, offs
     let proc = current_process().unwrap();
     let mut locked_inner = proc.get_inner_locked();
     if fd == usize::MAX {
-        locked_inner.layout.add_segment(Segment::new(start, start + len, crate::memory::MapType::Framed, SegmentFlags::R | SegmentFlags::W | SegmentFlags::U, VMAFlags::empty(), None, 0));
+        locked_inner.layout.add_segment(Arc::new(Mutex::new(
+            Segment::new(
+                start, 
+                start + len, 
+                crate::memory::MapType::Framed, 
+                SegmentFlags::R | SegmentFlags::W | SegmentFlags::U, 
+                VMAFlags::empty(), 
+                None, 
+                0
+            )
+        )));
         return start.0 as isize;
     } else if let Some(file) = locked_inner.files[fd].clone() {
         if let Ok(addr) = locked_inner.layout.add_vma(file, start, VMAFlags::from_bits(prot << 1).unwrap(), offset, len) {

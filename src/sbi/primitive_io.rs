@@ -216,13 +216,11 @@ pub fn reset_color() {
 /// Print log info, alongside with log level, source file and line number.  
 /// *Don't call this function. Use marcos instead.*
 pub fn log(log_level: LogLevel, args: fmt::Arguments, file: &'static str, line: u32) {
-    if log_level >= min_log_level() {
-        set_log_color(log_level);
-        print!("[{:#11.5}]{} {:>#30} @ {:<#5} : ", get_time_ms(), log_level, file, line);
-        print(args);
-        reset_color();
-        println!();
-    }
+    set_log_color(log_level);
+    print!("[{:#11.5}]{} {:>#30} @ {:<#5} : ", get_time_ms(), log_level, file, line);
+    print(args);
+    reset_color();
+    println!();
 }
 
 /// Print log info, alongside with log level, source file and line number. Will not print if the log level is lower then the min_log_level.
@@ -231,10 +229,17 @@ pub fn log(log_level: LogLevel, args: fmt::Arguments, file: &'static str, line: 
 /// verbose!("This is a verbose message!");
 /// ```
 #[macro_export]
+#[cfg(feature = "min_log_level_verbose")]
 macro_rules! verbose {
     ($fmt: literal $(, $($arg: tt)+)?) => {
         $crate::sbi::log(crate::sbi::LogLevel::Verbose, format_args!($fmt $(, $($arg)+)?), file!(), line!())
     };
+}
+
+#[macro_export]
+#[cfg(not(feature = "min_log_level_verbose"))]
+macro_rules! verbose {
+    ($fmt: literal $(, $($arg: tt)+)?) => {};
 }
 
 
@@ -244,10 +249,17 @@ macro_rules! verbose {
 /// debug!("This is a debug message!");
 /// ```
 #[macro_export]
+#[cfg(any(feature="min_log_level_verbose", feature="min_log_level_debug"))]
 macro_rules! debug {
     ($fmt: literal $(, $($arg: tt)+)?) => {
         $crate::sbi::log(crate::sbi::LogLevel::Debug, format_args!($fmt $(, $($arg)+)?), file!(), line!())
     };
+}
+
+#[macro_export]
+#[cfg(not(any(feature="min_log_level_verbose", feature="min_log_level_debug")))]
+macro_rules! debug {
+    ($fmt: literal $(, $($arg: tt)+)?) => {};
 }
 
 
@@ -257,10 +269,16 @@ macro_rules! debug {
 /// info!("This is an info message!");
 /// ```
 #[macro_export]
+#[cfg(any(feature="min_log_level_verbose", feature="min_log_level_debug", feature="min_log_level_info"))]
 macro_rules! info {
     ($fmt: literal $(, $($arg: tt)+)?) => {
         $crate::sbi::log(crate::sbi::LogLevel::Info, format_args!($fmt $(, $($arg)+)?), file!(), line!())
     };
+}
+#[macro_export]
+#[cfg(not(any(feature="min_log_level_verbose", feature="min_log_level_debug", feature="min_log_level_info")))]
+macro_rules! info {
+    ($fmt: literal $(, $($arg: tt)+)?) => {};
 }
 
 
@@ -270,10 +288,16 @@ macro_rules! info {
 /// warning!("This is an warning message!");
 /// ```
 #[macro_export]
+#[cfg(any(feature="min_log_level_verbose", feature="min_log_level_debug", feature="min_log_level_info", feature="min_log_level_warning"))]
 macro_rules! warning {
     ($fmt: literal $(, $($arg: tt)+)?) => {
         $crate::sbi::log(crate::sbi::LogLevel::Warning, format_args!($fmt $(, $($arg)+)?), file!(), line!())
     };
+}
+#[macro_export]
+#[cfg(not(any(feature="min_log_level_verbose", feature="min_log_level_debug", feature="min_log_level_info", feature="min_log_level_warning")))]
+macro_rules! warning {
+    ($fmt: literal $(, $($arg: tt)+)?) => {};
 }
 
 
@@ -283,10 +307,28 @@ macro_rules! warning {
 /// error!("This is an error message!");
 /// ```
 #[macro_export]
+#[cfg(any(
+    feature="min_log_level_verbose", 
+    feature="min_log_level_debug", 
+    feature="min_log_level_info", 
+    feature="min_log_level_warning", 
+    feature="min_log_level_error"
+))]
 macro_rules! error {
     ($fmt: literal $(, $($arg: tt)+)?) => {
         $crate::sbi::log(crate::sbi::LogLevel::Error, format_args!($fmt $(, $($arg)+)?), file!(), line!())
     };
+}
+#[macro_export]
+#[cfg(not(any(
+    feature="min_log_level_verbose", 
+    feature="min_log_level_debug", 
+    feature="min_log_level_info", 
+    feature="min_log_level_warning", 
+    feature="min_log_level_error"
+)))]
+macro_rules! error {
+    ($fmt: literal $(, $($arg: tt)+)?) => {};
 }
 
 
@@ -296,8 +338,30 @@ macro_rules! error {
 /// fatal!("This is a fatal message!");
 /// ```
 #[macro_export]
+#[macro_export]
+#[cfg(any(
+    feature="min_log_level_verbose", 
+    feature="min_log_level_debug", 
+    feature="min_log_level_info", 
+    feature="min_log_level_warning", 
+    feature="min_log_level_error",
+    feature="min_log_level_fatal",
+))]
 macro_rules! fatal {
     ($fmt: literal $(, $($arg: tt)+)?) => {
         $crate::sbi::log(crate::sbi::LogLevel::Fatal, format_args!($fmt $(, $($arg)+)?), file!(), line!())
     };
+}
+#[macro_export]
+#[macro_export]
+#[cfg(not(any(
+    feature="min_log_level_verbose", 
+    feature="min_log_level_debug", 
+    feature="min_log_level_info", 
+    feature="min_log_level_warning", 
+    feature="min_log_level_error",
+    feature="min_log_level_fatal",
+)))]
+macro_rules! fatal {
+    ($fmt: literal $(, $($arg: tt)+)?) => {};
 }

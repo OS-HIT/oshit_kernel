@@ -21,6 +21,7 @@ use super::{
     KernelStack,
     alloc_pid,
 };
+use _core::clone;
 use _core::mem::size_of;
 use alloc::collections::{BTreeMap, VecDeque};
 use spin::{
@@ -127,10 +128,42 @@ pub enum ProcessStatus {
     Zombie
 }
 
+
+bitflags! {
+    pub struct CloneFlags: u64 {
+        const VM                = 0x00000100;	/* set if VM shared between processes */
+        const FS                = 0x00000200;	/* set if fs info shared between processes */
+        const FILES             = 0x00000400;	/* set if open files shared between processes */
+        const SIGHAND           = 0x00000800;	/* set if signal handlers and blocked signals shared */
+        const PIDFD             = 0x00001000;	/* set if a pidfd should be placed in parent */
+        const PTRACE            = 0x00002000;	/* set if we want to let tracing continue on the child too */
+        const VFORK             = 0x00004000;	/* set if the parent wants the child to wake it up on mm_release */
+        const PARENT            = 0x00008000;	/* set if we want to have the same parent as the cloner */
+        const THREAD            = 0x00010000;	/* Same thread group? */
+        const NEWNS             = 0x00020000;	/* New mount namespace group */
+        const SYSVSEM           = 0x00040000;	/* share system V SEM_UNDO semantics */
+        const SETTLS            = 0x00080000;	/* create a new TLS for the child */
+        const PARENT_SETTID     = 0x00100000;	/* set the TID in the parent */
+        const CHILD_CLEARTID    = 0x00200000;	/* clear the TID in the child */
+        const DETACHED          = 0x00400000;	/* Unused, ignored */
+        const UNTRACED          = 0x00800000;	/* set if the tracing process can't force CLONE_PTRACE on this clone */
+        const CHILD_SETTID      = 0x01000000;	/* set the TID in the child */
+        const NEWCGROUP         = 0x02000000;	/* New cgroup namespace */
+        const NEWUTS            = 0x04000000;	/* New utsname namespace */
+        const NEWIPC            = 0x08000000;	/* New ipc namespace */
+        const NEWUSER           = 0x10000000;	/* New user namespace */
+        const NEWPID            = 0x20000000;	/* New pid namespace */
+        const NEWNET            = 0x40000000;	/* New network namespace */
+        const IO                = 0x80000000;	/* Clone io context */
+    }
+}
+
 /// The process control block
 pub struct ProcessControlBlock {
     /// Pid of the process
     pub pid:            Pid,
+    /// tgid of the process, aka PID from user view
+    pub tgid:           usize,
     /// The kernel stack of the process. PCB holds it so the resource is not dropped.
     pub kernel_stack:   KernelStack,
     /// The mutable inner, protected by a Mutex
@@ -290,6 +323,7 @@ impl ProcessControlBlock {
         let (layout, data_top, mut user_stack_top, entry, _auxv) = MemLayout::new_elf(elf_data);
         let trap_context_ppn = layout.translate(VirtAddr::from(TRAP_CONTEXT).into()).unwrap().ppn();
         let pid = alloc_pid();
+        let tgid = pid.0;
         let kernel_stack = KernelStack::new(&pid);
         let kernel_stack_top = kernel_stack.top();
         let context_ptr = kernel_stack.save_to_top(ProcessContext::init()) as usize;
@@ -304,6 +338,7 @@ impl ProcessControlBlock {
         verbose!("stdio fd pre-loaded.");
         let pcb = Self {
             pid,
+            tgid,
             kernel_stack,
             inner: Mutex::new(ProcessControlBlockInner {
                 context_ptr,
@@ -348,18 +383,24 @@ impl ProcessControlBlock {
     /// Fork a process from original process, almost identical except for physical memory mapping.
     /// # Return
     /// Return the new process control block
-    pub fn fork(self: &Arc<ProcessControlBlock>) -> Arc<ProcessControlBlock> {
+    pub fn fork(self: &Arc<ProcessControlBlock>, clone_flags: super::CloneFlags) -> Arc<ProcessControlBlock> {
         let mut parent_arcpcb = self.get_inner_locked();
-        let layout = MemLayout::fork_from_user(&parent_arcpcb.layout);
+        // let layout = MemLayout::fork_from_user(&parent_arcpcb.layout);
+        let layout = MemLayout::clone_from_user(&parent_arcpcb.layout, clone_flags);
         let trap_context_ppn = layout.translate(VirtAddr(TRAP_CONTEXT).into()).unwrap().ppn();
         let pid = alloc_pid();
         let kernel_stack = KernelStack::new(&pid);
         let kernel_stack_top = kernel_stack.top();
         let context_ptr = kernel_stack.save_to_top(ProcessContext::init()) as usize;
         let status = ProcessStatus::Ready;
-        
+        let tgid = if clone_flags.contains(super::CloneFlags::THREAD) {
+            self.pid.0
+        } else {
+            pid.0
+        };
         let pcb = Arc::new(ProcessControlBlock {
             pid,
+            tgid,
             kernel_stack,
             inner: Mutex::new(ProcessControlBlockInner {
                 context_ptr,
@@ -654,7 +695,7 @@ impl ProcessControlBlock {
 
     /// get pid of the precess
     pub fn get_pid(&self) -> usize {
-        self.pid.0
+        self.tgid
     }
 
     /// get pid of the precess's parent.
