@@ -151,7 +151,7 @@ pub fn syscall(syscall_id: usize, args: [usize; 6]) -> isize {
         SYSCALL_GETDENTS64      => {CALL_SYSCALL!(sys_getdents64, args[0], VirtAddr::from(args[1]), args[2])},
         SYSCALL_NANOSLEEP       => {CALL_SYSCALL!(sys_nanosleep, VirtAddr::from(args[0]), VirtAddr::from(args[1]))},
         SYSCALL_BRK             => {CALL_SYSCALL!(sys_brk, args[0])},
-        SYSCALL_MMAP            => {CALL_SYSCALL!(sys_mmap, VirtAddr::from(args[0]), args[1], args[2] as u8, args[3], args[4], args[5])},
+        SYSCALL_MMAP            => {CALL_SYSCALL!(sys_mmap, VirtAddr::from(args[0]), args[1], args[2], args[3], args[4], args[5])},
         SYSCALL_UNLINKAT        => {CALL_SYSCALL!(sys_unlink, args[0] as i32, VirtAddr::from(args[1]), args[2])},
         SYSCALL_MKDIRAT         => {CALL_SYSCALL!(sys_mkdirat, args[0], VirtAddr::from(args[1]), args[2])},
         SYSCALL_FSTAT           => {CALL_SYSCALL!(sys_fstat, args[0], VirtAddr::from(args[1]))},

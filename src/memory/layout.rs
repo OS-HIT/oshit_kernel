@@ -969,13 +969,11 @@ impl MemLayout {
         Ok(start)
     }
 
-    /// Add a VMA segment anywhere
-    pub fn add_vma_anywhere(&mut self, file: Arc<dyn File>, flag: VMAFlags, offset: usize, len: usize) -> Result<VirtAddr, &'static str> {
-        let mut stop_vpn: VirtPageNum = VirtAddr::from(TRAP_CONTEXT - 4 * PAGE_SIZE).into();
-        let mut start_vpn: VirtPageNum = stop_vpn - file.poll().size as usize / PAGE_SIZE;
-        'outer: for i in stop_vpn.0..0 {
-            stop_vpn = i.into();
-            start_vpn = (i - file.poll().size as usize / PAGE_SIZE).into();
+    // TODO: This can be optimized.
+    pub fn get_continuous_space(&self, len: usize) -> Option<VirtPageNum> {
+        'outer: for i in 0..0xffff_ffff_ff00_0___ {
+            let stop_vpn: VirtPageNum = VirtPageNum::from(0xffff_ffff_ff00_0___) - i;
+            let start_vpn: VirtPageNum = stop_vpn - len / PAGE_SIZE;
             
             // check overlap
             for m_seg in self.segments.iter() {
@@ -986,9 +984,15 @@ impl MemLayout {
                     continue 'outer;
                 }
             }
-            break;
+            return Some(start_vpn); 
         }
-        self.add_vma(file, start_vpn.into(), flag, offset, len)
+        None
+    }
+
+    /// Add a VMA segment anywhere
+    pub fn add_vma_anywhere(&mut self, file: Arc<dyn File>, flag: VMAFlags, offset: usize, len: usize) -> Result<VirtAddr, &'static str> {
+        let start_addr: VirtAddr = self.get_continuous_space(file.poll().size as usize).ok_or("No space left")?.into();
+        self.add_vma(file, start_addr, flag, offset, len)
     }
 
     pub fn lazy_copy_vma(&mut self, address: VirtAddr, access_flag: VMAFlags) -> Result<(), &'static str> {

@@ -30,6 +30,16 @@ pub const WNOHANG: isize = 1;
 pub const WUNTRACED: isize = 2;
 pub const WCONTINUED: isize = 4;
 
+
+
+pub const PROT_READ		    :usize = 0x1		;/* page can be read */
+pub const PROT_WRITE	    :usize = 0x2		;/* page can be written */
+pub const PROT_EXEC		    :usize = 0x4		;/* page can be executed */
+pub const PROT_SEM		    :usize = 0x8		;/* page may be used for atomic ops */
+pub const PROT_NONE		    :usize = 0x0		;/* page can not be accessed */
+pub const PROT_GROWSDOWN    :usize = 0x01000000	;/* mprotect flag: extend change to start of growsdown vma */
+pub const PROT_GROWSUP	    :usize = 0x02000000	;/* mprotect flag: extend change to end of growsup vma */
+
 /// Give up CPU.
 pub fn sys_yield() -> isize {
     suspend_switch();
@@ -244,7 +254,6 @@ pub fn sys_chdir(buf: VirtAddr) -> isize {
 }
 
 pub fn sys_brk(sz: usize) -> isize {
-    verbose!("Brk sz: {}", sz);
     if sz == 0 {
         return current_process().unwrap().get_inner_locked().size as isize;
     }
@@ -260,17 +269,42 @@ pub fn sys_brk(sz: usize) -> isize {
     }
 }
 
-pub fn sys_mmap(start: VirtAddr, len: usize, prot: u8, _: usize, fd: usize, offset: usize) -> isize {
-    verbose!("sys_mmap");
+pub fn sys_mmap(mut start: VirtAddr, len: usize, prot: usize, _: usize, fd: usize, offset: usize) -> isize {
     let proc = current_process().unwrap();
     let mut locked_inner = proc.get_inner_locked();
     if fd == usize::MAX {
+        if start.0 == 0 {
+            match locked_inner.layout.get_continuous_space(len) {
+                Some(start_vpn) => {
+                    start = start_vpn.into();
+                    verbose!("Found space @ {:?}, len {}", start, len);
+                },
+                None => {
+                    fatal!("No virtual space left!");
+                    locked_inner.recv_signal(crate::process::default_handlers::SIGSEGV);
+                    return -1;
+                }
+            }
+        }
+        let mut flags = SegmentFlags::empty();
+        if prot & PROT_NONE == 0 {
+            flags |= SegmentFlags::U;
+        }
+        if prot & PROT_READ != 0 {
+            flags |= SegmentFlags::R;
+        }
+        if prot & PROT_WRITE != 0 {
+            flags |= SegmentFlags::W;
+        }
+        if prot & PROT_EXEC != 0 {
+            flags |= SegmentFlags::X;
+        }
         locked_inner.layout.add_segment(Arc::new(Mutex::new(
             Segment::new(
                 start, 
                 start + len, 
                 crate::memory::MapType::Framed, 
-                SegmentFlags::R | SegmentFlags::W | SegmentFlags::U, 
+                flags, 
                 VMAFlags::empty(), 
                 None, 
                 0
@@ -278,7 +312,7 @@ pub fn sys_mmap(start: VirtAddr, len: usize, prot: u8, _: usize, fd: usize, offs
         )));
         return start.0 as isize;
     } else if let Some(file) = locked_inner.files[fd].clone() {
-        if let Ok(addr) = locked_inner.layout.add_vma(file, start, VMAFlags::from_bits(prot << 1).unwrap(), offset, len) {
+        if let Ok(addr) = locked_inner.layout.add_vma(file, start, VMAFlags::from_bits((prot << 1) as u8).unwrap(), offset, len) {
             return addr.0 as isize;
         } 
     }
@@ -400,14 +434,6 @@ pub fn sys_sigreturn() -> isize {
     locked_inner.write_trap_context(&old_trap_context);
     0
 }
-
-pub const PROT_READ		    :usize = 0x1		;/* page can be read */
-pub const PROT_WRITE	    :usize = 0x2		;/* page can be written */
-pub const PROT_EXEC		    :usize = 0x4		;/* page can be executed */
-pub const PROT_SEM		    :usize = 0x8		;/* page may be used for atomic ops */
-pub const PROT_NONE		    :usize = 0x0		;/* page can not be accessed */
-pub const PROT_GROWSDOWN    :usize = 0x01000000	;/* mprotect flag: extend change to start of growsdown vma */
-pub const PROT_GROWSUP	    :usize = 0x02000000	;/* mprotect flag: extend change to end of growsup vma */
 
 pub fn sys_mprotect(addr: VirtAddr, len: usize, prot: usize) -> isize {
     let proc = current_process().unwrap();
