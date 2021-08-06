@@ -410,7 +410,11 @@ pub fn sys_sigprocmask(how: isize, oldmask: VirtAddr, newmask: VirtAddr) -> isiz
         locked_inner.layout.write_user_data(oldmask, &locked_inner.sig_mask);
     }
 
-    let new_mask: u64 = locked_inner.layout.read_user_data(newmask);
+    let new_mask: u64 = if newmask.0 == 0 {
+        0
+    } else {
+        locked_inner.layout.read_user_data(newmask)
+    };
 
     if how == SIG_BLOCK {
         locked_inner.sig_mask |= new_mask;
