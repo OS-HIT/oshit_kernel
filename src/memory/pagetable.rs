@@ -66,6 +66,13 @@ impl PageTableEntry {
         }
     }
 
+    pub fn modify_access(&mut self, flags: PTEFlags) {
+        // preserve valid bits
+        let mask: usize = 0xffff_ffff_ffff_ff01;
+        self.bits &= mask;
+        self.bits |= (flags.bits() as usize) & 0x0000_0000_0000_00fe;
+    }
+
     /// Read the physical page number from pagetable entry.
     pub fn ppn(&self) -> PhysPageNum {
         PhysPageNum::from(self.bits >> 10 & 0xFFF_FFFF_FFFF)
@@ -156,11 +163,11 @@ impl PageTable {
     /// Get the page table entry from the pagetable. Return None if not mapped.
     /// # Return
     /// Return a reference to the corrersponding page table entry, or None if not found.
-    pub fn walk(&self, vpn: VirtPageNum) -> Option<&PageTableEntry> {
+    pub fn walk(&self, vpn: VirtPageNum) -> Option<&mut PageTableEntry> {
         let indexes = vpn.indexes();
         let mut ppn = self.root_ppn;
         for i in 0..3 {
-            let pte = &ppn.read_pte()[indexes[i]];
+            let pte = &mut ppn.read_pte()[indexes[i]];
             if i == 2 {         // leaf node, just return
                 return Some(pte);
             }
@@ -191,6 +198,13 @@ impl PageTable {
         let pte = self.walk_create(vpn);
         assert!(pte.valid(), "{:?} hasn't been mapped.", vpn);
         *pte = PageTableEntry::empty();
+    }
+
+    pub fn modify_access(&mut self, vpn: VirtPageNum, flags: PTEFlags) -> Option<()> {
+        let pte = self.walk(vpn)?;
+        // assert!(pte.valid(), "{:?} has already been mapped.", vpn);
+        pte.modify_access(flags);
+        Some(())
     }
 
     /// Read and construct a pagetable from SATP value.
@@ -231,6 +245,7 @@ impl PageTable {
 /// Tranlate a chunk of user memory into kernel space
 /// # Description
 /// Tranlate a user buffer into kernel space. Note that due to paging, the result is not continuous.
+#[allow(unused)]
 pub fn get_user_data(satp: usize, mut start: VirtAddr, len: usize) -> Vec<&'static mut [u8]> {
     let pagetable = PageTable::from_satp(satp);
     let end = start + len;
@@ -256,6 +271,7 @@ pub fn get_user_data(satp: usize, mut start: VirtAddr, len: usize) -> Vec<&'stat
 /// Get a UserBuffer in user space. Modify to UserBuffer will modify the corresponding user space memory.
 /// # Return
 /// The userbuffer of corresponding area
+#[allow(unused)]
 pub fn get_user_buffer(satp: usize, start: VirtAddr, len: usize) -> UserBuffer {
     return UserBuffer::new(get_user_data(satp, start, len));
 }
@@ -268,6 +284,7 @@ pub fn get_user_buffer(satp: usize, start: VirtAddr, len: usize) -> UserBuffer {
 /// let to_write: usize = 123456;
 /// write_user_data(layout.get_satp(), 0x10000.into(), to_write);
 /// ```
+#[allow(unused)]
 pub fn write_user_data(satp: usize, data: &[u8], mut start: VirtAddr, len: usize) {
     let pagetable = PageTable::from_satp(satp);
     let origin = start.0;

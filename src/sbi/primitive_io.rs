@@ -338,7 +338,6 @@ macro_rules! error {
 /// fatal!("This is a fatal message!");
 /// ```
 #[macro_export]
-#[macro_export]
 #[cfg(any(
     feature="min_log_level_verbose", 
     feature="min_log_level_debug", 
@@ -352,7 +351,6 @@ macro_rules! fatal {
         $crate::sbi::log(crate::sbi::LogLevel::Fatal, format_args!($fmt $(, $($arg)+)?), file!(), line!())
     };
 }
-#[macro_export]
 #[macro_export]
 #[cfg(not(any(
     feature="min_log_level_verbose", 

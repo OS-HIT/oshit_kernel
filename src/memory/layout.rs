@@ -15,16 +15,14 @@ use super::{
 };
 use core::mem::size_of;
 use _core::convert::TryInto;
-use _core::i32;
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
 use bitflags::*;
-use k210_pac::spi0::msticr;
 use crate::config::*;
 use crate::fs::{File, SeekOp};
 use crate::process::{AuxHeader, AuxType, CloneFlags};
 use core::cmp::min;
-use crate::utils::StepByOne;
+use crate::utils::{SimpleRange, StepByOne};
 use lazy_static::*;
 use alloc::sync::Arc;
 use spin::Mutex;
@@ -94,9 +92,9 @@ pub struct Segment {
     /// the mapping type (identity or framed)
     pub map_type: MapType,
     /// the flags
-    pub segFlags   : SegmentFlags,
+    pub seg_flags   : SegmentFlags,
     /// vma flags
-    pub vmaFlags : VMAFlags,
+    pub vma_flags : VMAFlags,
     /// the mmap file
     pub file    : Option<Arc<dyn File>>,
     /// the mmap file offset
@@ -120,15 +118,15 @@ impl Segment {
     /// ```
     /// # Return
     /// Returns a new, unmapped segment.
-    pub fn new(start: VirtAddr, stop: VirtAddr, map_type: MapType, segFlags: SegmentFlags, vmaFlags: VMAFlags, file: Option<Arc<dyn File>>, offset: usize) -> Self {
+    pub fn new(start: VirtAddr, stop: VirtAddr, map_type: MapType, seg_flags: SegmentFlags, vma_flags: VMAFlags, file: Option<Arc<dyn File>>, offset: usize) -> Self {
         verbose!("New Segment: {:?} <=> {:?}", start.to_vpn(), stop.to_vpn_ceil());
         Self {
             head_offset: start.0 % PAGE_SIZE,
             range   : VPNRange::new(start.to_vpn(), stop.to_vpn_ceil()),
             frames  : BTreeMap::new(),
             map_type,
-            segFlags,
-            vmaFlags,
+            seg_flags,
+            vma_flags,
             file,
             offset
         }
@@ -150,14 +148,14 @@ impl Segment {
         match self.map_type {
             MapType::Identity => {
                 ppn = PhysPageNum(vpn.0);
-                pagetable.map(vpn, ppn, PTEFlags::from_bits(self.segFlags.bits).unwrap());
+                pagetable.map(vpn, ppn, PTEFlags::from_bits(self.seg_flags.bits).unwrap());
                 Ok(())
             },
             MapType::Framed => {
                 if let Some(frame) = alloc_frame() {
                     ppn = frame.ppn;
                     self.frames.insert(vpn, frame);
-                    pagetable.map(vpn, ppn, PTEFlags::from_bits(self.segFlags.bits).unwrap());
+                    pagetable.map(vpn, ppn, PTEFlags::from_bits(self.seg_flags.bits).unwrap());
                     // verbose!("Mapped framed page: {:?}<=>{:?}, flag {:?}", vpn, ppn, PTEFlags::from_bits(self.segFlags.bits).unwrap());
                     Ok(())
                 } else {
@@ -203,7 +201,7 @@ impl Segment {
 
         self.frames.insert(vpn, frame);
         verbose!("Lazy mapped: {:?} <=> {:?}", vpn, ppn);
-        pagetable.map(vpn, ppn, PTEFlags::from_bits(self.vmaFlags.bits).unwrap() | PTEFlags::U);
+        pagetable.map(vpn, ppn, PTEFlags::from_bits(self.vma_flags.bits).unwrap() | PTEFlags::U);
         Ok(())
     }
     
@@ -256,7 +254,7 @@ impl Segment {
             verbose!("Unmapping vma");
             if let Some(pte) = pagetable.walk(vpn) {
                 verbose!("pte find: valid: {}, ditry: {}", pte.valid(), pte.dirty());
-                if self.vmaFlags.contains(VMAFlags::W) && pte.dirty() && pte.valid() {
+                if self.vma_flags.contains(VMAFlags::W) && pte.dirty() && pte.valid() {
                     let file = self.file.clone().unwrap();
                     let fs_file = file.to_common_file().unwrap();
                     let cur = fs_file.get_cursor().unwrap();
@@ -291,7 +289,7 @@ impl Segment {
     /// ```
     pub fn map_pages(&mut self, pagetable: &mut PageTable) {
         for vpn in self.range {
-            self.map_page(pagetable, vpn);
+            self.map_page(pagetable, vpn).unwrap();
         }
     }
 
@@ -364,8 +362,8 @@ impl Segment {
             ),
             frames: BTreeMap::new(),
             map_type: src.map_type,
-            segFlags: src.segFlags,
-            vmaFlags: src.vmaFlags,
+            seg_flags: src.seg_flags,
+            vma_flags: src.vma_flags,
             file: src.file.clone(),
             offset: src.offset
         }
@@ -395,11 +393,13 @@ impl MemLayout {
     /// They will have exactly the same virtual memory layout, yet on different physical pages.
     /// # Return
     /// Forked memory layout.
+    #[deprecated]
+    #[allow(unused)]
     pub fn fork_from_user(src: &MemLayout) -> Self {
         let mut layout = Self::new();
         layout.map_trampoline();
         for m_segment in src.segments.iter() {
-            let mut segment = m_segment.lock();
+            let segment = m_segment.lock();
             let new_segment = Segment::clone_from(&segment);
             layout.add_segment(Arc::new(Mutex::new(new_segment)));
             for vpn in segment.range {
@@ -415,7 +415,7 @@ impl MemLayout {
         let mut layout = Self::new();
         layout.map_trampoline();
         for m_segment in src.segments.iter() {
-            let mut segment = m_segment.lock();
+            let segment = m_segment.lock();
             if flags.contains(CloneFlags::VM) {
                 layout.add_segment(m_segment.clone());
             } else {
@@ -432,7 +432,7 @@ impl MemLayout {
     }
 
     pub fn alter_segment(&mut self, old_end: VirtPageNum, new_end: VirtPageNum) -> Option<()> {
-        for (idx, m_segment) in self.segments.iter_mut().enumerate() {
+        for m_segment in self.segments.iter_mut() {
             let mut segment = m_segment.lock();
             if segment.range.get_end() == old_end {
                 return segment.adjust_end(&mut self.pagetable, new_end)
@@ -440,6 +440,74 @@ impl MemLayout {
         }
         error!("No segment end with {:?}", old_end);
         None
+    }
+
+    
+    pub fn modify_access(&mut self, start: VirtAddr, len: usize, flags: PTEFlags, grow_up: bool, grow_down: bool) -> Option<()> {
+        if grow_up || grow_down {
+            // allocated, change access
+            for m_seg in self.segments.iter() {
+                let seg = m_seg.lock();
+                if seg.range.get_start() <= start.into() && seg.range.get_end() > start.into() {
+                    if seg.map_type != MapType::Framed {
+                        fatal!("Cannot change access to non-Framed segments!");
+                        return None;
+                    }
+                    let range = if grow_up {
+                        SimpleRange::new(start.to_vpn(), seg.range.get_end())
+                    } else {
+                        SimpleRange::new(seg.range.get_start(), start.to_vpn_ceil())
+                    };
+                    for page in range {
+                        self.pagetable.modify_access(page, flags)?;
+                    }
+                    return Some(())
+                }
+            }
+            // not allocated, this won't work
+            fatal!("vpn {:?} not in any segments!", start);
+            return None;
+        }
+        // TODO: no crossing segment boundary for now... change?
+        for m_seg in self.segments.iter() {
+            let seg = m_seg.lock();
+            // allocated, change access
+            if seg.range.get_start() <= start.into() && seg.range.get_end() > start.into() {
+                if seg.map_type != MapType::Framed {
+                    fatal!("Cannot change access to non-Framed segments!");
+                    return None;
+                }
+                for vpn in SimpleRange::new(start.to_vpn(), (start + len).to_vpn_ceil()) {
+                    self.pagetable.modify_access(vpn, flags)?;
+                }
+                return Some(());
+            }
+        }
+        // not allocated, allocate new Segment
+        let mut seg_flags = SegmentFlags::U;
+        if flags.contains(PTEFlags::U) {
+            seg_flags |= SegmentFlags::U;
+        }
+        if flags.contains(PTEFlags::W) {
+            seg_flags |= SegmentFlags::W;
+        }
+        if flags.contains(PTEFlags::R) {
+            seg_flags |= SegmentFlags::R;
+        }
+        if flags.contains(PTEFlags::X) {
+            seg_flags |= SegmentFlags::X;
+        }
+        self.add_segment(Arc::new(Mutex::new(
+            Segment::new(
+                start, 
+                start + len, 
+                MapType::Framed, 
+                seg_flags, 
+                VMAFlags::empty(), 
+                None, 
+                0)
+        )));
+        Some(())
     }
     
     /// Activate the memory layout as kernel memory layout
@@ -463,7 +531,7 @@ impl MemLayout {
     /// Add a segment to this layout.
     /// # Description
     /// Add a segment to this layout, map it and allocate corresponding physical pages.
-    pub fn add_segment(&mut self, mut segment: Arc<Mutex<Segment>>) {
+    pub fn add_segment(&mut self, segment: Arc<Mutex<Segment>>) {
         segment.lock().map_pages(&mut self.pagetable);
         self.segments.push(segment);
     }
@@ -483,20 +551,6 @@ impl MemLayout {
         segment.map_pages(&mut self.pagetable);
         segment.write(&mut self.pagetable, data);
         verbose!("add_segment_with_source Mapping Segment with start = {:?}, end = {:?}", VirtAddr::from(segment.range.get_start()), VirtAddr::from(segment.range.get_end()));
-        verbose!("================================ contents ================================");
-        for (idx, byte) in data.iter().enumerate() {
-            let addr = VirtAddr::from(segment.range.get_start()).0 + idx;
-            if addr >= 0x182330 && addr < 0x182330 + 128 {
-                if idx % 16 == 0 {
-                    print!("\n0x{:08x}: ", addr);
-                }
-                if idx % 4 == 0 {
-                    print!("\t0x");
-                }
-                print!("{:02x}", *byte);
-            }
-        }
-        verbose!("==========================================================================");
         self.segments.push(Arc::new(Mutex::new(segment)));
     }
 
@@ -631,9 +685,7 @@ impl MemLayout {
     pub fn new_elf(elf_data: &[u8]) -> (Self, usize, usize, usize, Vec<AuxHeader>) {
         let mut layout = Self::new();
         layout.map_trampoline();
-        let mut end_vpn = VirtPageNum::from(0);
         let mut data_top = 0;
-        let mut entry_point: usize = 0;
         if let Ok(elf) = xmas_elf::ElfFile::new(elf_data) {
             debug!("ELF parsed!");
             // debug!("header: {}", elf.header);
@@ -655,7 +707,6 @@ impl MemLayout {
                     }
                     let segment = Segment::new(start, stop, MapType::Framed, segment_flags, VMAFlags::empty(), None, 0);
                     let ph_end = program_header.offset() + program_header.file_size();
-                    end_vpn = segment.range.get_end();
                     layout.add_segment_with_source(
                         segment, 
                         &elf.input[
@@ -671,7 +722,6 @@ impl MemLayout {
                 }
             }
             verbose!("Data Segment top should be at {:x}", data_top);
-            entry_point = elf.header.pt2.entry_point() as usize;
             // map trapcontext
             layout.add_segment(
                 Arc::new(Mutex::new(
@@ -897,7 +947,7 @@ impl MemLayout {
         let stop_vpn = (min(start + inner.poll().size as usize, start + length)).to_vpn_ceil();
         // check overlap
         for m_seg in self.segments.iter() {
-            let mut seg = m_seg.lock();
+            let seg = m_seg.lock();
             if seg.range.get_start() <= start_vpn && start_vpn < seg.range.get_end() {
                 error!("Overlapped mmap segment");
                 return Err("Overlapped mmap segment");
@@ -929,7 +979,7 @@ impl MemLayout {
             
             // check overlap
             for m_seg in self.segments.iter() {
-                let mut seg = m_seg.lock();
+                let seg = m_seg.lock();
                 if seg.range.get_start() - 1 <= start_vpn && start_vpn < seg.range.get_end() + 1 {
                     continue 'outer;
                 } else if seg.range.get_start() - 1 < stop_vpn && stop_vpn < seg.range.get_end() + 1 {
@@ -945,7 +995,7 @@ impl MemLayout {
         for m_seg in self.segments.iter_mut() {
             let mut seg = m_seg.lock();
             if seg.map_type == MapType::VMA && seg.range.get_start() <= address.to_vpn() && address.to_vpn() < seg.range.get_end() {
-                if !(access_flag & seg.vmaFlags).is_empty() {
+                if !(access_flag & seg.vma_flags).is_empty() {
                     verbose!("lazy copy triggered for {:?}", address);
                     return seg.map_lazy_vma(&mut self.pagetable, address);
                 }
@@ -980,7 +1030,7 @@ impl MemLayout {
         let offset = seg.offset;
         let seg_start = seg.range.get_start();
         let seg_end = seg.range.get_end();
-        let flags = seg.vmaFlags;
+        let flags = seg.vma_flags;
         drop(seg);  // release lock
         self.drop_segment(seg_start);
         

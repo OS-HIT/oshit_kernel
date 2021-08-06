@@ -1,7 +1,7 @@
 //! Syscall wrappers.
 #![allow(dead_code)]
 
-use crate::process::CloneFlags;
+use crate::{memory::VirtAddr, process::CloneFlags};
 
 pub const SYSCALL_GETCWD            : usize = 17;
 pub const SYSCALL_DUP               : usize = 23;
@@ -27,6 +27,10 @@ pub const SYSCALL_EXIT              : usize = 93;
 pub const SYSCALL_SET_TID_ADDRESS   : usize = 96;
 pub const SYSCALL_NANOSLEEP         : usize = 101;
 pub const SYSCALL_SCHED_YIELD       : usize = 124;
+pub const SYSCALL_KILL              : usize = 129;
+pub const SYSCALL_SIGACTION         : usize = 134;
+pub const SYSCALL_SIGPROCMASK       : usize = 135;
+pub const SYSCALL_SIGRETURN         : usize = 139;
 pub const SYSCALL_TIMES             : usize = 153;
 pub const SYSCALL_UNAME             : usize = 160;
 pub const SYSCALL_GETTIMEOFDAY      : usize = 169;
@@ -40,17 +44,11 @@ pub const SYSCALL_SYSINFO           : usize = 179;
 pub const SYSCALL_BRK               : usize = 214;
 pub const SYSCALL_MUNMAP            : usize = 215;
 pub const SYSCALL_CLONE             : usize = 220;  // is this sys_fork?
-pub const SYSCALL_FORK              : usize = 220;
 pub const SYSCALL_EXECVE            : usize = 221;  // is this sys_exec?
-pub const SYSCALL_EXEC              : usize = 221;
 pub const SYSCALL_MMAP              : usize = 222;
+pub const SYSCALL_MPROTECT          : usize = 226;
 pub const SYSCALL_WAIT4             : usize = 260;  // is this sys_waitpid?
 pub const SYSCALL_WAITPID           : usize = 260;
-
-pub const SYSCALL_SIGRETURN         : usize = 139;
-pub const SYSCALL_SIGACTION         : usize = 134;
-pub const SYSCALL_SIGPROCMASK       : usize = 135;
-pub const SYSCALL_KILL              : usize = 129;
 
 mod fs_syscall;
 mod process_syscall;
@@ -87,6 +85,7 @@ pub use process_syscall::{
     sys_sigaction,
     sys_sigprocmask,
     sys_kill,
+    sys_mprotect
 };
 pub use trivial_syscall::{
     sys_time, 
@@ -100,56 +99,81 @@ pub use trivial_syscall::{
     sys_getegid,
 };
 
-use crate::memory::VirtAddr;
-
 use self::{fs_syscall::{sys_fstat, sys_mkdirat}, process_syscall::sys_set_tid_address};
+
+macro_rules! CALL_SYSCALL {
+    ( $syscall_name: expr ) => {
+        {
+            debug!("/========== SYSCALL {} CALLED BY {} ==========\\", stringify!($syscall_name), $crate::process::current_process().unwrap().pid.0);
+            let ret = $syscall_name();
+            debug!("\\= SYSCALL {} CALLED BY {} RESULT {:<10} =/", stringify!($syscall_name), $crate::process::current_process().unwrap().pid.0, ret);
+            ret
+        }
+    };
+    ( $syscall_name: expr, $($y:expr),+ ) => {
+        {
+            debug!("/========== SYSCALL {} CALLED BY {} ==========\\", stringify!($syscall_name), $crate::process::current_process().unwrap().pid.0);
+            $(
+                verbose!("{:>25} = {:?}", stringify!{$y}, $y);
+            )+
+            let ret: isize = $syscall_name($($y),+);
+            debug!("\\= SYSCALL {} CALLED BY {} RESULT {:<10} =/", stringify!($syscall_name), $crate::process::current_process().unwrap().pid.0, ret);
+            ret
+        }
+    };
+}
 
 /// Handle and dispatch the syscalls to corresponding module.
 pub fn syscall(syscall_id: usize, args: [usize; 6]) -> isize {
     // verbose!("syscall {} received!", syscall_id);
-    match syscall_id {
-        SYSCALL_READ            => sys_read(args[0], args[1].into(), args[2]),
-        SYSCALL_WRITE           => sys_write(args[0], VirtAddr(args[1]), args[2]),
+    let res = match syscall_id {
+        SYSCALL_READ            => {CALL_SYSCALL!(sys_read, args[0], VirtAddr::from(args[1]), args[2])},
+        SYSCALL_WRITE           => {CALL_SYSCALL!(sys_write, args[0], VirtAddr::from(args[1]), args[2])},
+        // exit is unreachable
+        // SYSCALL_EXIT            => {CALL_SYSCALL!(sys_exit, args[0] as i32)},
         SYSCALL_EXIT            => sys_exit(args[0] as i32),
-        SYSCALL_SCHED_YIELD     => sys_yield(),
-        SYSCALL_CLONE           => sys_clone(CloneFlags::from_bits_truncate(args[0] as u64), args[1], args[2].into(), args[3], args[4].into()),
-        SYSCALL_EXEC            => sys_exec(args[0].into(), args[1].into(), args[2].into()),
-        SYSCALL_WAITPID         => sys_waitpid(args[0] as isize, args[1].into(), args[2] as isize),
-        SYSCALL_GETPID          => sys_getpid(),
-        SYSCALL_GETPPID         => sys_getppid(),
-        SYSCALL_GETCWD          => sys_getcwd(args[0].into(), args[1]),
-        SYSCALL_TIMES           => sys_time(VirtAddr(args[0])),
-        SYSCALL_GETTIMEOFDAY    => sys_gettimeofday(args[0].into()),
-        SYSCALL_UNAME           => sys_uname(VirtAddr(args[0])),
-        SYSCALL_PIPE            => sys_pipe(VirtAddr(args[0])),
-        SYSCALL_DUP             => sys_dup(args[0]),
-        SYSCALL_DUP3            => sys_dup3(args[0], args[1], args[2]),
-        SYSCALL_OPENAT          => sys_openat(args[0] as i32, args[1].into(), args[2] as u32, args[3] as u32),
-        SYSCALL_CLOSE           => sys_close(args[0]),
-        SYSCALL_CHDIR           => sys_chdir(args[0].into()),
-        SYSCALL_GETDENTS64      => sys_getdents64(args[0], args[1].into(), args[2]),
-        SYSCALL_NANOSLEEP       => sys_nanosleep(args[0].into(), args[1].into()),
-        SYSCALL_BRK             => sys_brk(args[0]),
-        SYSCALL_MMAP            => sys_mmap(args[0].into(), args[1], args[2] as u8, args[3], args[4], args[5]), 
-        SYSCALL_UNLINKAT        => sys_unlink(args[0] as i32, args[1].into(), args[2].into()),
-        SYSCALL_MKDIRAT         => sys_mkdirat(args[0], args[1].into(), args[2]),
-        SYSCALL_FSTAT           => sys_fstat(args[0], args[1].into()),
-        SYSCALL_MUNMAP          => sys_munmap(args[0].into(), args[1]),
-        SYSCALL_READV           => sys_readv(args[0], args[1].into(), args[2]),
-        SYSCALL_WRITEV          => sys_writev(args[0], args[1].into(), args[2]),
-        SYSCALL_SYSINFO         => sys_info(VirtAddr(args[0])),
-        SYSCALL_SET_TID_ADDRESS => sys_set_tid_address(args[0].into()),
-        SYSCALL_GETUID          => sys_getuid(),
-        SYSCALL_GETEUID         => sys_geteuid(),
-        SYSCALL_GETGID          => sys_getgid(),
-        SYSCALL_GETEGID         => sys_getegid(),
-        SYSCALL_SIGRETURN       => sys_sigreturn(),
-        SYSCALL_SIGACTION       => sys_sigaction(args[0], args[1].into(), args[2].into()),
-        SYSCALL_SIGPROCMASK     => sys_sigprocmask(args[0] as isize, args[1].into(), args[2].into()),
-        SYSCALL_KILL            => sys_kill(args[0] as isize, args[1]),
+        SYSCALL_SCHED_YIELD     => {CALL_SYSCALL!(sys_yield)},
+        SYSCALL_CLONE           => {CALL_SYSCALL!(sys_clone, CloneFlags::from_bits_truncate(args[0]), args[1], VirtAddr::from(args[2]), args[3], VirtAddr::from(args[4]))},
+        SYSCALL_EXECVE          => {CALL_SYSCALL!(sys_exec, VirtAddr::from(args[0]), VirtAddr::from(args[1]), VirtAddr::from(args[2]))},
+        SYSCALL_WAITPID         => {CALL_SYSCALL!(sys_waitpid, args[0] as isize, VirtAddr::from(args[1]), args[2] as isize)},
+        SYSCALL_GETPID          => {CALL_SYSCALL!(sys_getpid)},
+        SYSCALL_GETPPID         => {CALL_SYSCALL!(sys_getppid)},
+        SYSCALL_GETCWD          => {CALL_SYSCALL!(sys_getcwd, VirtAddr::from(args[0]), args[1])},
+        SYSCALL_TIMES           => {CALL_SYSCALL!(sys_time, VirtAddr::from(args[0]))},
+        SYSCALL_GETTIMEOFDAY    => {CALL_SYSCALL!(sys_gettimeofday, VirtAddr::from(args[0]))},
+        SYSCALL_UNAME           => {CALL_SYSCALL!(sys_uname, VirtAddr::from(args[0]))},
+        SYSCALL_PIPE            => {CALL_SYSCALL!(sys_pipe, VirtAddr::from(args[0]))},
+        SYSCALL_DUP             => {CALL_SYSCALL!(sys_dup, args[0])},
+        SYSCALL_DUP3            => {CALL_SYSCALL!(sys_dup3, args[0], args[1], args[2])},
+        SYSCALL_OPENAT          => {CALL_SYSCALL!(sys_openat, args[0] as i32, VirtAddr::from(args[1]), args[2] as u32, args[3] as u32)},
+        SYSCALL_CLOSE           => {CALL_SYSCALL!(sys_close, args[0])},
+        SYSCALL_CHDIR           => {CALL_SYSCALL!(sys_chdir, VirtAddr::from(args[0]))},
+        SYSCALL_GETDENTS64      => {CALL_SYSCALL!(sys_getdents64, args[0], VirtAddr::from(args[1]), args[2])},
+        SYSCALL_NANOSLEEP       => {CALL_SYSCALL!(sys_nanosleep, VirtAddr::from(args[0]), VirtAddr::from(args[1]))},
+        SYSCALL_BRK             => {CALL_SYSCALL!(sys_brk, args[0])},
+        SYSCALL_MMAP            => {CALL_SYSCALL!(sys_mmap, VirtAddr::from(args[0]), args[1], args[2] as u8, args[3], args[4], args[5])},
+        SYSCALL_UNLINKAT        => {CALL_SYSCALL!(sys_unlink, args[0] as i32, VirtAddr::from(args[1]), args[2])},
+        SYSCALL_MKDIRAT         => {CALL_SYSCALL!(sys_mkdirat, args[0], VirtAddr::from(args[1]), args[2])},
+        SYSCALL_FSTAT           => {CALL_SYSCALL!(sys_fstat, args[0], VirtAddr::from(args[1]))},
+        SYSCALL_MUNMAP          => {CALL_SYSCALL!(sys_munmap, VirtAddr::from(args[0]), args[1])},
+        SYSCALL_READV           => {CALL_SYSCALL!(sys_readv, args[0], VirtAddr::from(args[1]), args[2])},
+        SYSCALL_WRITEV          => {CALL_SYSCALL!(sys_writev, args[0], VirtAddr::from(args[1]), args[2])},
+        SYSCALL_SYSINFO         => {CALL_SYSCALL!(sys_info, VirtAddr::from(args[0]))},
+        SYSCALL_SET_TID_ADDRESS => {CALL_SYSCALL!(sys_set_tid_address, VirtAddr::from(args[0]))},
+        SYSCALL_GETUID          => {CALL_SYSCALL!(sys_getuid)},
+        SYSCALL_GETEUID         => {CALL_SYSCALL!(sys_geteuid)},
+        SYSCALL_GETGID          => {CALL_SYSCALL!(sys_getgid)},
+        SYSCALL_GETEGID         => {CALL_SYSCALL!(sys_getegid)},
+        SYSCALL_SIGRETURN       => {CALL_SYSCALL!(sys_sigreturn)},
+        SYSCALL_SIGACTION       => {CALL_SYSCALL!(sys_sigaction, args[0], VirtAddr::from(args[1]), VirtAddr::from(args[2]))},
+        SYSCALL_SIGPROCMASK     => {CALL_SYSCALL!(sys_sigprocmask, args[0] as isize, VirtAddr::from(args[1]), VirtAddr::from(args[2]))},
+        SYSCALL_KILL            => {CALL_SYSCALL!(sys_kill, args[0] as isize, args[1])},
+        SYSCALL_MPROTECT        => {CALL_SYSCALL!(sys_mprotect, VirtAddr::from(args[0]), args[1], args[2])},
         _ => {
             fatal!("Unsupported syscall_id: {}", syscall_id);
             -1
         },
-    }
+    };
+
+    res
 }

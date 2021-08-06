@@ -39,7 +39,7 @@ pub struct VirtPageNum(pub usize);
 
 impl Debug for VirtAddr {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_fmt(format_args!(" VA: {:#x}", self.0))
+        f.write_fmt(format_args!("VA : {:#x}", self.0))
     }
 }
 impl Debug for VirtPageNum {
@@ -49,7 +49,7 @@ impl Debug for VirtPageNum {
 }
 impl Debug for PhysAddr {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_fmt(format_args!(" PA: {:#x}", self.0))
+        f.write_fmt(format_args!("PA : {:#x}", self.0))
     }
 }
 impl Debug for PhysPageNum {

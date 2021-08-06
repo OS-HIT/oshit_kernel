@@ -53,6 +53,7 @@ bitflags! {
 
 #[repr(usize)]
 #[derive(Clone, Copy)]
+#[allow(non_camel_case_types)]
 pub enum AuxType {
     NULL            = 0x00 ,       /* end of vector */
     IGNORE          = 0x01 ,       /* entry should be ignored */
@@ -128,9 +129,8 @@ pub enum ProcessStatus {
     Zombie
 }
 
-
 bitflags! {
-    pub struct CloneFlags: u64 {
+    pub struct CloneFlags: usize {
         const VM                = 0x00000100;	/* set if VM shared between processes */
         const FS                = 0x00000200;	/* set if fs info shared between processes */
         const FILES             = 0x00000400;	/* set if open files shared between processes */
@@ -639,9 +639,9 @@ impl ProcessControlBlock {
         verbose!("envp_base : {:x}", envp_base );
         verbose!("auxv_base : {:x}", auxv_base );
 
-        for i in 0..100 {
-            verbose!("Stack +  {:2} ({:x}): {:16x}", i, user_stack_top + i*size_of::<usize>(), layout.read_user_data::<usize>((user_stack_top + i*size_of::<usize>()).into()));
-        }
+        // for i in 0..100 {
+        //     verbose!("Stack +  {:2} ({:x}): {:16x}", i, user_stack_top + i*size_of::<usize>(), layout.read_user_data::<usize>((user_stack_top + i*size_of::<usize>()).into()));
+        // }
 
         let mut locked_inner = self.get_inner_locked();
         locked_inner.layout = layout;     // original layout dropped, thus freed.

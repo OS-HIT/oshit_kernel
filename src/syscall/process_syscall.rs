@@ -5,7 +5,7 @@ use core::slice::{from_raw_parts, from_raw_parts_mut};
 use crate::config::PAGE_SIZE;
 use crate::process::{CloneFlags, PROCESS_MANAGER, current_path, current_process, enqueue, exit_switch, get_proc_by_pid, suspend_switch};
 
-use crate::memory::{PhysAddr, Segment, VMAFlags, VirtAddr, alloc_continuous, get_user_cstr, SegmentFlags};
+use crate::memory::{PhysAddr, Segment, VMAFlags, VirtAddr, alloc_continuous, get_user_cstr, SegmentFlags, PTEFlags};
 
 use crate::process::{
     current_satp,
@@ -401,7 +401,37 @@ pub fn sys_sigreturn() -> isize {
     0
 }
 
-pub fn sys_mprotect(addr: VirtAddr, len: usize, prot: isize) -> isize {
-    // TODO
-    return 0;
+pub const PROT_READ		    :usize = 0x1		;/* page can be read */
+pub const PROT_WRITE	    :usize = 0x2		;/* page can be written */
+pub const PROT_EXEC		    :usize = 0x4		;/* page can be executed */
+pub const PROT_SEM		    :usize = 0x8		;/* page may be used for atomic ops */
+pub const PROT_NONE		    :usize = 0x0		;/* page can not be accessed */
+pub const PROT_GROWSDOWN    :usize = 0x01000000	;/* mprotect flag: extend change to start of growsdown vma */
+pub const PROT_GROWSUP	    :usize = 0x02000000	;/* mprotect flag: extend change to end of growsup vma */
+
+pub fn sys_mprotect(addr: VirtAddr, len: usize, prot: usize) -> isize {
+    let proc = current_process().unwrap();
+    let mut locked_inner = proc.get_inner_locked();
+    let mut flags = PTEFlags::empty();
+    if prot & PROT_NONE == 0 {
+        flags |= PTEFlags::U;
+    }
+    if prot & PROT_READ != 0 {
+        flags |= PTEFlags::R;
+    }
+    if prot & PROT_WRITE != 0 {
+        flags |= PTEFlags::W;
+    }
+    if prot & PROT_EXEC != 0 {
+        flags |= PTEFlags::X;
+    }
+    let grow_up = prot & PROT_GROWSUP != 0;
+    let grow_down = prot & PROT_GROWSDOWN != 0;
+    match locked_inner.layout.modify_access(addr.into(), len, flags, grow_up, grow_down) {
+        Some(_) => 0,
+        None => {
+            locked_inner.recv_signal(crate::process::default_handlers::SIGSEGV);
+            -1
+        }
+    }
 }

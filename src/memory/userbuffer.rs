@@ -1,5 +1,5 @@
 //! A helper class, repersenting a chunk of user memory.
-use alloc::{collections::binary_heap::Iter, vec::Vec};
+use alloc::{vec::Vec};
 use core::ops::{Index, IndexMut};
 use core::mem::size_of;
 /// A helper class, repersenting a chunk of user memory.
