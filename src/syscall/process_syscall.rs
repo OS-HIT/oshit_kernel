@@ -380,23 +380,36 @@ pub fn sys_kill(target_pid: isize, signal: usize) -> isize {
 
 // TODO: consider edge cases of act is nullptr
 // TODO: reference to https://elixir.bootlin.com/linux/latest/source/kernel/signal.c#L4015 (do_sigaction), implement reporting unsupport
-pub fn sys_sigaction(signum: usize, act: VirtAddr, oldact: VirtAddr) -> isize {
+pub fn sys_sigaction(signum: usize, act_ptr: VirtAddr, old_act_ptr: VirtAddr) -> isize {
     let proc = current_process().unwrap();
     let mut locked_inner = proc.get_inner_locked();
+
+    if act_ptr.0 != 0 {
+        let new_act: SigAction = locked_inner.layout.read_user_data(act_ptr);
+        let old_act_op = locked_inner.handlers.insert(signum, new_act);
     
-    let new_act: SigAction = locked_inner.layout.read_user_data(act);
-    let old_act_op = locked_inner.handlers.insert(signum, new_act);
-
-    if oldact.0 != 0 {
-        if let Some(mut old_act) = old_act_op {
-            old_act.mask = locked_inner.sig_mask;
-            locked_inner.layout.write_user_data(oldact, &old_act);
-        } else {
-            return -1;
+        if old_act_ptr.0 != 0 {
+            if let Some(mut old_act) = old_act_op {
+                old_act.mask = locked_inner.sig_mask;
+                locked_inner.layout.write_user_data(old_act_ptr, &old_act);
+            } else {
+                return -1;
+            }
         }
+        return 0;
+    } else {
+        let old_act_op = locked_inner.handlers.get_mut(&signum);
+        if old_act_ptr.0 != 0 {
+            if let Some(old_act_orig) = old_act_op {
+                let mut old_act: SigAction = old_act_orig.clone();
+                old_act.mask = locked_inner.sig_mask;
+                locked_inner.layout.write_user_data(old_act_ptr, &old_act);
+            } else {
+                return -1;
+            }
+        }
+        return 0;
     }
-
-    0
 }
 
 pub const SIG_BLOCK     : isize = 0;
@@ -432,11 +445,17 @@ pub fn sys_sigprocmask(how: isize, oldmask: VirtAddr, newmask: VirtAddr) -> isiz
 pub fn sys_sigreturn() -> isize {
     // go check trap.asm -> __restore_to_signal_handler
     let proc = current_process().unwrap();
-    let locked_inner = proc.get_inner_locked();
-    // reg2 (x2) is sp
-    let old_trap_context: TrapContext = locked_inner.layout.read_user_data((locked_inner.get_trap_context().regs[2] - size_of::<TrapContext>()).into());
-    locked_inner.write_trap_context(&old_trap_context);
-    0
+    let mut locked_inner = proc.get_inner_locked();
+    if let Some(last_signal) = locked_inner.last_signal {
+        // reg2 (x2) is sp
+        let old_trap_context: TrapContext = locked_inner.layout.read_user_data((locked_inner.get_trap_context().regs[2] - size_of::<TrapContext>()).into());
+        locked_inner.write_trap_context(&old_trap_context);
+        locked_inner.sig_mask &= !(1u64 << last_signal);
+        locked_inner.last_signal = None;
+        0
+    } else {
+        -1
+    }
 }
 
 pub fn sys_mprotect(addr: VirtAddr, len: usize, prot: usize) -> isize {

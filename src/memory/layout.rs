@@ -909,6 +909,7 @@ impl MemLayout {
     /// # Return
     /// The userbuffer of corresponding area
     pub fn get_user_buffer(&self, start: VirtAddr, len: usize) -> UserBuffer {
+        verbose!("Constructing user buffer @ {:?}, len {}", start, len);
         return UserBuffer::new(self.get_user_data(start, len));
     }
 

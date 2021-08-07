@@ -211,9 +211,11 @@ pub struct ProcessControlBlockInner {
     /// pending signals
     pub pending_sig: VecDeque<usize>,
     /// signal handlers
+    /// FIXME: THE SigAction mask HAS NO USE. USE ONLY THE pcb's sig_mask!!!
     pub handlers: BTreeMap<usize, SigAction>,
     /// signal masks
-    pub sig_mask: u64
+    pub sig_mask: u64,
+    pub last_signal: Option<usize>
 }
 
 impl ProcessControlBlockInner {
@@ -360,7 +362,8 @@ impl ProcessControlBlock {
                 exit_code: 0,
                 pending_sig: VecDeque::new(),
                 handlers: default_sig_handlers(),
-                sig_mask: 0
+                sig_mask: 0,
+                last_signal: None
             }),
         };
         let trap_context = pcb.get_inner_locked().get_trap_context();
@@ -418,7 +421,8 @@ impl ProcessControlBlock {
                 exit_code: 0,
                 pending_sig: parent_arcpcb.pending_sig.clone(),
                 handlers: parent_arcpcb.handlers.clone(),
-                sig_mask: 0
+                sig_mask: 0,
+                last_signal: None
             }),
         });
 

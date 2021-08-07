@@ -181,11 +181,18 @@ pub fn trap_return() -> ! {
     let mut to_process: Option<(usize, usize)> = None;
 
     for sig in arcpcb.pending_sig.iter().enumerate() {
-        if 1u64 << sig.1 & &arcpcb.handlers[sig.1].mask != 0 {
+        if 1u64 << sig.1 & &arcpcb.sig_mask != 0 {
             to_process = Some((sig.0, *sig.1));
             break;
         }
     }
+
+    let mut restore_vec = 0;
+    let mut arg0 = 0;
+    let mut arg1 = 0;
+    let mut arg2 = 0;
+    let mut arg3 = 0;
+    let mut arg4 = 0;
 
     if let Some((idx, signal)) = to_process {
         let trap_cx_ptr = TRAP_CONTEXT;
@@ -234,25 +241,19 @@ pub fn trap_return() -> ! {
         }
         
         // mask itself
-        (arcpcb.handlers.get_mut(&signal).unwrap().mask) &= 1u64 << signal;
+        arcpcb.sig_mask |= 1u64 << signal;
+        arcpcb.last_signal = Some(signal);
 
         drop(arcpcb);
         drop(current);
         drop(to_process);
-        
-        unsafe {
-            llvm_asm!("fence.i" :::: "volatile");
-            llvm_asm!(
-                "jr $0" :: 
-                "r"(restore_to_signal_handler_va), 
-                "{a0}"(trap_cx_ptr), 
-                "{a1}"(user_satp), 
-                "{a2}"(handler_va),
-                "{a3}"(signal),
-                "{a4}"(__siginfo as usize) :: 
-                "volatile"
-            );  
-        }
+
+        restore_vec = restore_to_signal_handler_va;
+        arg0 = trap_cx_ptr;
+        arg1 = user_satp;
+        arg2 = handler_va;
+        arg3 = signal;
+        arg4 = __siginfo as usize;
     } else {
         drop(arcpcb);
         drop(current);
@@ -264,12 +265,25 @@ pub fn trap_return() -> ! {
             fn strampoline();
             fn __restore();
         }
-        let restore_va = __restore as usize - strampoline as usize + TRAMPOLINE;
 
-        unsafe {
-            llvm_asm!("fence.i" :::: "volatile");
-            llvm_asm!("jr $0" :: "r"(restore_va), "{a0}"(trap_cx_ptr), "{a1}"(user_satp) :: "volatile");
-        }
+        restore_vec = __restore as usize - strampoline as usize + TRAMPOLINE;
+        arg0 = trap_cx_ptr;
+        arg1 = user_satp;
     }
+    
+    unsafe {
+        llvm_asm!("fence.i" :::: "volatile");
+        llvm_asm!(
+            "jr $0" :: 
+            "r"(restore_vec), 
+            "{a0}"(arg0), 
+            "{a1}"(arg1), 
+            "{a2}"(arg2),
+            "{a3}"(arg3),
+            "{a4}"(arg4) :: 
+            "volatile"
+        );  
+    }
+
     unreachable!("Unreachable in trap_return!");
 }
