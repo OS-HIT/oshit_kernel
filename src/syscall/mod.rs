@@ -22,6 +22,7 @@ pub const SYSCALL_READ              : usize = 63;
 pub const SYSCALL_WRITE             : usize = 64;
 pub const SYSCALL_READV             : usize = 65;
 pub const SYSCALL_WRITEV            : usize = 66;
+pub const SYSCALL_FSTATAT           : usize = 79;
 pub const SYSCALL_FSTAT             : usize = 80;
 pub const SYSCALL_EXIT              : usize = 93;
 pub const SYSCALL_SET_TID_ADDRESS   : usize = 96;
@@ -99,7 +100,12 @@ pub use trivial_syscall::{
     sys_getegid,
 };
 
-use self::{fs_syscall::{sys_fstat, sys_mkdirat}, process_syscall::sys_set_tid_address};
+use fs_syscall::{
+        sys_fstat, 
+        sys_fstatat,
+        sys_mkdirat,
+    };
+use process_syscall::sys_set_tid_address;
 
 macro_rules! CALL_SYSCALL {
     ( $syscall_name: expr ) => {
@@ -154,6 +160,7 @@ pub fn syscall(syscall_id: usize, args: [usize; 6]) -> isize {
         SYSCALL_MMAP            => {CALL_SYSCALL!(sys_mmap, VirtAddr::from(args[0]), args[1], args[2], args[3], args[4], args[5])},
         SYSCALL_UNLINKAT        => {CALL_SYSCALL!(sys_unlink, args[0] as i32, VirtAddr::from(args[1]), args[2])},
         SYSCALL_MKDIRAT         => {CALL_SYSCALL!(sys_mkdirat, args[0], VirtAddr::from(args[1]), args[2])},
+        SYSCALL_FSTATAT         => {CALL_SYSCALL!(sys_fstatat, args[0], VirtAddr::from(args[1]), VirtAddr::from(args[2]), args[3])},
         SYSCALL_FSTAT           => {CALL_SYSCALL!(sys_fstat, args[0], VirtAddr::from(args[1]))},
         SYSCALL_MUNMAP          => {CALL_SYSCALL!(sys_munmap, VirtAddr::from(args[0]), args[1])},
         SYSCALL_READV           => {CALL_SYSCALL!(sys_readv, args[0], VirtAddr::from(args[1]), args[2])},

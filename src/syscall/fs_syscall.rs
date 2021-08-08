@@ -8,6 +8,7 @@ use alloc::string::ToString;
 // use alloc::vec::Vec;
 use alloc::sync::Arc;
 use core::{convert::TryInto, mem::size_of};
+use bitflags::*;
 
 /// The special "file descriptor" indicating that the path is relative path to process's current working directory. 
 pub const AT_FDCWD: i32 =  -100;
@@ -498,38 +499,211 @@ pub struct FStat {
     pub __unused: [u8; 2],
 }
 
-pub fn sys_fstat(fd: usize, ptr: VirtAddr) -> isize {
+
+use crate::fs::FileStatus;
+
+fn getFStat(file: &Arc<dyn File>) -> Result<FStat, &'static str> {
+    let f_stat = file.poll();
+    return Ok(FStat {
+        st_dev: f_stat.dev_no,
+        st_ino: f_stat.inode,
+        st_mode: f_stat.mode,
+        st_nlink: 1,
+        st_uid: f_stat.uid,
+        st_gid: f_stat.gid,
+        st_rdev: 0,
+        __pad: 0,
+        st_size: f_stat.size as u32,
+        st_blksize: f_stat.block_sz,
+        __pad2: 0,
+        st_blocks: f_stat.blocks,
+        st_atime_sec:   f_stat.atime_sec,
+        st_atime_nsec:  f_stat.atime_nsec,
+        st_mtime_sec:   f_stat.mtime_sec,
+        st_mtime_nsec:  f_stat.mtime_nsec,
+        st_ctime_sec:   f_stat.ctime_sec,
+        st_ctime_nsec:  f_stat.ctime_nsec,
+        __unused: [0u8; 2],
+    })
+}
+
+bitflags! {
+    pub struct AtFlags: usize{
+        const AT_SYMLINK_NOFOLLOW   = 0x100;
+        const AT_REMOVEDIR          = 0x200;
+        const AT_SYMLINK_FOLLOW     = 0x400;
+        const AT_NO_AUTOMOUNT       = 0x800;
+        const AT_EMPTY_PATH         = 0x1000;
+    }
+}
+
+fn getFileFd(dirfd: usize) -> Result<Arc<dyn File>, &'static str> {
     let proc = current_process().unwrap();
     let arcpcb = proc.get_inner_locked();
-    if let Some(op_file) = arcpcb.files.get(fd) {
-        if let Some(file) = op_file.clone() {
-            if let Some(fs_file) = file.to_common_file() {
-                let f_stat = fs_file.poll();
-                let stat = FStat {
-                    st_dev: f_stat.dev_no,
-                    st_ino: f_stat.inode,
-                    st_mode: f_stat.mode,
-                    st_nlink: 1,
-                    st_uid: f_stat.uid,
-                    st_gid: f_stat.gid,
-                    st_rdev: 0,
-                    __pad: 0,
-                    st_size: f_stat.size as u32,
-                    st_blksize: f_stat.block_sz,
-                    __pad2: 0,
-                    st_blocks: f_stat.blocks,
-                    st_atime_sec:   f_stat.atime_sec,
-                    st_atime_nsec:  f_stat.atime_nsec,
-                    st_mtime_sec:   f_stat.mtime_sec,
-                    st_mtime_nsec:  f_stat.mtime_nsec,
-                    st_ctime_sec:   f_stat.ctime_sec,
-                    st_ctime_nsec:  f_stat.ctime_nsec,
-                    __unused: [0u8; 2],
-                };
-                arcpcb.layout.write_user_data(ptr, &stat);
-                return 0; 
-            }
+    if dirfd == AT_FDCWD as usize {
+        // debug!("fd == current dir");
+        // debug!("path: {}", arcpcb.path);
+        return open(arcpcb.path.clone(), OpenMode::empty());
+    } else {
+        if dirfd > arcpcb.files.len() {
+            return Err("fd not in use");
+        } 
+        if let Some(file) = &arcpcb.files[dirfd] {
+            return Ok(file.clone());
+        } else {
+            return Err("fd not in use");
         }
     }
-    -1
 }
+
+use crate::fs::parse_path;
+use crate::fs::to_string;
+use alloc::string::String;
+
+fn getFile(dirfd: usize, path: &str, mode: OpenMode) -> Result<Arc<dyn File>, &'static str> {
+    let path = match parse_path(path) {
+        Ok(path) => {
+            if !path.is_abs && path.path.len() == 0 {
+                String::new()
+            } else {
+                path.to_string()
+            }
+        }
+        Err(err) => return Err(to_string(err)),
+    };
+    if path.len() == 0 {
+        return getFileFd(dirfd);
+    } else if path.chars().nth(0).unwrap() != '/' {
+        match getFileFd(dirfd) {
+            Ok(file) => {
+                if let Some(dir) = file.to_dir_file() {
+                    return dir.open(path.to_string(), mode);
+                } else {
+                    return Err("fd not a dir");
+                }
+            },
+            Err(msg) => return Err(msg),
+        }
+    } else {
+        return open(path.to_string(), mode);
+    }
+}
+
+fn fstatat(fd: usize, path: &str, ptr: VirtAddr, flags: AtFlags) -> Result<(), &'static str> {
+    if path.len() == 0 && !flags.contains(AtFlags::AT_EMPTY_PATH) {
+        return Err("empty path without AT_EMPTY_PATH");
+    }
+    let mode = if flags.contains(AtFlags::AT_SYMLINK_NOFOLLOW) {
+        OpenMode::NO_FOLLOW
+    } else {
+        OpenMode::empty()
+    };
+
+    match getFile(fd, path, mode) {
+        Ok(file) => {
+            match getFStat(&file) {
+                Ok(stat) => {
+                    current_process().unwrap()
+                        .get_inner_locked()
+                        .layout.write_user_data(ptr, &stat);
+                    return Ok(());
+                },
+                Err(msg) => return Err(msg),
+            }
+        },
+        Err(msg) => return Err(msg),
+    }
+}
+
+pub fn sys_fstat(fd: usize, ptr: VirtAddr) -> isize {
+    match fstatat(fd, &"", ptr, AtFlags::AT_EMPTY_PATH) {
+        Ok(()) => return 0,
+        Err(msg) => {
+            debug!("sys_fstat: {}", msg);
+            return -1;
+        }
+    }
+}
+
+
+pub fn sys_fstatat(dirfd: usize, path: VirtAddr, ptr: VirtAddr, flags:usize) -> isize{
+    let buf = current_process().unwrap().get_inner_locked().layout.get_user_cstr(path);
+    let path = match core::str::from_utf8(&buf) {
+        Ok(path) => path,
+        Err(_) => {
+            debug!("sys_fstatat: invalid path string");
+            return -1;
+        }
+    };
+    let flags = match AtFlags::from_bits(flags) {
+        Some(flags) => flags,
+        None => {
+            debug!("sys_fstatat: invalid flags");
+            return -1;
+        },
+    };
+    debug!("dirfd: {}", dirfd as isize);
+    debug!("path: {}", path);
+    match fstatat(dirfd, path, ptr, flags) {
+        Ok(()) => return 0,
+        Err(msg) => {
+            debug!("sys_fstatat: {}", msg);
+            return -1;
+        }
+    }
+}
+//     let proc = current_process().unwrap();
+//     let arcpcb = proc.get_inner_locked();
+//     let buf = arcpcb.layout.get_user_cstr(path);
+//     if let Ok(path) = core::str::from_utf8(&buf) {
+//         if let Some(dir) = arcpcb.files.get(fd) {
+//             if let Some(dir2) = dir.clone() {
+//                 let flags = AtFlags::from_bits();
+//                 if path.len() == 0 {
+//                     if flags.contains(AtFlags::AT_EMPTY_PATH) {
+//                         if let Some(file) = dir2.to_common_file() {
+//                             let f_stat = fs_file.poll();
+//                             let stat = FStat {
+//                                 st_dev: f_stat.dev_no,
+//                                 st_ino: f_stat.inode,
+//                                 st_mode: f_stat.mode,
+//                                 st_nlink: 1,
+//                                 st_uid: f_stat.uid,
+//                                 st_gid: f_stat.gid,
+//                                 st_rdev: 0,
+//                                 __pad: 0,
+//                                 st_size: f_stat.size as u32,
+//                                 st_blksize: f_stat.block_sz,
+//                                 __pad2: 0,
+//                                 st_blocks: f_stat.blocks,
+//                                 st_atime_sec:   f_stat.atime_sec,
+//                                 st_atime_nsec:  f_stat.atime_nsec,
+//                                 st_mtime_sec:   f_stat.mtime_sec,
+//                                 st_mtime_nsec:  f_stat.mtime_nsec,
+//                                 st_ctime_sec:   f_stat.ctime_sec,
+//                                 st_ctime_nsec:  f_stat.ctime_nsec,
+//                                 __unused: [0u8; 2],
+//                             };
+//                             arcpcb.layout.write_user_data(ptr, &stat);
+//                             return 0; 
+//                         } else {
+//                             debug!("sys_fstatat: Not common file");
+//                             return -1;
+//                         }
+//                     } else {
+//                         debug!("sys_fstatat: Empty path without AT_EMPTY_PATH");
+//                         return -1;
+//                     }
+//                 }
+//             } else {
+//                 debug!("sys_fstatat: clone failed");
+//             }
+//         } else {
+//             debug!("sys_fstatat: fd {} not in use", dirfd);
+//             return -1;
+//         }
+//     } else {
+//         debug!("sys_fstatat: invalid path string");
+//         return -1;
+//     }
+// }

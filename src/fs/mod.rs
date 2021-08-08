@@ -6,7 +6,12 @@ mod mount_manager;
 pub mod fs_impl;
 mod block_cache;
 
-pub use file::{File, SeekOp};
+pub use file::{
+	File, 
+	SeekOp, 
+	FileStatus,
+};
+
 pub use fs_impl::{
 	OpenMode,
 	CommonFile, 
@@ -17,6 +22,11 @@ pub use fs_impl::{
     FSStatus,
 	SDA_WRAPPER,
 	DEV_FS,
+	path::{
+		parse_path,
+		Path,
+		to_string,
+	},
 };
 
 pub use mount_manager::{
