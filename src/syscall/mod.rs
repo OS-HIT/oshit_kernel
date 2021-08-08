@@ -25,6 +25,7 @@ pub const SYSCALL_WRITEV            : usize = 66;
 pub const SYSCALL_FSTATAT           : usize = 79;
 pub const SYSCALL_FSTAT             : usize = 80;
 pub const SYSCALL_EXIT              : usize = 93;
+pub const SYSCALL_EXIT_GROUP        : usize = 94;
 pub const SYSCALL_SET_TID_ADDRESS   : usize = 96;
 pub const SYSCALL_NANOSLEEP         : usize = 101;
 pub const SYSCALL_SCHED_YIELD       : usize = 124;
@@ -67,9 +68,13 @@ pub use fs_syscall::{
     sys_dup3,
     sys_getdents64,
     sys_unlink,
+    sys_fstatat,
+    sys_fstat, 
+    sys_mkdirat,
 };
 pub use process_syscall::{
     sys_exit, 
+    sys_exit_group,
     sys_yield,
     sys_fork,
     sys_clone,
@@ -100,11 +105,6 @@ pub use trivial_syscall::{
     sys_getegid,
 };
 
-use fs_syscall::{
-        sys_fstat, 
-        sys_fstatat,
-        sys_mkdirat,
-    };
 use process_syscall::sys_set_tid_address;
 
 macro_rules! CALL_SYSCALL {
@@ -138,6 +138,8 @@ pub fn syscall(syscall_id: usize, args: [usize; 6]) -> isize {
         // exit is unreachable
         // SYSCALL_EXIT            => {CALL_SYSCALL!(sys_exit, args[0] as i32)},
         SYSCALL_EXIT            => sys_exit(args[0] as i32),
+        SYSCALL_EXIT_GROUP      => sys_exit_group(args[0] as i32),
+        
         SYSCALL_SCHED_YIELD     => {CALL_SYSCALL!(sys_yield)},
         SYSCALL_CLONE           => {CALL_SYSCALL!(sys_clone, CloneFlags::from_bits_truncate(args[0]), args[1], VirtAddr::from(args[2]), args[3], VirtAddr::from(args[4]))},
         SYSCALL_EXECVE          => {CALL_SYSCALL!(sys_exec, VirtAddr::from(args[0]), VirtAddr::from(args[1]), VirtAddr::from(args[2]))},

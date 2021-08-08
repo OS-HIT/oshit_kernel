@@ -138,6 +138,7 @@ impl Processor {
                 initproc_inner.children.push(child.clone());
             }
         }
+        
         arcpcb.children.clear();
         arcpcb.layout.drop_all();
         arcpcb.utime = arcpcb.utime + get_time() - arcpcb.last_start;

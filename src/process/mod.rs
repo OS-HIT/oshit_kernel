@@ -24,6 +24,7 @@ pub use manager::{
     enqueue,
     dequeue,
     get_proc_by_pid,
+    remove_proc_by_pid,
     PROCESS_MANAGER,
 };
 pub use pid::{
