@@ -1,23 +1,27 @@
-use alloc::sync::Arc;
+use alloc::{boxed::Box, sync::Arc};
 
-use crate::fs::CommonFile;
+use crate::{fs::CommonFile, memory::{UserBuffer, VirtAddr}};
 
 use super::super::super::File;
 
+pub trait SafeToPass : Copy+Clone+Send+Sync {
+    
+}
+
 pub trait DeviceFile : File {
     /// Good old IOCTL, device spcific commands.
-    fn ioctl(&self, op: u64) -> Result<u64, &'static str>;
+    fn ioctl(&self, op: u64, argp: VirtAddr) -> Result<u64, &'static str>;
 
     fn to_char_dev<'a>(self: Arc<Self>) -> Option<Arc<dyn CharDeviceFile + 'a>> where Self: 'a ;
 
     fn to_blk_dev<'a>(self: Arc<Self>) -> Option<Arc<dyn BlockDeviceFile + 'a>> where Self: 'a ;
 }
 
-pub trait CharDeviceFile : DeviceFile {
+pub trait CharDeviceFile: DeviceFile{
     fn flush(&self);
 }
 
-pub trait BlockDeviceFile : DeviceFile {
+pub trait BlockDeviceFile: DeviceFile {
 
     /// Read a block from the block device.
     /// # Description
@@ -59,6 +63,6 @@ pub trait BlockDeviceFile : DeviceFile {
     fn clear_block(&self, block_id: usize);
 }
 
-pub trait NetworkDevice : DeviceFile {
-    // todo
-}
+// pub trait NetworkDevice : DeviceFile {
+//     // todo
+// }

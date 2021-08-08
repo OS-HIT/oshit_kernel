@@ -12,20 +12,21 @@ pub enum SeekOp {
     END,
 }
 
-#[derive(Clone, Copy)]
-#[repr(u8)]
+#[derive(Clone, Copy, Debug)]
+#[repr(u32)]
 pub enum FileType {
-    Unknown=0,
-    FIFO=1,
-    CharDev=2,
-    Directory=4,
-    BlockDev=6,
-    Regular=8,
-    Sock=12,
+    Unknown     = 0o000000,
+    FIFO        = 0o010000,
+    CharDev     = 0o020000,
+    Directory   = 0o040000,
+    BlockDev    = 0o060000,
+    Regular     = 0o100000,
+    Link        = 0o120000,
+    Sock        = 0o140000,
 }
 
 /// File status, indicating readability/writeability/create time/etc
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct FileStatus {
     pub readable: bool,
     pub writeable: bool,

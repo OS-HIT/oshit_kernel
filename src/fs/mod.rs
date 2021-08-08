@@ -10,6 +10,7 @@ pub use file::{
 	File, 
 	SeekOp, 
 	FileStatus,
+	FileType
 };
 
 pub use fs_impl::{

@@ -7,6 +7,7 @@ use alloc::sync::Arc;
 use spin::Mutex;
 use crate::fs::{CommonFile, DirFile};
 use crate::fs::file::{FileStatus, FileType};
+use crate::memory::VirtAddr;
 use crate::sbi::{get_byte, get_byte_non_block_with_echo};
 use crate::sbi::put_byte;
 use core::cell::RefCell;
@@ -157,10 +158,11 @@ impl File for SBITTY {
 }
 
 impl DeviceFile for SBITTY {
-    fn ioctl(&self, op: u64) -> Result<u64, &'static str> {
-        todo!()
+    fn ioctl(&self, op: u64, argp: VirtAddr) -> Result<u64, &'static str> {
+        // todo!()
 		// TODO: Check tty's ioctl
-		
+		error!("tty caught ioctl for op={}, argp={:?}", op, argp);
+        Err("Not yet implemented")
     }
 
     fn to_char_dev<'a>(self: Arc<Self>) -> Option<Arc<dyn CharDeviceFile + 'a>> where Self: 'a  {

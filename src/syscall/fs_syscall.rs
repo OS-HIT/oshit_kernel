@@ -1,12 +1,13 @@
 //! Wrappers of file system related syscalls.
 // use super::super::fs::file::FILE;
 // use crate::fs::block_cache::BLOCK_SZ;
-use crate::fs::{self, File, OpenMode, make_pipe, mkdir, open, remove};
+use crate::fs::{self, File, OpenMode, make_pipe, mkdir, open, remove, FileType};
 use crate::memory::{VirtAddr};
-use crate::process::{current_process};
+use crate::process::{current_process, suspend_switch};
 use alloc::string::ToString;
 // use alloc::vec::Vec;
 use alloc::sync::Arc;
+use alloc::vec::Vec;
 use core::{convert::TryInto, mem::size_of};
 use bitflags::*;
 
@@ -18,8 +19,9 @@ pub fn sys_openat(fd: i32, file_name: VirtAddr, flags: u32, _: u32) -> isize {
     let process = current_process().unwrap();
     let mut arcpcb = process.get_inner_locked();
     let mut buf = arcpcb.layout.get_user_cstr(file_name);
-    if buf[0] == b'.' && buf[1] == b'/' {
-        buf = buf[2..].iter().cloned().collect();
+    buf = buf[..buf.len() - 1].to_vec();
+    if buf.len() > 1 && buf[0] == b'.' && buf[1] == b'/' {
+        buf = buf[2..].to_vec();
     }
     let mut fs_flags = OpenMode::READ;
     if flags & 0x001 != 0 {
@@ -32,14 +34,19 @@ pub fn sys_openat(fd: i32, file_name: VirtAddr, flags: u32, _: u32) -> isize {
         fs_flags |= OpenMode::CREATE;
     }
     verbose!("Openat flag: {:x}", flags);
-    if let Ok(path) = core::str::from_utf8(&buf) {
+    if let Ok(mut path) = core::str::from_utf8(&buf) {
         debug!("Openat path: {}", path);
         if fd == AT_FDCWD {
             verbose!("openat found AT_FDCWD!");
+            if path.starts_with("./") {
+                path = path.get(2..).unwrap();
+            }
+            if path.starts_with(".") {
+                path = path.get(1..).unwrap();
+            }
             let mut whole_path = arcpcb.path.clone();
             whole_path.push_str(path);
             verbose!("Openat path: {} + {}", arcpcb.path.clone(), path);
- 
 
             let res = open(path.to_string(), fs_flags);
             let file = match res {
@@ -335,10 +342,35 @@ pub fn sys_dup3(old_fd: usize, new_fd: usize, _: usize) -> isize {
 #[derive(Copy, Clone, Debug)]
 pub struct dirent {
     d_ino: u64,
-    d_off: i64,
+    d_off: u64,
     d_reclen: u16,
     d_type: u8,
     d_name: [u8; 128],
+}
+
+#[repr(u8)]
+pub enum POSIXDType {
+    UNKNOWN = 0,
+    FIFO    = 1,
+    CHR     = 2,
+    DIR     = 4,
+    BLK     = 6,
+    REG     = 8,
+    LNK     = 10,
+    SOCK    = 12,
+}
+
+fn ftype2posix(ft: FileType) -> POSIXDType {
+    match ft {
+        FileType::Unknown     => POSIXDType::UNKNOWN,
+        FileType::FIFO        => POSIXDType::FIFO   ,
+        FileType::CharDev     => POSIXDType::CHR    ,
+        FileType::Directory   => POSIXDType::DIR    ,
+        FileType::BlockDev    => POSIXDType::BLK    ,
+        FileType::Regular     => POSIXDType::REG    ,
+        FileType::Link        => POSIXDType::LNK    ,
+        FileType::Sock        => POSIXDType::SOCK   ,
+    }
 }
 
 /// Get dirents of a directory.
@@ -359,14 +391,16 @@ pub fn sys_getdents64(fd: usize, buf: VirtAddr, len: usize) -> isize {
                 let mut dirent_item = dirent {
                     // TODO: d_ino
                     d_ino : 0,
-                    d_off : size_of::<dirent> as i64,
+                    d_off : size_of::<dirent>().try_into().unwrap(),
                     d_reclen: f_stat.name.len() as u16,
-                    d_type: f_stat.ftype as u8,
-                    d_name: [0; 128],   // How to do this?
+                    d_name: [0; 128],
+                    d_type: ftype2posix(f_stat.ftype) as u8,
                 };
-                dirent_item.d_name[0..f_stat.name.as_bytes().len()].copy_from_slice(&f_stat.name.as_bytes());
+                verbose!("current file: {:?}", f_stat);
+                let name_bytes = f_stat.name.as_bytes();
+                dirent_item.d_name[0..name_bytes.len()].copy_from_slice(&name_bytes);
                 arcpcb.layout.write_user_data(last_ptr, &dirent_item);
-                last_ptr = buf + size_of::<dirent>();
+                last_ptr = last_ptr + size_of::<dirent>();
             }
             verbose!("Getdents64 returns {}", (last_ptr - buf));
             (last_ptr - buf) as i32 as isize
@@ -477,6 +511,7 @@ pub fn sys_mkdirat(dirfd: usize, path: VirtAddr, _: usize) -> isize {
 }
 
 #[repr(C)]
+#[derive(Debug)]
 pub struct FStat {
     pub st_dev: u64,
     pub st_ino: u64,
@@ -603,6 +638,7 @@ fn fstatat(fd: usize, path: &str, ptr: VirtAddr, flags: AtFlags) -> Result<(), &
         Ok(file) => {
             match getFStat(&file) {
                 Ok(stat) => {
+                    verbose!("Stat: {:?}", stat);
                     current_process().unwrap()
                         .get_inner_locked()
                         .layout.write_user_data(ptr, &stat);
@@ -707,3 +743,186 @@ pub fn sys_fstatat(dirfd: usize, path: VirtAddr, ptr: VirtAddr, flags:usize) -> 
 //         return -1;
 //     }
 // }
+
+pub fn sys_ioctl(fd: usize, request: u64, argp: VirtAddr) -> isize {
+    let proc = current_process().unwrap();
+    let locked_inner = proc.get_inner_locked();
+    if let Some(slot) = locked_inner.files.get(fd) {
+        if let Some(file) = slot {
+            if let Some(dev_file) = file.clone().to_device_file() {
+                drop(locked_inner);
+                match dev_file.ioctl(request, argp) {
+                    Ok(res) => return res as isize,
+                    Err(msg) => {
+                        error!("Failed to ioctl: {}", msg);
+                        return -1;
+                    }
+                }
+            }
+            return -1;
+        }
+        return -1;
+    }
+    return -1;
+}
+
+pub fn read_linux_fstat(file: Arc<dyn File>) -> FStat {
+    let f_stat = file.poll();
+    let mut linux_mode: u32 = 0;
+    linux_mode |= f_stat.ftype as u32;
+    linux_mode |= f_stat.mode;
+    linux_mode |= if f_stat.readable  {0o444} else {0};
+    linux_mode |= if f_stat.writeable {0o222} else {0};
+    linux_mode |= 0o111;
+
+    FStat {
+        st_dev: f_stat.dev_no,
+        st_ino: f_stat.inode,
+        st_mode: linux_mode,
+        st_nlink: 1,
+        st_uid: f_stat.uid,
+        st_gid: f_stat.gid,
+        st_rdev: 0,
+        __pad: 0,
+        st_size: f_stat.size as u32,
+        st_blksize: f_stat.block_sz,
+        __pad2: 0,
+        st_blocks: f_stat.blocks,
+        st_atime_sec:   f_stat.atime_sec,
+        st_atime_nsec:  f_stat.atime_nsec,
+        st_mtime_sec:   f_stat.mtime_sec,
+        st_mtime_nsec:  f_stat.mtime_nsec,
+        st_ctime_sec:   f_stat.ctime_sec,
+        st_ctime_nsec:  f_stat.ctime_nsec,
+        __unused: [0u8; 2],
+    }
+}
+
+pub fn sys_fstatat_new(fd: i32, path: VirtAddr, ptr: VirtAddr, flags:usize) -> isize {
+    let flags = AtFlags::from_bits_truncate(flags);
+    let process = current_process().unwrap();
+    let arcpcb = process.get_inner_locked();
+    let mut buf = arcpcb.layout.get_user_cstr(path);
+    buf = buf[..buf.len() - 1].to_vec(); // remove \0
+    if buf.len() > 1 && buf[0] == b'.' && buf[1] == b'/' {
+        buf = buf[2..].to_vec();
+    }
+    let mut fs_flags = OpenMode::SYS;
+    if flags.contains(AtFlags::AT_SYMLINK_NOFOLLOW) {
+        fs_flags |= OpenMode::NO_FOLLOW;
+    }
+
+    if let Ok(mut path) = core::str::from_utf8(&buf) {
+        if path.starts_with("/") {
+            if let Ok(file) = open(path.to_string(), OpenMode::SYS) {
+                arcpcb.layout.write_user_data(ptr, &(read_linux_fstat(file)));
+                return 0;
+            }
+            return -1;
+        } else if flags.contains(AtFlags::AT_EMPTY_PATH) {
+            if let Some(slot) = arcpcb.files.get(fd as usize) {
+                if let Some(file) = slot {
+                    arcpcb.layout.write_user_data(ptr, &(read_linux_fstat(file.clone())));
+                    return 0;
+                }
+                return -1;
+            }
+            return -1;
+        } else if fd == AT_FDCWD {
+            if path.starts_with("./") {
+                path = path.get(2..).unwrap();
+            }
+            if path.starts_with(".") {
+                path = path.get(1..).unwrap();
+            }
+            let mut whole_path = arcpcb.path.clone();
+            whole_path.push_str(path);
+            verbose!("FSTATAT path: {} + {}", arcpcb.path.clone(), path);
+            let file = open(path.to_string(), fs_flags);
+            let file = match file {
+                Ok(f) => f,
+                Err(e) => {
+                    error!("error: {}", e);
+                    return -1;
+                },
+            };
+            arcpcb.layout.write_user_data(ptr, &(read_linux_fstat(file.clone())));
+            return 0;
+        }
+    }
+
+    return -1;
+}
+
+pub const SEND_FILE_CHUNK_SZ: usize = 4096;
+
+fn sys_sendfile_wrapper(write_fd: usize, read_fd: usize, offset_ptr: VirtAddr, mut count: usize) -> Result<usize, &'static str> {
+    let proc = current_process().unwrap();
+    let locked_inner = proc.get_inner_locked();
+
+    let mut result: usize = 0;
+    let write_file = locked_inner.files.get(write_fd).ok_or("No such fd")?.clone().ok_or("No such fd")?;
+    let read_file = locked_inner.files.get(read_fd).ok_or("No such fd")?.clone().ok_or("No such fd")?;
+
+    if offset_ptr.0 != 0 {
+        let offset: u32 = locked_inner.layout.read_user_data(offset_ptr);
+        read_file.seek(offset as isize, fs::SeekOp::SET)?;
+    }
+
+    drop(locked_inner);
+    drop(proc);
+
+    verbose!("Sending from {} to {}, initial offset @ {}", read_file.poll().name, write_file.poll().name, read_file.get_cursor()?);
+
+    count = _core::cmp::min(read_file.poll().size as usize - read_file.get_cursor()? as usize, count);
+
+    while count > 0 {
+        let mut move_sz = _core::cmp::min(count, SEND_FILE_CHUNK_SZ);
+        let mut buf: Vec<u8> = Vec::with_capacity(move_sz);
+        buf.resize(move_sz, 0);
+        verbose!("Trying to send {} bytes", move_sz);
+        loop {
+            move_sz = read_file.read(&mut buf)?;
+            if move_sz != 0 {
+                break;
+            } else {
+                suspend_switch();
+            }
+        }
+        buf = buf[..move_sz].to_vec();
+        let mut write_sz_left = move_sz;
+        while write_sz_left > 0 {
+            let write_sz = write_file.write(&mut buf)?;
+            buf = buf[..write_sz].to_vec();
+            write_sz_left -= write_sz;
+        }
+        count -= move_sz;
+        result += move_sz;
+        verbose!("Sended {} bytes, {} remaining", move_sz, count);
+    }
+
+    let proc = current_process().unwrap();
+    let locked_inner = proc.get_inner_locked();
+    
+    if offset_ptr.0 != 0 {
+        let final_offset = read_file.get_cursor()? as i32;
+        locked_inner.layout.write_user_data(offset_ptr, &final_offset);
+    }
+
+    Ok(result)
+}
+
+pub fn sys_sendfile(out_fd: usize, in_fd: usize, offset_ptr: VirtAddr, count: usize) -> isize {
+    match sys_sendfile_wrapper(out_fd, in_fd, offset_ptr, count) {
+        Ok(res) => res as isize,
+        Err(msg) => {
+            error!("Send file failed: {}", msg);
+            -1
+        }
+    }
+}
+
+// TODO: implement this.
+pub fn sys_ppoll() -> isize {
+    0
+}

@@ -1,6 +1,7 @@
 use core::cmp::Ordering;
 
 use super::super::VirtualFileSystem;
+use alloc::borrow::ToOwned;
 use alloc::{collections::BTreeMap, string::ToString};
 use alloc::string::String;
 use spin::{Mutex, MutexGuard};
@@ -110,7 +111,10 @@ impl MountManagerInner {
             }
         });
         let longest_match = longest_match.ok_or("No VFS mounted!")?;
-        let sub_path = total_path[longest_match.0.len()..].to_string();
+        let mut sub_path = total_path[longest_match.0.len()..].to_string();
+        if !sub_path.starts_with("/") {
+            sub_path = "/".to_owned() + sub_path.as_str();
+        }
         return Ok((longest_match.1.clone(), sub_path));
     }
 
@@ -124,6 +128,7 @@ impl MountManagerInner {
     }
     
     pub fn open(&self, abs_path: String, mode: OpenMode) -> Result<Arc<dyn File>, &'static str> {
+        verbose!("Parsing: {}", abs_path);
         let (vfs, rel_path) = self.parse(abs_path.clone())?;
         verbose!("open: parsing res: path {}, relative path {}", abs_path, rel_path);
         return vfs.open(rel_path, mode);

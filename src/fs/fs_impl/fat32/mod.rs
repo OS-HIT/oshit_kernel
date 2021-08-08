@@ -292,6 +292,11 @@ fn root_dir(fs: Arc<Fat32FS>) -> FileInner {
 
 pub fn open(fs: Arc<Fat32FS>, abs_path: &str, mode: usize) -> Result<FileInner, &'static str> {
         let mut root = root_dir(fs);
+        verbose!("in-fs abs_path: \"{}\"", abs_path);
+        if abs_path == "." || abs_path == "/" || abs_path.is_empty() {
+                verbose!("Matched root dir");
+                return Ok(root);
+        }
         return root.open(&abs_path, mode);
 }
 

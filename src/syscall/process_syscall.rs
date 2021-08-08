@@ -464,7 +464,7 @@ pub fn sys_mprotect(addr: VirtAddr, len: usize, prot: usize) -> isize {
     let proc = current_process().unwrap();
     let mut locked_inner = proc.get_inner_locked();
     let mut flags = PTEFlags::empty();
-    if prot & PROT_NONE == 0 {
+    if prot != PROT_NONE {
         flags |= PTEFlags::U;
     }
     if prot & PROT_READ != 0 {
@@ -476,6 +476,7 @@ pub fn sys_mprotect(addr: VirtAddr, len: usize, prot: usize) -> isize {
     if prot & PROT_EXEC != 0 {
         flags |= PTEFlags::X;
     }
+    verbose!("m_protect flag: {:?}", flags);
     let grow_up = prot & PROT_GROWSUP != 0;
     let grow_down = prot & PROT_GROWSDOWN != 0;
     match locked_inner.layout.modify_access(addr.into(), len, flags, grow_up, grow_down) {
@@ -518,4 +519,8 @@ pub fn sys_exit_group(exit_status: i32) -> ! {
     drop(proc);
     exit_switch(exit_status);
     unreachable!("This part should be unreachable. Go check __switch.");
+}
+
+pub fn sys_gettid() -> isize {
+    return current_process().unwrap().pid.0 as isize;
 }

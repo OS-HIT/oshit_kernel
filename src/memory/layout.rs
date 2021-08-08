@@ -15,6 +15,7 @@ use super::{
 };
 use core::mem::size_of;
 use _core::convert::TryInto;
+use _core::fmt::Write;
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
 use bitflags::*;
@@ -25,7 +26,7 @@ use core::cmp::min;
 use crate::utils::{SimpleRange, StepByOne};
 use lazy_static::*;
 use alloc::sync::Arc;
-use spin::Mutex;
+use spin::{Mutex, MutexGuard};
 use riscv::register::satp;
 use core::fmt::{self, Debug, Formatter};
 
@@ -83,6 +84,8 @@ bitflags! {
 /// Representing a continuous segment in the memroy layout.  
 /// For example, data segments/text segments in the user program.
 pub struct Segment {
+    /// start address in-page offset
+    /// this should have no use...
     pub head_offset: usize,
     /// range of the Segment, [range.start()..range.end())
     pub range   : VPNRange,
@@ -248,7 +251,7 @@ impl Segment {
     pub fn unmap_page(&mut self, pagetable: &mut PageTable, vpn: VirtPageNum) {
         // verbose!("Unmapping {:?}", vpn);
         if self.map_type == MapType::Framed {
-            verbose!("Unmapping page {:?}", vpn);
+            // verbose!("Unmapping page {:?}", vpn);
             self.frames.remove(&vpn);
         } else if self.map_type == MapType::VMA {
             verbose!("Unmapping vma");
@@ -373,12 +376,24 @@ impl Segment {
 /// The memory layout, for kernel space or user space.
 pub struct MemLayout {
     /// The pagetable of this memory layout.
-    pagetable   : PageTable,
+    pub pagetable   : PageTable,
     /// The segments in this memory layout.
     pub segments    : Vec<Arc<Mutex<Segment>>>,
 }
 
 impl MemLayout {
+    pub fn print_layout(&self) {
+        println!("Memory Layout for pagetable satp = 0x{:x}:", self.pagetable.get_satp());
+        for (idx, m_segment) in self.segments.iter().enumerate() {
+            let segment = m_segment.lock();
+            println!("\tSegment {}:", idx);
+            println!("\t\tRange      : {:?} <=> {:?}", segment.range.get_start(), segment.range.get_end());
+            println!("\t\tPermissions: {:?}", segment.seg_flags);
+            println!("\t\tVMA stuff  : {:?}", segment.vma_flags);
+        }
+    }
+
+
     /// Return a new, empty memory layout.
     pub fn new() -> Self {
         Self {
@@ -444,70 +459,144 @@ impl MemLayout {
 
     
     pub fn modify_access(&mut self, start: VirtAddr, len: usize, flags: PTEFlags, grow_up: bool, grow_down: bool) -> Option<()> {
+        if start.0 % PAGE_SIZE != 0 {
+            return None;
+        }
+        if len % PAGE_SIZE != 0 {
+            return None;
+        }
+        let mut head_start: VirtPageNum = 0.into();
+        let mut head_stop: VirtPageNum = start.to_vpn(); // also start of new segment
+        let mut new_stop: VirtPageNum = (start+len).to_vpn();
+        let mut tail_stop: VirtPageNum = 0.into();
+        let mut o_to_split: Option<Arc<Mutex<Segment>>> = None;
+        let mut do_alloc = true;
+        
         if grow_up || grow_down {
             // allocated, change access
+            let mut found = false;
             for m_seg in self.segments.iter() {
                 let seg = m_seg.lock();
                 if seg.range.get_start() <= start.into() && seg.range.get_end() > start.into() {
-                    if seg.map_type != MapType::Framed {
-                        fatal!("Cannot change access to non-Framed segments!");
-                        return None;
-                    }
-                    let range = if grow_up {
-                        SimpleRange::new(start.to_vpn(), seg.range.get_end())
-                    } else {
-                        SimpleRange::new(seg.range.get_start(), start.to_vpn_ceil())
-                    };
-                    for page in range {
-                        self.pagetable.modify_access(page, flags)?;
-                    }
-                    return Some(())
+                    head_start = seg.range.get_start();
+                    head_stop = if grow_down {start.into()} else {head_start};
+                    tail_stop = seg.range.get_end();
+                    new_stop = if grow_up {start.into()} else {tail_stop};
+                    do_alloc = false;
+                    // this should consume the seg and hold the lock.
+                    o_to_split = Some(m_seg.clone());
+                    found = true;
+                    break;
                 }
             }
-            // not allocated, this won't work
-            fatal!("vpn {:?} not in any segments!", start);
-            return None;
-        }
-        // TODO: no crossing segment boundary for now... change?
-        for m_seg in self.segments.iter() {
-            let seg = m_seg.lock();
-            // allocated, change access
-            if seg.range.get_start() <= start.into() && seg.range.get_end() > start.into() {
-                if seg.map_type != MapType::Framed {
-                    fatal!("Cannot change access to non-Framed segments!");
-                    return None;
+            if !found {
+                // not allocated, this won't work
+                fatal!("vpn {:?} not in any segments!", start);
+                return None;
+            }
+        } else {
+            for m_seg in self.segments.iter() {
+                let seg = m_seg.lock();
+                // allocated, change access
+                if seg.range.get_start() <= start.into() && seg.range.get_end() > start.into() {
+                    head_start = seg.range.get_start();
+                    tail_stop = seg.range.get_end();
+                    do_alloc = false;
+                    o_to_split = Some(m_seg.clone());
+                    break;
                 }
-                for vpn in SimpleRange::new(start.to_vpn(), (start + len).to_vpn_ceil()) {
-                    self.pagetable.modify_access(vpn, flags)?;
-                }
-                return Some(());
             }
         }
-        // not allocated, allocate new Segment
-        let mut seg_flags = SegmentFlags::U;
-        if flags.contains(PTEFlags::U) {
-            seg_flags |= SegmentFlags::U;
+        if do_alloc {
+            // not allocated, allocate new Segment
+            verbose!("m_protect adding new segment");
+            let mut seg_flags = SegmentFlags::U;
+            if flags.contains(PTEFlags::U) {
+                seg_flags |= SegmentFlags::U;
+            }
+            if flags.contains(PTEFlags::W) {
+                seg_flags |= SegmentFlags::W;
+            }
+            if flags.contains(PTEFlags::R) {
+                seg_flags |= SegmentFlags::R;
+            }
+            if flags.contains(PTEFlags::X) {
+                seg_flags |= SegmentFlags::X;
+            }
+            drop(o_to_split);
+            self.add_segment(Arc::new(Mutex::new(
+                Segment::new(
+                    start, 
+                    start + len, 
+                    MapType::Framed, 
+                    seg_flags, 
+                    VMAFlags::empty(), 
+                    None, 
+                    0)
+            )));
+            Some(())
+        } else {
+            // head_start head_stop new_stop tail_stop
+            // V          V         V        V
+            // |==========|=========|========|
+            let o_a_to_split = o_to_split.unwrap();
+            let mut original_segment = o_a_to_split.lock();
+            // TODO: support m_protect for mmaped VMAs
+            if original_segment.map_type != MapType::Framed {
+                fatal!("Cannot change access to non-Framed segments!");
+                return None;
+            }
+            // add split head
+            if head_start < head_stop {
+                let mut head_frame_trackers: BTreeMap<VirtPageNum, FrameTracker> = BTreeMap::new();
+                for head_vpn in SimpleRange::new(head_start, head_stop) {
+                    // if lazy, then no frame trackers
+                    if let Some(ft) = original_segment.frames.remove(&head_vpn) {
+                        head_frame_trackers.insert(head_vpn, ft);
+                    }
+                }
+                let head_segment = Segment {
+                    head_offset: original_segment.head_offset,
+                    range: VPNRange::new(head_start, head_stop),
+                    frames: head_frame_trackers,
+                    map_type: original_segment.map_type,
+                    seg_flags: original_segment.seg_flags,
+                    vma_flags: original_segment.vma_flags,
+                    file: original_segment.file.clone(),
+                    offset: original_segment.offset,
+                };
+                self.segments.push(Arc::new(Mutex::new(head_segment)));
+            }
+            // change original segment to new segment
+            for new_vpn in VPNRange::new(head_stop, new_stop) {
+                self.pagetable.modify_access(new_vpn, flags);
+            }
+            original_segment.seg_flags = flags.to_seg_flag();
+            original_segment.range = VPNRange::new(head_stop, new_stop);
+
+            // add split tail
+            if new_stop < tail_stop {
+                let mut tail_frame_trackers: BTreeMap<VirtPageNum, FrameTracker> = BTreeMap::new();
+                for tail_vpn in SimpleRange::new(new_stop, tail_stop) {
+                    // if lazy, then no frame trackers
+                    if let Some(ft) = original_segment.frames.remove(&tail_vpn) {
+                        tail_frame_trackers.insert(tail_vpn, ft);
+                    }
+                }
+                let tail_segment = Segment {
+                    head_offset: 0,
+                    range: VPNRange::new(new_stop, tail_stop),
+                    frames: tail_frame_trackers,
+                    map_type: original_segment.map_type,
+                    seg_flags: original_segment.seg_flags,
+                    vma_flags: original_segment.vma_flags,
+                    file: original_segment.file.clone(),
+                    offset: original_segment.offset,
+                };
+                self.segments.push(Arc::new(Mutex::new(tail_segment)));
+            }
+            Some(())
         }
-        if flags.contains(PTEFlags::W) {
-            seg_flags |= SegmentFlags::W;
-        }
-        if flags.contains(PTEFlags::R) {
-            seg_flags |= SegmentFlags::R;
-        }
-        if flags.contains(PTEFlags::X) {
-            seg_flags |= SegmentFlags::X;
-        }
-        self.add_segment(Arc::new(Mutex::new(
-            Segment::new(
-                start, 
-                start + len, 
-                MapType::Framed, 
-                seg_flags, 
-                VMAFlags::empty(), 
-                None, 
-                0)
-        )));
-        Some(())
     }
     
     /// Activate the memory layout as kernel memory layout
@@ -1011,16 +1100,17 @@ impl MemLayout {
 
     pub fn drop_vma(&mut self, drop_start: VirtPageNum, drop_end: VirtPageNum) -> Result<(), &'static str> {
         verbose!("munmapping [{:?}, {:?})", drop_start, drop_end);
-        let mut hit_idx = 0;
+        
+        let mut o_to_split: Option<Arc<Mutex<Segment>>> = None;
         let mut found = false;
         for (idx, m_seg) in self.segments.iter().enumerate() {
-            let seg = m_seg.lock();
+            let mut seg = m_seg.lock();
             let seg_start = seg.range.get_start();
             let seg_end = seg.range.get_end();
             let start_ok = seg_start <= drop_start && drop_start < seg_end;
             let end_ok = seg_start < drop_end && drop_start <= seg_end;            
             if start_ok && end_ok {
-                hit_idx = idx;
+                o_to_split = Some(m_seg.clone());
                 found = true;
                 break;
             } else if start_ok || end_ok {
@@ -1030,7 +1120,63 @@ impl MemLayout {
         if !found {
             return Err("No such VMA Region");
         }
-        let seg = self.segments[hit_idx].lock();
+
+        let to_split = o_to_split.unwrap();
+        let mut seg = to_split.lock();
+        if seg.map_type == MapType::Framed {
+            let mut original_segment = seg;
+            let seg_start = original_segment.range.get_start();
+            let seg_end = original_segment.range.get_end();
+            // add split head
+            if seg_start < drop_start {
+                let mut head_frame_trackers: BTreeMap<VirtPageNum, FrameTracker> = BTreeMap::new();
+                for head_vpn in SimpleRange::new(seg_start, drop_start) {
+                    // if lazy, then no frame trackers
+                    if let Some(ft) = original_segment.frames.remove(&head_vpn) {
+                        head_frame_trackers.insert(head_vpn, ft);
+                    }
+                }
+                let head_segment = Segment {
+                    head_offset: original_segment.head_offset,
+                    range: VPNRange::new(seg_start, drop_start),
+                    frames: head_frame_trackers,
+                    map_type: original_segment.map_type,
+                    seg_flags: original_segment.seg_flags,
+                    vma_flags: original_segment.vma_flags,
+                    file: original_segment.file.clone(),
+                    offset: original_segment.offset,
+                };
+                self.segments.push(Arc::new(Mutex::new(head_segment)));
+            }
+
+            // add split tail
+            if drop_end < seg_end {
+                let mut tail_frame_trackers: BTreeMap<VirtPageNum, FrameTracker> = BTreeMap::new();
+                for tail_vpn in SimpleRange::new(drop_end, seg_end) {
+                    // if lazy, then no frame trackers
+                    if let Some(ft) = original_segment.frames.remove(&tail_vpn) {
+                        tail_frame_trackers.insert(tail_vpn, ft);
+                    }
+                }
+                let tail_segment = Segment {
+                    head_offset: 0,
+                    range: VPNRange::new(drop_end, seg_end),
+                    frames: tail_frame_trackers,
+                    map_type: original_segment.map_type,
+                    seg_flags: original_segment.seg_flags,
+                    vma_flags: original_segment.vma_flags,
+                    file: original_segment.file.clone(),
+                    offset: original_segment.offset,
+                };
+                self.segments.push(Arc::new(Mutex::new(tail_segment)));
+            }
+            original_segment.range = VPNRange::new(drop_start, drop_end);
+            drop(original_segment);
+            self.drop_segment(drop_start);
+            return Ok(());
+        }
+
+
         let file = seg.file.clone().unwrap();
         let offset = seg.offset;
         let seg_start = seg.range.get_start();

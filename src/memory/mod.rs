@@ -57,14 +57,17 @@
 // user stack, grow down
 // =====================
 // UNALLOCATED MEM
+// ===== ????????? =====
+// vma stuff
+// =====================
+// UNALLOCATED MEM
 // =====================   <- program break, change by sbrk()
 // user heap
-// =====================   <- end
 // .bss
-// =====================   <- edata
 // initialized data(.data, .rodata)
-// =====================   <- etext
 // .text
+// =====================   <- user defined segments
+// unused mem
 // ===== 0x00 0000 =====   <- Frame allocator manage start
 
 mod addresses;

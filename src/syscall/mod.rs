@@ -2,10 +2,12 @@
 #![allow(dead_code)]
 
 use crate::{memory::VirtAddr, process::CloneFlags};
+use crate::utils::print_kernel_stack;
 
 pub const SYSCALL_GETCWD            : usize = 17;
 pub const SYSCALL_DUP               : usize = 23;
 pub const SYSCALL_DUP3              : usize = 24;
+pub const SYSCALL_IOCTL             : usize = 29;
 pub const SYSCALL_MKDIRAT           : usize = 34;
 pub const SYSCALL_UNLINKAT          : usize = 35;
 pub const SYSCALL_LINKAT            : usize = 37;
@@ -22,6 +24,8 @@ pub const SYSCALL_READ              : usize = 63;
 pub const SYSCALL_WRITE             : usize = 64;
 pub const SYSCALL_READV             : usize = 65;
 pub const SYSCALL_WRITEV            : usize = 66;
+pub const SYSCALL_SENDFILE          : usize = 71;
+pub const SYSCALL_PPOLL             : usize = 73;
 pub const SYSCALL_FSTATAT           : usize = 79;
 pub const SYSCALL_FSTAT             : usize = 80;
 pub const SYSCALL_EXIT              : usize = 93;
@@ -42,6 +46,7 @@ pub const SYSCALL_GETUID            : usize = 174;
 pub const SYSCALL_GETEUID           : usize = 175;
 pub const SYSCALL_GETGID            : usize = 176;
 pub const SYSCALL_GETEGID           : usize = 177;
+pub const SYSCALL_GETTID            : usize = 178;
 pub const SYSCALL_SYSINFO           : usize = 179;
 pub const SYSCALL_BRK               : usize = 214;
 pub const SYSCALL_MUNMAP            : usize = 215;
@@ -69,8 +74,12 @@ pub use fs_syscall::{
     sys_getdents64,
     sys_unlink,
     sys_fstatat,
+    sys_fstatat_new,
     sys_fstat, 
     sys_mkdirat,
+    sys_ioctl,
+    sys_sendfile,
+    sys_ppoll,
 };
 pub use process_syscall::{
     sys_exit, 
@@ -91,7 +100,8 @@ pub use process_syscall::{
     sys_sigaction,
     sys_sigprocmask,
     sys_kill,
-    sys_mprotect
+    sys_mprotect,
+    sys_gettid,
 };
 pub use trivial_syscall::{
     sys_time, 
@@ -113,6 +123,7 @@ macro_rules! CALL_SYSCALL {
             debug!("/========== SYSCALL {} CALLED BY {} ==========\\", stringify!($syscall_name), $crate::process::current_process().unwrap().pid.0);
             let ret = $syscall_name();
             debug!("\\= SYSCALL {} CALLED BY {} RESULT {:<10} =/", stringify!($syscall_name), $crate::process::current_process().unwrap().pid.0, ret);
+            print_kernel_stack();
             ret
         }
     };
@@ -124,6 +135,7 @@ macro_rules! CALL_SYSCALL {
             )+
             let ret: isize = $syscall_name($($y),+);
             debug!("\\= SYSCALL {} CALLED BY {} RESULT {:<10} =/", stringify!($syscall_name), $crate::process::current_process().unwrap().pid.0, ret);
+            print_kernel_stack();
             ret
         }
     };
@@ -139,7 +151,7 @@ pub fn syscall(syscall_id: usize, args: [usize; 6]) -> isize {
         // SYSCALL_EXIT            => {CALL_SYSCALL!(sys_exit, args[0] as i32)},
         SYSCALL_EXIT            => sys_exit(args[0] as i32),
         SYSCALL_EXIT_GROUP      => sys_exit_group(args[0] as i32),
-        
+
         SYSCALL_SCHED_YIELD     => {CALL_SYSCALL!(sys_yield)},
         SYSCALL_CLONE           => {CALL_SYSCALL!(sys_clone, CloneFlags::from_bits_truncate(args[0]), args[1], VirtAddr::from(args[2]), args[3], VirtAddr::from(args[4]))},
         SYSCALL_EXECVE          => {CALL_SYSCALL!(sys_exec, VirtAddr::from(args[0]), VirtAddr::from(args[1]), VirtAddr::from(args[2]))},
@@ -162,7 +174,7 @@ pub fn syscall(syscall_id: usize, args: [usize; 6]) -> isize {
         SYSCALL_MMAP            => {CALL_SYSCALL!(sys_mmap, VirtAddr::from(args[0]), args[1], args[2], args[3], args[4], args[5])},
         SYSCALL_UNLINKAT        => {CALL_SYSCALL!(sys_unlink, args[0] as i32, VirtAddr::from(args[1]), args[2])},
         SYSCALL_MKDIRAT         => {CALL_SYSCALL!(sys_mkdirat, args[0], VirtAddr::from(args[1]), args[2])},
-        SYSCALL_FSTATAT         => {CALL_SYSCALL!(sys_fstatat, args[0], VirtAddr::from(args[1]), VirtAddr::from(args[2]), args[3])},
+        SYSCALL_FSTATAT         => {CALL_SYSCALL!(sys_fstatat_new, args[0] as i32, VirtAddr::from(args[1]), VirtAddr::from(args[2]), args[3])},
         SYSCALL_FSTAT           => {CALL_SYSCALL!(sys_fstat, args[0], VirtAddr::from(args[1]))},
         SYSCALL_MUNMAP          => {CALL_SYSCALL!(sys_munmap, VirtAddr::from(args[0]), args[1])},
         SYSCALL_READV           => {CALL_SYSCALL!(sys_readv, args[0], VirtAddr::from(args[1]), args[2])},
@@ -178,11 +190,19 @@ pub fn syscall(syscall_id: usize, args: [usize; 6]) -> isize {
         SYSCALL_SIGPROCMASK     => {CALL_SYSCALL!(sys_sigprocmask, args[0] as isize, VirtAddr::from(args[1]), VirtAddr::from(args[2]))},
         SYSCALL_KILL            => {CALL_SYSCALL!(sys_kill, args[0] as isize, args[1])},
         SYSCALL_MPROTECT        => {CALL_SYSCALL!(sys_mprotect, VirtAddr::from(args[0]), args[1], args[2])},
+        SYSCALL_GETTID          => {CALL_SYSCALL!(sys_gettid)}
+        SYSCALL_IOCTL           => {CALL_SYSCALL!(sys_ioctl, args[0], args[1] as u64, VirtAddr::from(args[2]))},
+        SYSCALL_SENDFILE        => {CALL_SYSCALL!(sys_sendfile, args[0], args[1], VirtAddr::from(args[2]), args[3])}
+        SYSCALL_PPOLL           => {CALL_SYSCALL!(sys_ppoll)},
         _ => {
-            fatal!("Unsupported syscall_id: {}", syscall_id);
-            -1
+            CALL_SYSCALL!(sys_unknown, syscall_id, args[0], args[1], args[2], args[3], args[4], args[5])
         },
     };
 
     res
+}
+
+pub fn sys_unknown(syscall_id: usize, _: usize, _: usize, _: usize, _: usize, _: usize, _: usize) -> isize {
+    fatal!("Unsupported syscall_id: {}", syscall_id);
+    -1
 }
