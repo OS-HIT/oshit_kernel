@@ -1,5 +1,4 @@
 mod vfs;
-pub mod path;
 pub mod fat32;
 mod cache_mgr;
 mod devfs;

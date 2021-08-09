@@ -1,4 +1,4 @@
-use super::super::path::Path;
+use super::super::super::path::Path;
 use super::Fat32FS;
 use super::chain::Chain;
 use super::dirent::DirEntryRaw;

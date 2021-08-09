@@ -2,6 +2,7 @@
 
 mod file;
 mod pipe;
+mod path;
 mod mount_manager;
 pub mod fs_impl;
 mod block_cache;
@@ -22,11 +23,12 @@ pub use fs_impl::{
     FSStatus,
 	SDA_WRAPPER,
 	DEV_FS,
-	path::{
-		parse_path,
-		Path,
-		to_string,
-	},
+};
+
+pub use path::{
+	parse_path,
+	Path,
+	to_string,
 };
 
 pub use mount_manager::{

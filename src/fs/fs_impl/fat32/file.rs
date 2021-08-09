@@ -5,7 +5,7 @@ use bit_field::BitField;
 
 use super::Fat32FS;
 use super::inode::Inode;
-use super::super::path::parse_path;
+use super::super::super::path::parse_path;
 use super::dirent::write_dirent_group;
 // use super::super::super::file::SeekOp;
 use crate::fs::SeekOp;
