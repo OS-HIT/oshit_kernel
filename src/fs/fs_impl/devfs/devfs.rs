@@ -1,4 +1,5 @@
 use crate::fs::{CommonFile, DirFile, FSFlags, FSStatus, File, VirtualFileSystem, file::FileStatus, SDA_WRAPPER};
+use crate::fs::Path;
 use super::{CharDeviceFile, DeviceFile, TTY0};
 use alloc::{string::{String, ToString}, sync::Arc, vec::Vec};
 use lazy_static::*;
@@ -102,8 +103,9 @@ impl File for DevFSBLockFolder {
         Ok(DEV_FS.clone())
     }
 
-    fn get_path(&self) -> String {
-        "/block".to_string()
+    fn get_path(&self) -> Path {
+        let path = vec![String::from("block")];
+        return Path {path, must_dir: false, is_abs: true};
     }
 }
 
@@ -112,23 +114,26 @@ impl CommonFile for DevFSBLockFolder {
 }
 
 impl DirFile for DevFSBLockFolder {
-    fn open(&self, path: String, mode: crate::fs::OpenMode) -> Result<Arc<(dyn File + 'static)>, &'static str> {
-        if path == "sda" {
-            Ok(SDA_WRAPPER.clone())
+    fn open(&self, path: Path, mode: crate::fs::OpenMode) -> Result<Arc<(dyn File + 'static)>, &'static str> {
+        if path.path.len() != 1 {
+            return Err("invalid path");
+        } 
+        if path.path[0] == String::from("sda") {
+            return Ok(SDA_WRAPPER.clone())
         } else {
-            Err("File not found")
+            return Err("File not found")
         }
     }
 
-    fn mkdir(&self, name: String) -> Result<Arc<dyn File>, &'static str> {
+    fn mkdir(&self, name: Path) -> Result<Arc<dyn File>, &'static str> {
         Err("Cannot mkdir in devfs")
     }
 
-    fn mkfile(&self, name: String) -> Result<Arc<dyn File>, &'static str> {
+    fn mkfile(&self, name: Path) -> Result<Arc<dyn File>, &'static str> {
         Err("Cannot mkfile in devfs")
     }
 
-    fn remove(&self, path: String) -> Result<(), &'static str> {
+    fn remove(&self, path: Path) -> Result<(), &'static str> {
         Err("Cannot remove in devfs")
     }
 
@@ -151,40 +156,48 @@ impl VirtualFileSystem for DevFS {
         }
     }
 
-    fn open(&self, abs_path: alloc::string::String, mode: crate::fs::OpenMode) -> Result<alloc::sync::Arc<dyn crate::fs::File>, &'static str> {
+    fn open(&self, abs_path: Path, mode: crate::fs::OpenMode) -> Result<alloc::sync::Arc<dyn crate::fs::File>, &'static str> {
         // hard coded
-        if abs_path == "/tty0" {
-            Ok(TTY0.clone())
-        } else if abs_path == "/block/sda" {
-            Ok(SDA_WRAPPER.clone())
-        } else if abs_path == "/block" {
-            Ok(DEV_FS_BLOCK_FOLDER.clone())
-        } else {
-            Err("File not found.")
+        match abs_path.path.len() {
+            0 => return Err("Empty path"),
+            1 => {
+                if abs_path.path[0] == "tty0" {
+                    return Ok(TTY0.clone());
+                } else if abs_path.path[0] == "block" {
+                    return Ok(DEV_FS_BLOCK_FOLDER.clone());
+                }
+            },
+            2 => {
+                if abs_path.path[0] == "block" && abs_path.path[1] == "sda" {
+                    return Ok(SDA_WRAPPER.clone());
+                }
+            }
+            _ => {},
         }
+        Err("File not found.")
     }
 
-    fn mkdir(&self, abs_path: alloc::string::String) -> Result<alloc::sync::Arc<dyn crate::fs::File>, &'static str> {
+    fn mkdir(&self, abs_path: Path) -> Result<alloc::sync::Arc<dyn crate::fs::File>, &'static str> {
         Err("Cannot mkdir in devfs")
     }
 
-    fn mkfile(&self, abs_path: alloc::string::String) -> Result<alloc::sync::Arc<dyn crate::fs::File>, &'static str> {
+    fn mkfile(&self, abs_path: Path) -> Result<alloc::sync::Arc<dyn crate::fs::File>, &'static str> {
         Err("Cannot mkfile in devfs")
     }
 
-    fn remove(&self, abs_path: alloc::string::String) -> Result<(), &'static str> {
+    fn remove(&self, abs_path: Path) -> Result<(), &'static str> {
         Err("Cannot remove in devfs")
     }
 
-    fn link(&self, to_link: alloc::sync::Arc<dyn crate::fs::File>, dest: alloc::string::String) -> Result<(), &'static str> {
+    fn link(&self, to_link: alloc::sync::Arc<dyn crate::fs::File>, dest: Path) -> Result<(), &'static str> {
         Err("Cannot link in devfs")
     }
 
-    fn sym_link(&self, abs_src: alloc::string::String, rel_dst: alloc::string::String) -> Result<(), &'static str> {
+    fn sym_link(&self, abs_src: Path, rel_dst: Path) -> Result<(), &'static str> {
         Err("Cannot unlink in devfs")
     }
 
-    fn rename(&self, to_rename: alloc::sync::Arc<dyn crate::fs::File>, new_name: alloc::string::String) -> Result<(), &'static str> {
+    fn rename(&self, to_rename: alloc::sync::Arc<dyn crate::fs::File>, new_name: String) -> Result<(), &'static str> {
         Err("Cannot rename in devfs")
     }
 }

@@ -3,6 +3,7 @@ use alloc::{string::String, sync::Arc};
 use crate::memory::UserBuffer;
 
 use super::{CommonFile, DeviceFile, DirFile, VirtualFileSystem};
+use super::Path;
 use bitflags::*;
 
 /// seek types, def similar to linux man
@@ -96,5 +97,5 @@ pub trait File: Drop + Send + Sync {
 
     fn get_vfs(&self) -> Result<Arc<dyn VirtualFileSystem>, &'static str>;
 
-    fn get_path(&self) -> String;
+    fn get_path(&self) -> Path;
 }

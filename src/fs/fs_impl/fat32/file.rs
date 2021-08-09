@@ -5,7 +5,9 @@ use bit_field::BitField;
 
 use super::Fat32FS;
 use super::inode::Inode;
-use super::super::super::path::parse_path;
+use super::super::super::parse_path;
+use super::super::super::Path;
+use super::super::super::to_string;
 use super::dirent::write_dirent_group;
 // use super::super::super::file::SeekOp;
 use crate::fs::SeekOp;
@@ -16,6 +18,7 @@ pub const WRITE: usize = 2;
 pub const CREATE: usize = 4;
 pub const DIR: usize = 8;
 pub const NO_FOLLOW: usize = 16;
+pub const TRUNCATE: usize = 32;
 // const APPEND: usize = 4;
 
 pub struct FileInner{
@@ -34,9 +37,9 @@ macro_rules! has {
 
 impl FileInner {
         pub fn new(mut inode: Inode, mode:usize) -> FileInner {
-                // if has!(mode, TRUNCATE) {
-                //         inode.set_size(0);
-                // }
+                if has!(mode, TRUNCATE) {
+                        inode.set_size(0);
+                }
                 FileInner {
                         inode,
                         cursor: 0,
@@ -65,8 +68,8 @@ impl FileInner {
                 return self.inode.group.entry.attr;
         }
 
-        pub fn get_path(&self) -> String {
-                self.inode.path.to_string()
+        pub fn get_path(&self) -> Path {
+                self.inode.path.clone()
         }
 
         pub fn get_fs(&self) -> Arc<Fat32FS> {
@@ -136,7 +139,7 @@ impl FileInner {
                 }
         }
 
-        pub fn open(&mut self, path: &str, mode:usize) -> Result<FileInner, &'static str> {
+        pub fn open(&mut self, mut path: Path, mode:usize) -> Result<FileInner, &'static str> {
                 // let fs = self.inode.chain.fs.clone();
                 if !self.inode.is_dir() {
                         return Err("open: not from directory");
@@ -144,10 +147,6 @@ impl FileInner {
                 if self.inode.is_fake() {
                         return Err("open: from fake inode");
                 }
-                let mut path = match parse_path(path) {
-                        Ok(p) => p,
-                        Err(_) => return Err("open: path parse failed"),
-                };
                 if path.is_abs && self.inode.name.len() != 0 {
                         return Err("open: using abs path from non-root directory");
                 }
@@ -181,17 +180,13 @@ impl FileInner {
                 }
         }
 
-        pub fn mkdir(&mut self, path: &str) -> Result<FileInner, &'static str> {
+        pub fn mkdir(&mut self, mut path: Path) -> Result<FileInner, &'static str> {
                 if !self.inode.is_dir() {
                         return Err("mkdir: not from directory");
                 }
                 if self.inode.is_fake() {
                         return Err("mkdir: fake inode");
                 }
-                let mut path = match parse_path(path) {
-                        Ok(p) => p,
-                        Err(_) => return Err("mkdir: path parse failed"),
-                };
                 if path.is_abs && self.inode.name.len() != 0 {
                         return Err("mkdir: using abs path from non-root inode");
                 }
@@ -234,17 +229,13 @@ impl FileInner {
                 }
         }
 
-        pub fn mkfile(&mut self, path: &str) -> Result<FileInner, &'static str> {
+        pub fn mkfile(&mut self, mut path: Path) -> Result<FileInner, &'static str> {
                 if !self.inode.is_dir() {
                         return Err("mkfile: not from directory");
                 }
                 if self.inode.is_fake() {
                         return Err("mkfile: fake inode");
                 }
-                let mut path = match parse_path(path) {
-                        Ok(p) => p,
-                        Err(_) => return Err("mkfile: path parse failed"),
-                };
                 if path.is_abs && self.inode.name.len() != 0 {
                         return Err("mkfile: using abs path from non-root inode");
                 }
@@ -287,17 +278,13 @@ impl FileInner {
                 }
         }
 
-        pub fn remove(&mut self, path: &str) -> Result<(), &'static str> {
+        pub fn remove(&mut self, mut path: Path) -> Result<(), &'static str> {
                 if !self.inode.is_dir() {
                         return Err("remove: not from directory");
                 }
                 if self.inode.is_fake() {
                         return Err("remove: fake inode");
                 }
-                let mut path = match parse_path(path) {
-                        Ok(p) => p,
-                        Err(_) => return Err("remove: path parse failed"),
-                };
                 if path.is_abs && self.inode.name.len() != 0 {
                         return Err("remove: using abs path from non-root inode");
                 }
@@ -415,9 +402,13 @@ fn open_d(parent: &mut Inode, name: &str, mode:usize, dir_flag: bool, no_follow:
                                 }
                                 let mut buf = [0u8; 512];
                                 inode.chain.read(0, &mut buf).unwrap();
+                                let path = match parse_path(&core::str::from_utf8(&buf).unwrap()) {
+                                        Ok(path) => path,
+                                        Err(err) => return Err(to_string(err)),
+                                };
                                 let root = Inode::root(parent.chain.fs.clone());
                                 let mut root = FileInner::new(root, 0);
-                                return root.open(core::str::from_utf8(&buf).unwrap(), mode);
+                                return root.open(path, mode);
                         }
                         if dir_flag && !inode.is_dir() {
                                 return Err("open_d: not a directory");

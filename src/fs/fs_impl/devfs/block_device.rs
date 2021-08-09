@@ -1,7 +1,9 @@
 use core::{cell::Cell, sync::atomic::{AtomicUsize, Ordering}};
 
 use crate::fs::{CommonFile, DirFile, File, SeekOp, file::FileStatus};
+use crate::fs::Path;
 use alloc::{string::ToString, sync::Arc, vec::Vec};
+use alloc::string::String;
 use super::{CharDeviceFile, DeviceFile, device_file::BlockDeviceFile};
 use crate::drivers::BLOCK_DEVICE;
 use lazy_static::*;
@@ -177,8 +179,9 @@ impl File for SDAWrapper {
         Ok(super::DEV_FS.clone())
     }
 
-    fn get_path(&self) -> alloc::string::String {
-        "/block/sda".to_string()
+    fn get_path(&self) -> Path {
+        let path = vec![String::from("block"),String::from("sda")];
+        return Path {path, must_dir: false, is_abs: true};
     }
 }
 
@@ -261,7 +264,7 @@ impl File for CommonFileAsBlockDevice {
         self.get_vfs()
     }
 
-    fn get_path(&self) -> alloc::string::String {
+    fn get_path(&self) -> Path {
         self.get_path()
     }
 }

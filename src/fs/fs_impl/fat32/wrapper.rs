@@ -8,6 +8,7 @@ use crate::fs::fs_impl::vfs::OpenMode;
 
 use super::file::FileInner;
 use super::super::utils::*;
+use super::super::super::Path;
 
 pub struct FAT32File {
 	pub inner: Mutex<FileInner>
@@ -100,7 +101,7 @@ impl File for FAT32File {
         return Ok(Arc::new(Fat32W { inner:self.inner.lock().get_fs() }) );
     }
 
-    fn get_path(&self) -> alloc::string::String {
+    fn get_path(&self) -> Path {
         self.inner.lock().get_path()
     }
 }
@@ -109,9 +110,9 @@ impl CommonFile for FAT32File {}
 
 impl DirFile for FAT32File {
         /// open files under dir
-        fn open(&self, path: String, mode: OpenMode) -> Result<Arc<dyn File>, &'static str> {
+        fn open(&self, path: Path, mode: OpenMode) -> Result<Arc<dyn File>, &'static str> {
             let mode = OpenMode2usize(mode);
-            match self.inner.lock().open(&path, mode) {
+            match self.inner.lock().open(path, mode) {
                 Ok(fin) => Ok( Arc::new(
                     FAT32File {
                         inner: Mutex::new(fin),
@@ -122,8 +123,8 @@ impl DirFile for FAT32File {
         }
 
         /// mkdir. remember to sanitize name.
-        fn mkdir(&self, name: String) -> Result<Arc<dyn File>, &'static str> {
-            match self.inner.lock().mkdir(&name) {
+        fn mkdir(&self, name: Path) -> Result<Arc<dyn File>, &'static str> {
+            match self.inner.lock().mkdir(name) {
                 Ok(dir) => Ok( Arc::new(
                     FAT32File {
                         inner: Mutex::new(dir),
@@ -134,8 +135,8 @@ impl DirFile for FAT32File {
         }
     
         /// make file. remember to sanitize name.
-        fn mkfile(&self, name: String) -> Result<Arc<dyn File>, &'static str> {
-            match self.inner.lock().mkfile(&name) {
+        fn mkfile(&self, name: Path) -> Result<Arc<dyn File>, &'static str> {
+            match self.inner.lock().mkfile(name) {
                 Ok(file) => Ok( Arc::new(
                     FAT32File {
                         inner: Mutex::new(file),
@@ -146,8 +147,8 @@ impl DirFile for FAT32File {
         }
     
         /// delete
-        fn remove(&self, path: String) -> Result<(), &'static str> {
-            self.inner.lock().remove(&path)
+        fn remove(&self, path: Path) -> Result<(), &'static str> {
+            self.inner.lock().remove(path)
         }
 
         /// list

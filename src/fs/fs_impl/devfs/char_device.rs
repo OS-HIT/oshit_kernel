@@ -1,6 +1,8 @@
 use super::{CharDeviceFile, DeviceFile};
 use super::super::super::File;
+use super::super::super::Path;
 use alloc::string::ToString;
+use alloc::string::String;
 use lazy_static::*;
 use alloc::collections::VecDeque;
 use alloc::sync::Arc;
@@ -147,8 +149,9 @@ impl File for SBITTY {
         Ok(super::DEV_FS.clone())
     }
 
-    fn get_path(&self) -> alloc::string::String {
-     	"/tty0".to_string()
+    fn get_path(&self) -> Path {
+        let path = vec![String::from("tty0")];
+        return Path {path, must_dir: false, is_abs: true}; 
     }
 
     fn get_cursor(&self) -> Result<usize, &'static str> {

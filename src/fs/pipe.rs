@@ -4,6 +4,7 @@ use alloc::{collections::VecDeque, string::ToString, sync::{Arc, Weak}, vec::Vec
 use spin::Mutex;
 
 use super::{CommonFile, DeviceFile, DirFile, File, file::FileStatus};
+use super::Path;
 
 /// Pipe ring buffer and end weak references.
 pub struct Pipe {
@@ -218,8 +219,12 @@ impl File for PipeEnd {
         Err("Pipe has no vfs")
     }
 
-    fn get_path(&self) -> alloc::string::String {
-        "".to_string()
+    fn get_path(&self) -> Path {
+        return Path {
+            path: Vec::new(),
+            must_dir: false,
+            is_abs: false,
+        }
     }
 }
 

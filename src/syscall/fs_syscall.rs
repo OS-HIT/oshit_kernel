@@ -2,9 +2,13 @@
 // use super::super::fs::file::FILE;
 // use crate::fs::block_cache::BLOCK_SZ;
 use crate::fs::{self, File, OpenMode, make_pipe, mkdir, open, remove};
+use crate::fs::Path;
+use crate::fs::parse_path;
+use crate::fs::to_string;
 use crate::memory::{VirtAddr};
 use crate::process::{current_process};
 use alloc::string::ToString;
+use alloc::string::String;
 // use alloc::vec::Vec;
 use alloc::sync::Arc;
 use core::{convert::TryInto, mem::size_of};
@@ -13,14 +17,116 @@ use bitflags::*;
 /// The special "file descriptor" indicating that the path is relative path to process's current working directory. 
 pub const AT_FDCWD: i32 =  -100;
 
+fn getFileFd(dirfd: usize) -> Result<Arc<dyn File>, &'static str> {
+    let proc = current_process().unwrap();
+    let arcpcb = proc.get_inner_locked();
+    if dirfd == AT_FDCWD as usize {
+        // debug!("fd == current dir");
+        // debug!("path: {}", arcpcb.path);
+        return open(arcpcb.path.clone(), OpenMode::empty());
+    } else {
+        if dirfd > arcpcb.files.len() {
+            return Err("fd not in use");
+        } 
+        if let Some(file) = &arcpcb.files[dirfd] {
+            return Ok(file.clone());
+        } else {
+            return Err("fd not in use");
+        }
+    }
+}
+
+fn getFile(dirfd: usize, path: &str, mode: OpenMode) -> Result<Arc<dyn File>, &'static str> {
+    let path = match parse_path(path) {
+        Ok(path) => path,
+        Err(err) => return Err(to_string(err)),
+    };
+    if path.is_abs {
+        return open(path.to_string(), mode);
+    } else if path.path.len() == 0 {
+        return getFileFd(dirfd);
+    } else {
+        match getFileFd(dirfd) {
+            Ok(file) => {
+                if let Some(dir) = file.to_dir_file() {
+                    return dir.open(path, mode);
+                } else {
+                    return Err("fd not a dir");
+                }
+            },
+            Err(msg) => return Err(msg),
+        }
+    } 
+}
+
+fn makeDirAt(dirfd: usize, path: &str) -> Result<(), &'static str> {
+    let path = match parse_path(path) {
+        Ok(path) => path,
+        Err(err) => return Err(to_string(err)),
+    };
+    if path.is_abs {
+        match mkdir(path.to_string()) {
+            Ok(_) => return Ok(()),
+            Err(msg) => return Err(msg),
+        }
+    } else if path.path.len() == 0 {
+        return Err("make current dir?");
+    } else {
+        match getFileFd(dirfd) {
+            Ok(file) => {
+                if let Some(dir) = file.to_dir_file() {
+                    match dir.mkdir(path) {
+                        Ok(_) => return Ok(()),
+                        Err(msg) => return Err(msg),
+                    }
+                } else {
+                    return Err("fd not a dir");
+                }
+            },
+            Err(msg) => return Err(msg),
+        }
+    } 
+}
+
+fn unlink(dirfd: usize, path: &str) -> Result<(), &'static str> {
+    let path = match parse_path(path) {
+        Ok(path) => path,
+        Err(err) => return Err(to_string(err)),
+    };
+    if path.is_abs {
+        return remove(path.to_string());
+    } else if path.path.len() == 0 {
+        return Err("unlink current dir?");
+    } else {
+        match getFileFd(dirfd) {
+            Ok(file) => {
+                if let Some(dir) = file.to_dir_file() {
+                    return dir.remove(path);
+                } else {
+                    return Err("fd not a dir");
+                }
+            },
+            Err(msg) => return Err(msg),
+        }
+    } 
+}
+
 /// Open a file at dir identified by `fd` and with name `file_name`, with `flags`. Mode is currently unsupported.
 pub fn sys_openat(fd: i32, file_name: VirtAddr, flags: u32, _: u32) -> isize {
     let process = current_process().unwrap();
-    let mut arcpcb = process.get_inner_locked();
-    let mut buf = arcpcb.layout.get_user_cstr(file_name);
-    if buf[0] == b'.' && buf[1] == b'/' {
-        buf = buf[2..].iter().cloned().collect();
+
+    let buf = process.get_inner_locked().layout.get_user_cstr(file_name);
+    let path = match core::str::from_utf8(&buf) {
+        Ok(p) => p,
+        Err(msg) => {
+            error!("sys_openat: {}", msg);
+            return -1;
+        },
+    };
+    if path.len() == 0 {
+        error!("sys_openat: empty path");
     }
+
     let mut fs_flags = OpenMode::READ;
     if flags & 0x001 != 0 {
         fs_flags = OpenMode::WRITE;
@@ -32,52 +138,18 @@ pub fn sys_openat(fd: i32, file_name: VirtAddr, flags: u32, _: u32) -> isize {
         fs_flags |= OpenMode::CREATE;
     }
     verbose!("Openat flag: {:x}", flags);
-    if let Ok(path) = core::str::from_utf8(&buf) {
-        debug!("Openat path: {}", path);
-        if fd == AT_FDCWD {
-            verbose!("openat found AT_FDCWD!");
-            let mut whole_path = arcpcb.path.clone();
-            whole_path.push_str(path);
-            verbose!("Openat path: {} + {}", arcpcb.path.clone(), path);
- 
 
-            let res = open(path.to_string(), fs_flags);
-            let file = match res {
-                Ok(f) => f,
-                Err(e) => return -1,
-            };
+    match getFile(fd as usize, path, fs_flags) {
+        Ok(file) => {
+            let mut arcpcb = process.get_inner_locked();
             let new_fd = arcpcb.alloc_fd();
             arcpcb.files[new_fd] = Some(file);
-            return new_fd.try_into().unwrap();
-        }
-
-        if fd as usize > arcpcb.files.len() {
-            error!("Invalid FD");
+            return new_fd as isize;
+        },
+        Err(msg) => {
+            error!("sys_openat: {}", msg);
             return -1;
         }
-
-        if let Some(dir) = arcpcb.files[fd as usize].clone() {
-            if let Some(dir_file) = dir.to_dir_file() {
-                if let Ok(new_file) = dir_file.open(path.to_string(), fs_flags) {
-                    let new_fd = arcpcb.alloc_fd();
-                    arcpcb.files[new_fd] = Some(new_file);
-                    verbose!("Openat success");
-                    new_fd as isize
-                } else {
-                    error!("Cannot open such file");
-                    -1
-                }
-            } else {
-                error!("Not a directory!");
-                -1
-            }
-        } else {
-            error!("No such fd");
-            return -1;
-        }
-    } else {
-        error!("Invalid UTF-8 sequence in path");
-        -1
     }
 }
 
@@ -381,99 +453,45 @@ pub fn sys_getdents64(fd: usize, buf: VirtAddr, len: usize) -> isize {
 }
 
 /// just delete the file
-pub fn sys_unlink(dirfd: i32, file_name: VirtAddr, _: usize) -> isize{
+pub fn sys_unlink(dirfd: i32, path: VirtAddr, _: usize) -> isize{
     let proc = current_process().unwrap();
-    let arcpcb = proc.get_inner_locked();
-    let buf = arcpcb.layout.get_user_cstr(file_name);
-    if let Ok(mut path) = core::str::from_utf8(&buf) {
-        if dirfd == AT_FDCWD {
-            verbose!("sys_unlink found AT_FDCWD!");
-            let mut whole_path = arcpcb.path.clone();
-            if buf[0] == b'.' && buf[1] == b'/' {
-                path = &path[2..];
-            }
-            whole_path.push_str(path);
-            verbose!("Deleting at_fdcwd path {}", whole_path);
-            match remove(whole_path) {
-                Ok(_) => return 0,
-                Err(msg) => {
-                    error!("{}", msg);
-                    return -1;
-                }
-            };
-        }
+    let buf = proc.get_inner_locked().layout.get_user_cstr(path);
+    let path = match core::str::from_utf8(&buf) {
+        Ok(p) => p,
+        Err(msg) => {
+            error!("sys_openat: {}", msg);
+            return -1;
+        },
+    };
 
-        if buf[0] == b'/' {
-            match remove(path.to_string()) {
-                Ok(_) => return 0,
-                Err(msg) => {
-                    error!("{}", msg);
-                    return -1;
-                }
-            };
+    match unlink(dirfd as usize, path) {
+        Ok(()) => return 0,
+        Err(msg) => {
+            error!("sys_unlink:{}", msg);
+            return -1;
         }
-
-        if let Some(dir) = arcpcb.files[dirfd as usize].clone() {
-            if let Some(dir_file) = dir.to_dir_file() {
-                verbose!("Deleting file at {}", path);
-                match dir_file.remove(path.to_string()) {
-                    Ok(_) => return 0,
-                    Err(msg) => {
-                        error!("{}", msg);
-                        return -1;
-                    }
-                }
-            }
-        }
-    }
-    return -1;
+    };
 }
 
 pub fn sys_mkdirat(dirfd: usize, path: VirtAddr, _: usize) -> isize {
     verbose!("mkdir start");
     let proc = current_process().unwrap();
-    let arcpcb = proc.get_inner_locked();
-    let buf = arcpcb.layout.get_user_cstr(path);
-    if let Ok(path) = core::str::from_utf8(&buf) {
-        if dirfd as i32 == AT_FDCWD {
-            verbose!("sys_mkdirat found AT_FDCWD!");
-            let mut whole_path = arcpcb.path.clone();
-            whole_path.push_str(path);
-            verbose!("Whole path = {}", whole_path);
+    let buf = proc.get_inner_locked().layout.get_user_cstr(path);
+    let path = match core::str::from_utf8(&buf) {
+        Ok(p) => p,
+        Err(_) => {
+            error!("sys_openat: invalid path string");
+            return -1;
+        },
+    };
 
-            match mkdir(whole_path) {
-                Ok(_) => return 0,
-                Err(msg) => {
-                    error!("{}", msg);
-                    return -1;
-                }
-            };
-        }
-
-        if buf[0] == b'/' {
-            match mkdir(path.to_string()) {
-                Ok(_) => return 0,
-                Err(msg) => {
-                    error!("{}", msg);
-                    return -1;
-                }
-            };
-        }
-
-        if let Some(dir) = arcpcb.files[dirfd as usize].clone() {
-            if let Some(dir_file) = dir.to_dir_file() {
-                match dir_file.mkdir(path.to_string()) {
-                    Ok(_) => return 0,
-                    Err(msg) => {
-                        error!("{}", msg);
-                        return -1;
-                    }
-                }
-                
-            }
-        }
+    match makeDirAt(dirfd as usize, path) {
+        Ok(()) => return 0,
+        Err(msg) => {
+            error!("sys_mkdirat: {}", msg);
+            return -1;
+        },
     }
-    -1
 }
 
 #[repr(C)]
@@ -534,58 +552,6 @@ bitflags! {
         const AT_SYMLINK_FOLLOW     = 0x400;
         const AT_NO_AUTOMOUNT       = 0x800;
         const AT_EMPTY_PATH         = 0x1000;
-    }
-}
-
-fn getFileFd(dirfd: usize) -> Result<Arc<dyn File>, &'static str> {
-    let proc = current_process().unwrap();
-    let arcpcb = proc.get_inner_locked();
-    if dirfd == AT_FDCWD as usize {
-        // debug!("fd == current dir");
-        // debug!("path: {}", arcpcb.path);
-        return open(arcpcb.path.clone(), OpenMode::empty());
-    } else {
-        if dirfd > arcpcb.files.len() {
-            return Err("fd not in use");
-        } 
-        if let Some(file) = &arcpcb.files[dirfd] {
-            return Ok(file.clone());
-        } else {
-            return Err("fd not in use");
-        }
-    }
-}
-
-use crate::fs::parse_path;
-use crate::fs::to_string;
-use alloc::string::String;
-
-fn getFile(dirfd: usize, path: &str, mode: OpenMode) -> Result<Arc<dyn File>, &'static str> {
-    let path = match parse_path(path) {
-        Ok(path) => {
-            if !path.is_abs && path.path.len() == 0 {
-                String::new()
-            } else {
-                path.to_string()
-            }
-        }
-        Err(err) => return Err(to_string(err)),
-    };
-    if path.len() == 0 {
-        return getFileFd(dirfd);
-    } else if path.chars().nth(0).unwrap() != '/' {
-        match getFileFd(dirfd) {
-            Ok(file) => {
-                if let Some(dir) = file.to_dir_file() {
-                    return dir.open(path.to_string(), mode);
-                } else {
-                    return Err("fd not a dir");
-                }
-            },
-            Err(msg) => return Err(msg),
-        }
-    } else {
-        return open(path.to_string(), mode);
     }
 }
 

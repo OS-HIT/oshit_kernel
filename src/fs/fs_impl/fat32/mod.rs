@@ -23,6 +23,7 @@ use super::cache_mgr::BlockCacheManager;
 use super::cache_mgr::BLOCK_SZ;
 
 use super::BlockDeviceFile;
+use super::super::Path;
 
 use core::mem::size_of;
 
@@ -254,7 +255,7 @@ impl Fat32FS {
                 }
         }
 
-        pub fn append_chain(&self, end: u32) -> Result<u32, &str> {
+        pub fn append_chain(&self, end: u32) -> Result<u32, &'static str> {
                 let end = match fat::get_type(self.get_next_clst(end).unwrap()) {
                         CLUSTER::Eoc => end,
                         CLUSTER::Data => self.get_chain(end).pop().unwrap(),
@@ -290,27 +291,27 @@ fn root_dir(fs: Arc<Fat32FS>) -> FileInner {
         return FileInner::new(Inode::root(fs), 0); 
 }
 
-pub fn open(fs: Arc<Fat32FS>, abs_path: &str, mode: usize) -> Result<FileInner, &'static str> {
+pub fn open(fs: Arc<Fat32FS>, abs_path: Path, mode: usize) -> Result<FileInner, &'static str> {
         let mut root = root_dir(fs);
-        return root.open(&abs_path, mode);
+        return root.open(abs_path, mode);
 }
 
-pub fn mkdir(fs: Arc<Fat32FS>, abs_path: &str) -> Result<FileInner, &'static str> {
+pub fn mkdir(fs: Arc<Fat32FS>, abs_path: Path) -> Result<FileInner, &'static str> {
         let mut root = root_dir(fs);
         return root.mkdir(abs_path);
 }
 
-pub fn mkfile(fs: Arc<Fat32FS>, abs_path: &str) -> Result<FileInner, &'static str> {
+pub fn mkfile(fs: Arc<Fat32FS>, abs_path: Path) -> Result<FileInner, &'static str> {
         let mut root = root_dir(fs);
         return root.mkfile(abs_path);
 }
 
-pub fn remove(fs: Arc<Fat32FS>, abs_path: &str) -> Result<(), &'static str> {
+pub fn remove(fs: Arc<Fat32FS>, abs_path: Path) -> Result<(), &'static str> {
         let mut root = root_dir(fs);
         return root.remove(abs_path);
 }
 
-pub fn rename(fs: Arc<Fat32FS>, to_rename: &str, new_name: &str) -> Result<(), &'static str> {
+pub fn rename(fs: Arc<Fat32FS>, to_rename: Path, new_name: &str) -> Result<(), &'static str> {
         match open(fs, to_rename, 0){
                 Ok(mut file) => {
                         file.rename(new_name).unwrap();
@@ -323,11 +324,11 @@ pub fn rename(fs: Arc<Fat32FS>, to_rename: &str, new_name: &str) -> Result<(), &
         };
 }
 
-pub fn sym_link(fs: Arc<Fat32FS>, target_path: &str, link_path: &str) -> Result<(), &'static str> {
+pub fn sym_link(fs: Arc<Fat32FS>, target_path: Path, link_path: Path) -> Result<(), &'static str> {
         match open(fs, link_path, file::WRITE | file::CREATE | file::NO_FOLLOW) {
                 Ok(mut file) => {
                         file.set_attr(DirEntryRaw::ATTR_SYM);
-                        file.write(target_path.as_bytes()).unwrap();
+                        file.write(target_path.to_string().as_bytes()).unwrap();
                         file.close();
                         return Ok(());
                 },

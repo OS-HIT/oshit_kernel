@@ -13,6 +13,7 @@ use super::vfs::*;
 use super::utils::*;
 
 use crate::fs::File;
+use crate::fs::Path;
 
 pub struct Fat32W {
         pub inner: Arc<Fat32FS>,
@@ -55,10 +56,10 @@ impl VirtualFileSystem for Fat32W {
         /// create inode (read from disc etc), used for open files.  
         /// we first create it's inode, then opens it.
         /// todo: maybe a specific Path struct?
-        fn open(&self, abs_path: String, mode: OpenMode) -> Result<Arc<dyn File>, &'static str> {
+        fn open(&self, abs_path: Path, mode: OpenMode) -> Result<Arc<dyn File>, &'static str> {
                 verbose!("Fat32 opening: {}", abs_path);
                 let mode = OpenMode2usize(mode);
-                match fat32::open(self.inner.clone(), &abs_path, mode){
+                match fat32::open(self.inner.clone(), abs_path, mode){
                         Ok(file) => return Ok(Arc::new(
                                 FAT32File {
                                         inner: Mutex::new(file)
@@ -68,8 +69,8 @@ impl VirtualFileSystem for Fat32W {
                 };
         }
 
-        fn mkdir(&self, abs_path: String) -> Result<Arc<dyn File>, &'static str> {
-                match fat32::mkdir(self.inner.clone(), &abs_path) {
+        fn mkdir(&self, abs_path: Path) -> Result<Arc<dyn File>, &'static str> {
+                match fat32::mkdir(self.inner.clone(), abs_path) {
                         Ok(file) => return Ok(Arc::new(
                                 FAT32File {
                                         inner: Mutex::new(file)
@@ -79,8 +80,8 @@ impl VirtualFileSystem for Fat32W {
                 }
         }
 
-        fn mkfile(&self, abs_path: String) -> Result<Arc<dyn File>, &'static str> {
-                match fat32::mkfile(self.inner.clone(), &abs_path) {
+        fn mkfile(&self, abs_path: Path) -> Result<Arc<dyn File>, &'static str> {
+                match fat32::mkfile(self.inner.clone(), abs_path) {
                         Ok(file) => return Ok(Arc::new(
                                 FAT32File {
                                         inner: Mutex::new(file)
@@ -90,16 +91,16 @@ impl VirtualFileSystem for Fat32W {
                 }
         }
 
-        fn remove(&self, abs_path: String) -> Result<(), &'static str> {
-                return fat32::remove(self.inner.clone(), &abs_path);
+        fn remove(&self, abs_path: Path) -> Result<(), &'static str> {
+                return fat32::remove(self.inner.clone(), abs_path);
         }
         
-        fn link(&self, to_link: Arc<dyn File>, dest: String) -> Result<(), &'static str> {
+        fn link(&self, to_link: Arc<dyn File>, dest: Path) -> Result<(), &'static str> {
                 return Err("Not supported by fat32");
         }
 
-        fn sym_link(&self, abs_src: String, rel_dst: String) -> Result<(), &'static str> {
-                return fat32::sym_link(self.inner.clone(), &rel_dst, &abs_src);
+        fn sym_link(&self, abs_src: Path, rel_dst: Path) -> Result<(), &'static str> {
+                return fat32::sym_link(self.inner.clone(), rel_dst, abs_src);
         }
 
         fn rename(&self, to_rename: Arc<dyn File>, new_name: String) -> Result<(), &'static str> {

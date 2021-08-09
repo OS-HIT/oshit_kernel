@@ -33,12 +33,12 @@ impl MountManager {
     }
 
     pub fn unmount_fs(&self, path: String) -> Result<(), &'static str> {
-        self.get_inner_locked().unmount_fs(path)
+        self.get_inner_locked().unmount_fs(&path)
     }
 
     /// get vfs and string relative to it.
-    pub fn parse(&self, total_path: String) -> Result<(Arc<dyn VirtualFileSystem>, String), &'static str> {
-        self.get_inner_locked().parse(total_path)
+    pub fn parse(&self, total_path: String) -> Result<(Arc<dyn VirtualFileSystem>, Path), &'static str> {
+        self.get_inner_locked().parse(&total_path)
     }
     
     pub fn open(&self, abs_path: String, mode: OpenMode) -> Result<Arc<dyn File>, &'static str> {
@@ -86,10 +86,10 @@ impl MountManagerInner {
         }
     }
 
-    fn mount(queue: Vec<MountNode>, path: Vec::<String>, vfs: Arc<dyn VirtualFileSystem>) -> Result<(), &'static str> {
+    fn mount(queue: &mut Vec<MountNode>, mut path: Vec::<String>, vfs: Arc<dyn VirtualFileSystem>) -> Result<(), &'static str> {
         if path.len() == 0 {
-            for node in queue {
-                if let MountNode::FileSystem(_) = node {
+            for i in 0..queue.len() {
+                if let MountNode::FileSystem(_) = queue[i] {
                     return Err("current dir already mounted");
                 }
             }
@@ -97,14 +97,14 @@ impl MountManagerInner {
             return Ok(());
         } else {
             let dname = path.pop().unwrap();
-            for node in queue {
-                if let MountNode::SubDir(name, sq) = node {
+            for i in 0..queue.len() {
+                if let MountNode::SubDir(ref name, ref mut queue) = queue[i] {
                     if dname.eq(name) {
-                        return MountManagerInner::mount(&mut sq, path, vfs);
+                        return MountManagerInner::mount(queue, path, vfs);
                     }
                 }
             }
-            let sq = Vec::new();
+            let mut sq = Vec::new();
             match MountManagerInner::mount(&mut sq, path, vfs) {
                 Ok(()) => {
                     queue.push(MountNode::SubDir(dname, sq));
@@ -123,55 +123,139 @@ impl MountManagerInner {
         if !path.is_abs {
             return Err("mount_fs: absolute path required");
         }
+        let Path {path:mut path, ..} = path;
+        path.reverse();
+        MountManagerInner::mount(&mut self.root, path, vfs);
         return Ok(());
     }
 
-    pub fn unmount_fs(&mut self, path: String) -> Result<(), &'static str> {
-        // match self.mounted_fs.remove(&path) {
-        //     Some(vfs) => {
-        //         if Arc::strong_count(&vfs) > 1 {
-        //             error!("The vfs you are about to remove have {} reference count. Proceed with caution.", Arc::strong_count(&vfs));
-        //         }
-        //         Ok(())
-        //     },
-        //     None => Err("Remove failed: no such VFS")
-        // }
-        return Ok(());
+    fn unmount(queue: &mut Vec<MountNode>, mut path: Vec<String>) -> Option<Arc<dyn VirtualFileSystem>> {
+        if path.len() == 0 {
+            for i in 0..queue.len() {
+                if let MountNode::FileSystem(_) = queue[i] {
+                    if let MountNode::FileSystem(fs) = queue.remove(i) {
+                        return Some(fs);
+                    }
+                }
+            }
+            return None;
+        } else {
+            let dname = path.pop().unwrap();
+            for i in 0..queue.len() {
+                if let MountNode::SubDir(ref name, ref mut sq) = queue[i] {
+                    if dname.eq(name) {
+                        let result = MountManagerInner::unmount(sq, path);
+                        if sq.len() == 0 {
+                            queue.remove(i);
+                        }
+                        return result;
+                    }
+                }
+            }
+            return None;
+        }
+    }
+
+    pub fn unmount_fs(&mut self, path: &str) -> Result<(), &'static str> {
+        let path = match parse_path(&path) {
+            Ok(path) => path,
+            Err(err) => return Err(to_string(err)),
+        };
+        if !path.is_abs {
+            return Err("unmount_fs: absolute path required");
+        }
+        let Path {path:mut path, ..} = path;
+        path.reverse();
+        if let Some(vfs) = MountManagerInner::unmount(&mut self.root, path) {
+            if Arc::strong_count(&vfs) > 1 {
+                error!("The vfs you are about to remove have {} reference count. Proceed with caution.", Arc::strong_count(&vfs));
+            }
+            return Ok(());
+        }
+        return Err("unmount_fs: path not mounted");
+    }
+
+    fn find_path(queue: &Vec<MountNode>, path:&mut Vec<String>) -> Option<Arc<dyn VirtualFileSystem>> {
+        if path.len() == 0 {
+            for i in 0..queue.len() {
+                if let MountNode::FileSystem(vfs) = &queue[i] {
+                    return Some(vfs.clone());
+                }
+            }
+            return None;
+        } else {
+            let dname = path.pop().unwrap();
+            let mut result:Option<Arc<dyn VirtualFileSystem>> = None;
+            for i in 0..queue.len() {
+                if let MountNode::SubDir(ref name, ref sq) = queue[i] {
+                    if dname.eq(name) {
+                        return MountManagerInner::find_path(sq, path);
+                    }
+                } else if let MountNode::FileSystem(ref fs) = queue[i] {
+                    result = Some(fs.clone());
+                }
+            }
+            path.push(dname);
+            return result;
+        }
     }
 
     /// get vfs and string relative to it.
-    pub fn parse(&self, total_path: String) -> Result<(Arc<dyn VirtualFileSystem>, String), &'static str> {
-        // let longest_match = self.mounted_fs.iter().max_by(|x, y| -> Ordering {
-        //     if total_path.starts_with(x.0) && total_path.starts_with(y.0){
-        //         x.0.len().cmp(&y.0.len())
-        //     } else if total_path.starts_with(x.0) {
-        //         Ordering::Greater
-        //     } else if total_path.starts_with(y.0) {
-        //         Ordering::Less
-        //     } else {
-        //         Ordering::Equal
-        //     }
-        // });
-        // let longest_match = longest_match.ok_or("No VFS mounted!")?;
-        // let sub_path = total_path[longest_match.0.len()..].to_string();
-        // return Ok((longest_match.1.clone(), sub_path));
-        return Err("error");
+    pub fn parse(&self, total_path: &str) -> Result<(Arc<dyn VirtualFileSystem>, Path), &'static str> {
+        let path = match parse_path(&total_path) {
+            Ok(path) => path,
+            Err(err) => return Err(to_string(err)),
+        };
+        if !path.is_abs {
+            return Err("parse: absolute path required");
+        }
+        let Path {path:mut path, must_dir: must_dir, ..} = path;
+        path.reverse();
+        if let Some(vfs) = MountManagerInner::find_path(&self.root, &mut path) {
+            path.reverse();
+            let path = Path { path, must_dir, is_abs: true};
+            return Ok((vfs, path));
+        }
+        return Err("parse: fs not found");
+    }
+
+    fn find_fs(queue: &Vec<MountNode>, vfs: &Arc<dyn VirtualFileSystem>, path:&mut Vec<String>) -> Result<(),()> {
+        for i in 0..queue.len() {
+            match &queue[i] {
+                MountNode::FileSystem(fs) => {
+                    if Arc::ptr_eq(fs, vfs) {
+                        return Ok(());
+                    }
+                },
+                MountNode::SubDir(name,queue) => {
+                    path.push(name.clone());
+                    if let Ok(()) = MountManagerInner::find_fs(queue, vfs, path) {
+                        return Ok(());
+                    }
+                    path.pop();
+                },
+            }
+        }
+        return Err(());
     }
 
     pub fn mounted_at(&self, vfs: Arc<dyn VirtualFileSystem>) -> Result<String, &'static str> {
-        // for i in &self.mounted_fs {
-        //     if Arc::ptr_eq(&i.1, &vfs) {
-        //         return Ok(i.0.clone());
-        //     }
-        // }
-        Err("VFS not found")
+        let mut path = Vec::new();
+        if let Ok(()) = MountManagerInner::find_fs(&self.root, &vfs, &mut path) {
+            let path = Path {
+                path, 
+                must_dir: true,
+                is_abs: true,
+            };
+            return Ok(path.to_string());
+        };
+        return Err("mounted_at: VFS not found");
     }
     
     pub fn open(&self, abs_path: String, mode: OpenMode) -> Result<Arc<dyn File>, &'static str> {
-        // let (vfs, rel_path) = self.parse(abs_path.clone())?;
-        // verbose!("open: parsing res: path {}, relative path {}", abs_path, rel_path);
-        // return vfs.open(rel_path, mode);
-        return Err("error");
+        let (vfs, rel_path) = self.parse(&abs_path)?;
+        verbose!("open: parsing res: path {}, relative path {}", abs_path, rel_path.to_string());
+        return vfs.open(rel_path, mode);
     }
 
     pub fn mkdir(&self, abs_path: String) -> Result<Arc<dyn File>, &'static str> {
@@ -235,11 +319,11 @@ pub fn mount_fs(path: String, vfs: Arc<dyn VirtualFileSystem>) -> Result<(), &'s
 }
 
 pub fn unmount_fs(path: String) -> Result<(), &'static str> {
-    MOUNT_MANAGER.get_inner_locked().unmount_fs(path)
+    MOUNT_MANAGER.get_inner_locked().unmount_fs(&path)
 }
 
 /// get vfs and string relative to it.
-pub fn parse(total_path: String) -> Result<(Arc<dyn VirtualFileSystem>, String), &'static str> {
+pub fn parse(total_path: String) -> Result<(Arc<dyn VirtualFileSystem>, Path), &'static str> {
     MOUNT_MANAGER.parse(total_path)
 }
 

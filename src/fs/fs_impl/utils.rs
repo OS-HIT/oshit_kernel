@@ -19,5 +19,8 @@ pub fn OpenMode2usize(mode: OpenMode) -> usize {
         if mode.contains(OpenMode::NO_FOLLOW) || mode.contains(OpenMode::SYS) {
             result |= file::NO_FOLLOW;
         }
+        if mode.contains(OpenMode::TRUNCATE) {
+            result |= file::TRUNCATE;
+        }
         return result;
 }
