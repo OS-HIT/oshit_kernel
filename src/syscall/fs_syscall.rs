@@ -698,26 +698,21 @@ pub fn sys_fstatat(dirfd: usize, path: VirtAddr, ptr: VirtAddr, flags:usize) -> 
 //     }
 // }
 
+pub fn sys_ioctl_inner(fd: usize, request: u64, argp: VirtAddr) -> Result<u64, &'static str> {
+    let proc = current_process().ok_or("No proc running")?;
+    let file = proc.get_inner_locked().files.get(fd).ok_or("No such fd slot")?.clone().ok_or("No such fd")?;
+    let dev_file = file.to_device_file().ok_or("Not an device file!")?;
+    dev_file.ioctl(request, argp)
+}
+
 pub fn sys_ioctl(fd: usize, request: u64, argp: VirtAddr) -> isize {
-    let proc = current_process().unwrap();
-    let locked_inner = proc.get_inner_locked();
-    if let Some(slot) = locked_inner.files.get(fd) {
-        if let Some(file) = slot {
-            if let Some(dev_file) = file.clone().to_device_file() {
-                drop(locked_inner);
-                match dev_file.ioctl(request, argp) {
-                    Ok(res) => return res as isize,
-                    Err(msg) => {
-                        error!("Failed to ioctl: {}", msg);
-                        return -1;
-                    }
-                }
-            }
-            return -1;
+    match sys_ioctl_inner(fd, request, argp) {
+        Ok(res) => res as isize,
+        Err(msg) => {
+            error!("IOCTL Failed: {}", msg);
+            -1
         }
-        return -1;
     }
-    return -1;
 }
 
 pub fn read_linux_fstat(file: Arc<dyn File>) -> FStat {
@@ -792,7 +787,7 @@ pub fn sys_fstatat_new(fd: i32, path: VirtAddr, ptr: VirtAddr, flags:usize) -> i
             let mut whole_path = arcpcb.path.clone();
             whole_path.push_str(path);
             verbose!("FSTATAT path: {} + {}", arcpcb.path.clone(), path);
-            let file = open(path.to_string(), fs_flags);
+            let file = open(whole_path.to_string(), fs_flags);
             let file = match file {
                 Ok(f) => f,
                 Err(e) => {

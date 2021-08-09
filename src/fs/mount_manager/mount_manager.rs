@@ -203,6 +203,7 @@ impl MountManagerInner {
 
     /// get vfs and string relative to it.
     pub fn parse(&self, total_path: &str) -> Result<(Arc<dyn VirtualFileSystem>, Path), &'static str> {
+        verbose!("Parsing path: {}", total_path);
         let path = match parse_path(&total_path) {
             Ok(path) => path,
             Err(err) => return Err(to_string(err)),
@@ -210,7 +211,7 @@ impl MountManagerInner {
         if !path.is_abs {
             return Err("parse: absolute path required");
         }
-        let Path {path:mut path, must_dir: must_dir, ..} = path;
+        let Path {mut path, must_dir, ..} = path;
         path.reverse();
         if let Some(vfs) = MountManagerInner::find_path(&self.root, &mut path) {
             path.reverse();

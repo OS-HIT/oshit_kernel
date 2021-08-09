@@ -10,11 +10,12 @@ use spin::Mutex;
 use crate::fs::{CommonFile, DirFile};
 use crate::fs::file::{FileStatus, FileType};
 use crate::memory::VirtAddr;
+use crate::process::current_process;
 use crate::sbi::{get_byte, get_byte_non_block_with_echo};
 use crate::sbi::put_byte;
 use core::cell::RefCell;
 use core::usize;
-use core::convert::TryInto;
+use core::convert::{TryFrom, TryInto};
 
 lazy_static! {
 	pub static ref TTY0: Arc<SBITTY> = Arc::new(SBITTY::new());
@@ -160,12 +161,137 @@ impl File for SBITTY {
     }
 }
 
+macro_rules! EnumWithTryFrom {
+    ($(#[$meta:meta])* $vis:vis enum $name:ident {
+        $($(#[$vmeta:meta])* $vname:ident $(= $val:expr)?,)*
+    }) => {
+        $(#[$meta])*
+        $vis enum $name {
+            $($(#[$vmeta])* $vname $(= $val)?,)*
+        }
+
+        impl core::convert::TryFrom<u64> for $name {
+            type Error = ();
+
+            fn try_from(v: u64) -> Result<Self, Self::Error> {
+                match v {
+                    $(x if x == $name::$vname as u64 => Ok($name::$vname),)*
+                    _ => Err(()),
+                }
+            }
+        }
+    }
+}
+
+EnumWithTryFrom!{
+    #[repr(u64)]
+    #[derive(Debug)]
+    enum IOCTLOperation {
+        TCGETS          = 0x5401,
+        TCSETS          = 0x5402,
+        TCSETSW         = 0x5403,
+        TCSETSF         = 0x5404,
+        TCGETA          = 0x5405,
+        TCSETA          = 0x5406,
+        TCSETAW         = 0x5407,
+        TCSETAF         = 0x5408,
+        TCSBRK          = 0x5409,
+        TCXONC          = 0x540A,
+        TCFLSH          = 0x540B,
+        TIOCEXCL        = 0x540C,
+        TIOCNXCL        = 0x540D,
+        TIOCSCTTY       = 0x540E,
+        TIOCGPGRP       = 0x540F,
+        TIOCSPGRP       = 0x5410,
+        TIOCOUTQ        = 0x5411,
+        TIOCSTI         = 0x5412,
+        TIOCGWINSZ      = 0x5413,
+        TIOCSWINSZ      = 0x5414,
+        TIOCMGET        = 0x5415,
+        TIOCMBIS        = 0x5416,
+        TIOCMBIC        = 0x5417,
+        TIOCMSET        = 0x5418,
+        TIOCGSOFTCAR    = 0x5419,
+        TIOCSSOFTCAR    = 0x541A,
+        TIOCINQ         = 0x541B,
+        TIOCLINUX       = 0x541C,
+        TIOCCONS        = 0x541D,
+        TIOCGSERIAL     = 0x541E,
+        TIOCSSERIAL     = 0x541F,
+        TIOCPKT         = 0x5420,
+        FIONBIO         = 0x5421,
+        TIOCNOTTY       = 0x5422,
+        TIOCSETD        = 0x5423,
+        TIOCGETD        = 0x5424,
+        TCSBRKP         = 0x5425,  /* Needed for POSIX tcsendbreak() */
+        TIOCSBRK        = 0x5427,  /* BSD compatibility */
+        TIOCCBRK        = 0x5428,  /* BSD compatibility */
+        TIOCGSID        = 0x5429,  /* Return the session ID of FD */
+        TCGETS2         = 0x542A,
+        TCSETS2         = 0x542B,
+        TCSETSW2        = 0x542C,
+        TCSETSF2        = 0x542D,
+        TIOCGRS485      = 0x542E,
+        TIOCSRS485      = 0x542F,
+        TIOCGPTN        = 0x5430,  /* Get Pty Number (of pty-mux device) */
+        TIOCSPTLCK      = 0x5431,  /* Lock/unlock Pty */
+        TIOCGDEV        = 0x5432,  /* Get primary device node of /dev/console */
+        TCSETX          = 0x5433,
+        TCSETXF         = 0x5434,
+        TCSETXW         = 0x5435,
+        TIOCSIG         = 0x5436,  /* pty: generate signal */
+        TIOCVHANGUP     = 0x5437,
+        TIOCGPKT        = 0x5438,  /* Get packet mode state */
+        TIOCGPTLCK      = 0x5439,  /* Get Pty lock state */
+        TIOCGEXCL       = 0x5440,  /* Get exclusive mode state */
+        TIOCGPTPEER     = 0x5441,  /* Safely open the slave */
+        TIOCGISO7816    = 0x5442,
+        TIOCSISO7816    = 0x5443,
+        FIONCLEX        = 0x5450,
+        FIOCLEX         = 0x5451,
+        FIOASYNC        = 0x5452,
+        TIOCSERCONFIG   = 0x5453,
+        TIOCSERGWILD    = 0x5454,
+        TIOCSERSWILD    = 0x5455,
+        TIOCGLCKTRMIOS  = 0x5456,
+        TIOCSLCKTRMIOS  = 0x5457,
+        TIOCSERGSTRUCT  = 0x5458,  /* For debugging only */
+        TIOCSERGETLSR   = 0x5459,  /* Get line status register */
+        TIOCSERGETMULTI = 0x545A,  /* Get multiport config */
+        TIOCSERSETMULTI = 0x545B,  /* Set multiport config */
+        TIOCMIWAIT      = 0x545C,  /* wait for a change on serial input line(s) */
+        TIOCGICOUNT     = 0x545D,  /* read serial port inline interrupt counts */
+    }
+}
+
+
+#[derive(Clone, Copy, Debug)]
+struct WinSize {
+    row: u16,
+    col: u16,
+    x_pixel: u16,
+    y_pixel: u16,
+}
 impl DeviceFile for SBITTY {
     fn ioctl(&self, op: u64, argp: VirtAddr) -> Result<u64, &'static str> {
-        // todo!()
 		// TODO: Check tty's ioctl
-		error!("tty caught ioctl for op={}, argp={:?}", op, argp);
-        Err("Not yet implemented")
+        let op: IOCTLOperation = IOCTLOperation::try_from(op).map_err(|_| "Conversion error")?;
+        match op {
+            IOCTLOperation::TIOCGWINSZ => {
+                let size = WinSize {
+                    row: 80,
+                    col: 25,
+                    x_pixel: 800,
+                    y_pixel: 600,
+                };
+                current_process().unwrap().get_inner_locked().layout.write_user_data(argp, &size);
+                Ok(0)
+            },
+            _ => {
+                error!("tty caught ioctl for op={:?}, argp={:?}", op, argp);
+                Err("Not yet implemented")
+            }
+        }
     }
 
     fn to_char_dev<'a>(self: Arc<Self>) -> Option<Arc<dyn CharDeviceFile + 'a>> where Self: 'a  {
