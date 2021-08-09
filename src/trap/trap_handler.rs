@@ -1,6 +1,6 @@
 //! Trap handler of oshit kernel
 use super::TrapContext;
-use crate::{memory::VirtAddr, process::{current_process, default_sig_handlers}, syscall::syscall};
+use crate::{memory::{VirtAddr}, process::{current_process, default_sig_handlers}, syscall::syscall};
 use alloc::sync::Arc;
 use riscv::register::{
     stvec,      // s trap vector base address register
@@ -120,6 +120,13 @@ pub fn user_trap(_cx: &mut TrapContext) -> ! {
                     arcpcb.get_trap_context().sepc,
                     msg
                 );
+                if let Some(pte) = arcpcb.layout.pagetable.walk(VirtAddr::from(stval).into()) {
+                    error!("Pagetable entry flags: {:?}", pte.flags());
+                } else {
+                    error!("No such pagetable entry");
+                }
+                arcpcb.layout.print_layout();
+                // arcpcb.recv_signal(crate::process::default_handlers::SIGSEGV);
                 exit_switch(-2);
             }
         },
@@ -129,16 +136,28 @@ pub fn user_trap(_cx: &mut TrapContext) -> ! {
         Trap::Exception(Exception::InstructionPageFault) |
         Trap::Exception(Exception::LoadFault) => {
             error!(
-                "{:?} in application, bad addr = {:#x}, bad instruction = {:#x}, core dumped.",
+                "{:?} in application, bad addr = {:#x}, bad instruction @ {:#x}",
                 scause.cause(),
                 stval,
                 current_trap_context().sepc,
             );
+            let proc = current_process().unwrap();
+            let arcpcb = proc.get_inner_locked();
+            if let Some(pte) = arcpcb.layout.pagetable.walk(VirtAddr::from(stval).into()) {
+                error!("Pagetable entry flags: {:?}", pte.flags());
+            } else {
+                error!("No such pagetable entry");
+            }
             exit_switch(-2);
             // current_process().unwrap().recv_signal(crate::process::default_handlers::SIGSEGV);
         }
         Trap::Exception(Exception::IllegalInstruction) => {
-            error!("IllegalInstruction in application, core dumped.");
+            error!(
+                "{:?} in application, bad inst = {:#x} @ {:#x}",
+                scause.cause(),
+                stval,
+                current_trap_context().sepc,
+            );
             exit_switch(-3);
         }
         _ => {

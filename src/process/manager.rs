@@ -1,7 +1,7 @@
 //! The process manager for oshit kernel
 
 // use super::ProcessContext;
-use super::{ProcessControlBlock, current_process};
+use super::{ProcessControlBlock, ProcessStatus, current_process};
 use alloc::collections::VecDeque;
 use alloc::sync::Arc;
 use spin::Mutex;
@@ -53,6 +53,19 @@ impl ProcessManager {
         }
         None
     }
+
+    pub fn remove_proc_by_pid(&mut self, pid: usize) -> Option<Arc<ProcessControlBlock>> {
+        let proc_count = self.processes.len();
+        for i in 0..proc_count {
+            let proc = self.processes.pop_back()?;
+            if proc.pid.0 != pid {
+                self.processes.push_front(proc);
+            } else {
+                return Some(proc);
+            }
+        }
+        None
+    }
 }
 
 /// enqueue a new process, i.e. mark it ready and is waiting for execution.  
@@ -81,4 +94,8 @@ pub fn get_proc_by_pid(pid: usize) -> Option<Arc<ProcessControlBlock>> {
                 Some(found.clone())
             }
         )
+}
+
+pub fn remove_proc_by_pid(pid: usize) -> Option<Arc<ProcessControlBlock>> {
+    PROCESS_MANAGER.lock().remove_proc_by_pid(pid)
 }

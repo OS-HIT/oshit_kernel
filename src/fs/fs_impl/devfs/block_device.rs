@@ -1,7 +1,7 @@
 use core::{cell::Cell, sync::atomic::{AtomicUsize, Ordering}};
 
-use crate::fs::{CommonFile, DirFile, File, SeekOp, file::FileStatus};
 use crate::fs::Path;
+use crate::{fs::{CommonFile, DirFile, File, SeekOp, file::FileStatus}, memory::VirtAddr};
 use alloc::{string::ToString, sync::Arc, vec::Vec};
 use alloc::string::String;
 use super::{CharDeviceFile, DeviceFile, device_file::BlockDeviceFile};
@@ -41,7 +41,7 @@ impl BlockDeviceFile for SDAWrapper {
 }
 
 impl DeviceFile for SDAWrapper {
-    fn ioctl(&self, op: u64) -> Result<u64, &'static str> {
+    fn ioctl(&self, op: u64, argp: VirtAddr) -> Result<u64, &'static str> {
         warning!("IOCTL logged for /block/sda: op={}", op);
         Err("not implemented")
     }
@@ -270,7 +270,7 @@ impl File for CommonFileAsBlockDevice {
 }
 
 impl DeviceFile for CommonFileAsBlockDevice {
-    fn ioctl(&self, op: u64) -> Result<u64, &'static str> {
+    fn ioctl(&self, op: u64, argp: VirtAddr) -> Result<u64, &'static str> {
         Err("mimiced block device")
     }
 

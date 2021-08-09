@@ -167,7 +167,7 @@ pub struct ProcessControlBlock {
     /// The kernel stack of the process. PCB holds it so the resource is not dropped.
     pub kernel_stack:   KernelStack,
     /// The mutable inner, protected by a Mutex
-    inner:              Mutex<ProcessControlBlockInner>,
+    pub inner:              Mutex<ProcessControlBlockInner>,
 }
 
 #[derive(Clone, Copy)]

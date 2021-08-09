@@ -4,6 +4,7 @@ use super::super::VirtualFileSystem;
 use super::super::parse_path;
 use super::super::Path;
 use super::super::to_string;
+use alloc::borrow::ToOwned;
 use alloc::{collections::BTreeMap, string::ToString};
 use alloc::string::String;
 use spin::{Mutex, MutexGuard};

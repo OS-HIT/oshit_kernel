@@ -57,7 +57,7 @@ impl VirtualFileSystem for Fat32W {
         /// we first create it's inode, then opens it.
         /// todo: maybe a specific Path struct?
         fn open(&self, abs_path: Path, mode: OpenMode) -> Result<Arc<dyn File>, &'static str> {
-                verbose!("Fat32 opening: {}", abs_path);
+                verbose!("Fat32 opening: {:?}", abs_path);
                 let mode = OpenMode2usize(mode);
                 match fat32::open(self.inner.clone(), abs_path, mode){
                         Ok(file) => return Ok(Arc::new(

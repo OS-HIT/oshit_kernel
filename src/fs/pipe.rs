@@ -147,7 +147,7 @@ impl PipeEnd {
                 readable: false,
                 writeable: true,
                 size: 0,
-                name: "".to_string(),
+                name: "PIPE".to_string(),
                 ftype: super::file::FileType::FIFO,
                 inode: 0,
                 dev_no: 0,
@@ -187,7 +187,7 @@ impl File for PipeEnd {
         self.pipe.lock().write(buffer)
     }
 
-    fn read_user_buffer(&self, mut buffer: crate::memory::UserBuffer) -> Result<usize, &'static str> {
+    fn read_user_buffer(&self, buffer: crate::memory::UserBuffer) -> Result<usize, &'static str> {
         self.pipe.lock().read_user_buffer(buffer)
     }
 

@@ -1,6 +1,7 @@
 //! Process related syscalls.
 use core::mem::size_of;
 use core::slice::{from_raw_parts, from_raw_parts_mut};
+use crate::process::{PROC0, remove_proc_by_pid};
 
 use crate::config::PAGE_SIZE;
 use crate::process::{CloneFlags, PROCESS_MANAGER, current_path, current_process, enqueue, exit_switch, get_proc_by_pid, suspend_switch};
@@ -12,6 +13,7 @@ use crate::process::{
     ProcessStatus,
     SigAction
 };
+use crate::sbi::get_time;
 use crate::trap::TrapContext;
 
 use alloc::sync::Arc;
@@ -462,7 +464,7 @@ pub fn sys_mprotect(addr: VirtAddr, len: usize, prot: usize) -> isize {
     let proc = current_process().unwrap();
     let mut locked_inner = proc.get_inner_locked();
     let mut flags = PTEFlags::empty();
-    if prot & PROT_NONE == 0 {
+    if prot != PROT_NONE {
         flags |= PTEFlags::U;
     }
     if prot & PROT_READ != 0 {
@@ -474,6 +476,7 @@ pub fn sys_mprotect(addr: VirtAddr, len: usize, prot: usize) -> isize {
     if prot & PROT_EXEC != 0 {
         flags |= PTEFlags::X;
     }
+    verbose!("m_protect flag: {:?}", flags);
     let grow_up = prot & PROT_GROWSUP != 0;
     let grow_down = prot & PROT_GROWSDOWN != 0;
     match locked_inner.layout.modify_access(addr.into(), len, flags, grow_up, grow_down) {
@@ -483,4 +486,41 @@ pub fn sys_mprotect(addr: VirtAddr, len: usize, prot: usize) -> isize {
             -1
         }
     }
+}
+
+pub fn sys_exit_group(exit_status: i32) -> ! {
+    let proc = current_process().unwrap();
+    let mut pids: Vec<usize> = Vec::new();
+    for process in  PROCESS_MANAGER.lock().processes.iter() {
+        if process.tgid == proc.tgid {
+            pids.push(process.pid.0);
+        }
+    }
+    for pid in pids {
+        let group_process = remove_proc_by_pid(pid).unwrap();
+        let mut group_inner = group_process.get_inner_locked();
+        debug!("Application {} exited with code {:}", group_process.pid.0, exit_status);
+        // mark as dead
+        group_inner.status = ProcessStatus::Zombie;
+        group_inner.exit_code = exit_status;
+        
+        // adopt children
+        let mut initproc_inner = PROC0.get_inner_locked();
+        for child in group_inner.children.iter() {
+            child.get_inner_locked().parent = Some(Arc::downgrade(&PROC0));
+            initproc_inner.children.push(child.clone());
+        }
+        
+        group_inner.children.clear();
+        group_inner.layout.drop_all();
+        group_inner.utime = group_inner.utime + get_time() - group_inner.last_start;
+    }
+    debug!("Application {} exited with code {:}", proc.pid.0, exit_status);
+    drop(proc);
+    exit_switch(exit_status);
+    unreachable!("This part should be unreachable. Go check __switch.");
+}
+
+pub fn sys_gettid() -> isize {
+    return current_process().unwrap().pid.0 as isize;
 }

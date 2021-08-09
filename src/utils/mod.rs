@@ -30,7 +30,7 @@ pub fn print_kernel_stack() {
                 :::"volatile" 
             );
         }
-        let mask = 0x7fffffffff;
+        let mask = 0x7fffffffffusize;
         debug!("kstack of {}: {:#10X}-{:#10X}-{:#10X} used:{} left:{}", pid, bottom&mask, sp&mask, top&mask, top - sp, sp - bottom);
     } else {
         debug!("print_kernel_stack: No user process");

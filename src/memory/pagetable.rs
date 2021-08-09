@@ -3,19 +3,12 @@
 extern crate bitflags;
 
 use bitflags::*;
-use super::{
-    PhysPageNum,
-    VirtPageNum,
-    VirtAddr,
-    PhysAddr,
-    FrameTracker,
-    alloc_frame,
-    UserBuffer
-};
+use super::{FrameTracker, PhysAddr, PhysPageNum, Segment, UserBuffer, VirtAddr, VirtPageNum, alloc_frame};
 use alloc::vec::Vec;
 use core::cmp::min;
 use crate::utils::StepByOne;
 use alloc::string::String;
+use crate::memory::SegmentFlags;
 
 bitflags! {
     /// Pagetable entry flags, indicating privileges.
@@ -36,6 +29,25 @@ bitflags! {
         const A = 1 << 6;   
         /// Dirty
         const D = 1 << 7;   
+    }
+}
+
+impl PTEFlags {
+    pub fn to_seg_flag(&self) -> SegmentFlags {
+        let mut res = SegmentFlags::empty();
+        if self.contains(PTEFlags::X) {
+            res |= SegmentFlags::X;
+        }
+        if self.contains(PTEFlags::U) {
+            res |= SegmentFlags::U;
+        }
+        if self.contains(PTEFlags::W) {
+            res |= SegmentFlags::W;
+        }
+        if self.contains(PTEFlags::R) {
+            res |= SegmentFlags::R;
+        }
+        res
     }
 }
 
@@ -69,8 +81,10 @@ impl PageTableEntry {
     pub fn modify_access(&mut self, flags: PTEFlags) {
         // preserve valid bits
         let mask: usize = 0xffff_ffff_ffff_ff01;
+        // verbose!("before: {:?}", self.flags());
         self.bits &= mask;
         self.bits |= (flags.bits() as usize) & 0x0000_0000_0000_00fe;
+        // verbose!("after: {:?}", self.flags());
     }
 
     /// Read the physical page number from pagetable entry.
@@ -105,6 +119,10 @@ impl PageTableEntry {
     /// Check if the corresponding physical page is readable
     pub fn readable(&self) -> bool {
         (self.flags() & PTEFlags::R) != PTEFlags::empty()
+    }
+
+    pub fn user_acc(&self) -> bool {
+        (self.flags() & PTEFlags::U) != PTEFlags::empty()
     }
 }
 
@@ -203,6 +221,7 @@ impl PageTable {
     pub fn modify_access(&mut self, vpn: VirtPageNum, flags: PTEFlags) -> Option<()> {
         let pte = self.walk(vpn)?;
         // assert!(pte.valid(), "{:?} has already been mapped.", vpn);
+        // verbose!("Changeing {:?} flag to {:?}", vpn, flags);
         pte.modify_access(flags);
         Some(())
     }

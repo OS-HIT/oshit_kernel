@@ -39,7 +39,7 @@ pub fn to_string(error: PathFormatError) -> &'static str {
         }
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Path {
         pub path: Vec::<String>,
         pub must_dir: bool,
