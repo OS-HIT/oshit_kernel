@@ -105,6 +105,9 @@ impl FileInner {
                         return Err("read: file not opened in read mode");
                 }
                 let left = self.inode.get_size() - self.cursor;
+                if left == 0 {
+                        return Err("read: end of file");
+                }
                 if left < buffer.len() {
                         buffer = &mut buffer[0..left];
                 }
