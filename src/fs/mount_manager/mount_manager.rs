@@ -261,54 +261,55 @@ impl MountManagerInner {
     }
 
     pub fn mkdir(&self, abs_path: String) -> Result<Arc<dyn File>, &'static str> {
-        // let (vfs, rel_path) = self.parse(abs_path)?;
-        // return vfs.mkdir(rel_path);
-        return Err("error");
-
+        let (vfs, rel_path) = self.parse(&abs_path)?;
+        return vfs.mkdir(rel_path);
     }
 
     pub fn mkfile(&self, abs_path: String) -> Result<Arc<dyn File>, &'static str> {
-        // let (vfs, rel_path) = self.parse(abs_path)?;
-        // return vfs.mkfile(rel_path);
-        return Err("error");
-
+        let (vfs, rel_path) = self.parse(&abs_path)?;
+        return vfs.mkfile(rel_path);
     }
 
     pub fn remove(&self, abs_path: String) -> Result<(), &'static str> {
-        // let (vfs, rel_path) = self.parse(abs_path)?;
-        // return vfs.remove(rel_path);
-        return Err("error");
-
+        let (vfs, rel_path) = self.parse(&abs_path)?;
+        return vfs.remove(rel_path);
     }
     
     pub fn link(&self, to_link: Arc<dyn File>, dest: String) -> Result<(), &'static str> {
-        // let src_vfs = to_link.get_vfs()?;
-        // let src_path = to_link.get_path();
-        // let (dst_vfs, dst_path) = self.parse(dest)?;
-        // if Arc::ptr_eq(&src_vfs, &dst_vfs) {
-        //     return Err("Cannot create hard link accross file systems!");
-        // } else {
-        //     return src_vfs.link(to_link, dst_path);
-        // }
-        return Err("error");
-
+        let src_vfs = to_link.get_vfs()?;
+        let src_path = to_link.get_path();
+        let (dst_vfs, dst_path) = self.parse(&dest)?;
+        if Arc::ptr_eq(&src_vfs, &dst_vfs) {
+            return Err("Cannot create hard link accross file systems!");
+        } else {
+            return src_vfs.link(to_link, dst_path);
+        }
     }
 
     pub fn sym_link(&self, to_link: Arc<dyn File>, dest: String) -> Result<(), &'static str> {
-        // let src_vfs = to_link.get_vfs()?;
-        // let src_rel_path = to_link.get_path();
-        // let src_abs_path = self.mounted_at(src_vfs)? + &src_rel_path;
-        // let (dst_vfs, dst_path) = self.parse(dest)?;
-        // return dst_vfs.sym_link(src_abs_path, dst_path);
-        return Err("error");
-
+        let src_vfs = to_link.get_vfs()?;
+        let src_rel_path = to_link.get_path();
+        let mut path = Vec::new();
+        match MountManagerInner::find_fs(&self.root, &src_vfs, &mut path) {
+            Ok(()) => {
+                let mut src_abs_path = Path {
+                    path, 
+                    must_dir: true,
+                    is_abs: true,
+                };
+                src_abs_path.merge(src_rel_path);
+                let (dst_vfs, dst_path) = self.parse(&dest)?;
+                return dst_vfs.sym_link(src_abs_path, dst_path);
+            },
+            Err(()) => {
+                return Err("sym_link: fs not found");
+            },
+        };
     }
 
     pub fn rename(&self, to_rename: Arc<dyn File>, new_name: String) -> Result<(), &'static str> {
-        // let vfs = to_rename.get_vfs()?;
-        // return vfs.rename(to_rename, new_name);
-        return Err("error");
-
+        let vfs = to_rename.get_vfs()?;
+        return vfs.rename(to_rename, new_name);
     }
 }
 
