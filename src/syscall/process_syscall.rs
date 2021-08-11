@@ -1,7 +1,7 @@
 //! Process related syscalls.
 use core::mem::size_of;
 use core::slice::{from_raw_parts, from_raw_parts_mut};
-use crate::process::{PROC0, remove_proc_by_pid};
+use crate::process::{PROC0, ProcessControlBlockInner, remove_proc_by_pid};
 
 use crate::config::PAGE_SIZE;
 use crate::process::{CloneFlags, PROCESS_MANAGER, current_path, current_process, enqueue, exit_switch, get_proc_by_pid, suspend_switch};
@@ -16,11 +16,12 @@ use crate::process::{
 use crate::sbi::get_time;
 use crate::trap::TrapContext;
 
+use alloc::collections::VecDeque;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use alloc::string::{String, ToString};
 use bit_field::BitField;
-use spin::Mutex;
+use spin::{Mutex, MutexGuard};
 
 use crate::fs::{
     File,
@@ -99,81 +100,218 @@ pub fn sys_set_tid_address(tidptr: VirtAddr) -> isize {
 }
 
 /// Execute a program in the process
-pub fn sys_exec(app_name: VirtAddr, argv: VirtAddr, envp: VirtAddr) -> isize {
-    let mut app_name = get_user_cstr(current_satp(), app_name);
-    if !app_name.starts_with("/") {
+pub fn sys_exec(app_path_ptr: VirtAddr, argv: VirtAddr, envp: VirtAddr) -> isize {
+    let mut app_path = get_user_cstr(current_satp(), app_path_ptr);
+    if !app_path.starts_with("/") {
         let mut path = current_path();
-        path.push_str(app_name.as_str());
-        app_name = path;
+        path.push_str(app_path.as_str());
+        app_path = path;
     }
-    verbose!("Exec {}", app_name);
+    if app_path.starts_with("//") {
+        app_path = app_path.get(1..).unwrap().to_string();
+    }
+    verbose!("Exec {}", app_path);
 
-    match open(app_name.clone(), OpenMode::READ) {
-        Ok(file) => {
-            verbose!("File found {}", app_name);
-            let length = file.poll().size as usize;
-            // alloc continious pages
-            let page_holder = alloc_continuous(length / PAGE_SIZE + 1);
-            let head_addr: PhysAddr = page_holder[0].ppn.into();
-            let head_ptr = head_addr.0 as *mut u8;
-            let arr: &mut [u8] = unsafe {
-                from_raw_parts_mut(head_ptr, length)
-            };
-
-            match file.read(arr) {
-                Ok(res) => {
-                    verbose!("Loaded App {}, size = {}", app_name, res);
-                    let proc = current_process().unwrap();
-                    let locked_inner = proc.get_inner_locked();
-
-                    verbose!("Loading argv");
-                    let mut args: Vec<Vec<u8>> = Vec::new();
-                    if argv.0 != 0 {
-                        verbose!("argv @ {:0x}", argv.0);
-                        let mut iter = argv;
-                        loop {
-                            let ptr: usize = locked_inner.layout.read_user_data(iter);
-                            if ptr == 0 {
-                                break;
-                            }
-                            args.push(locked_inner.layout.get_user_cstr(ptr.into()));
-                            iter += core::mem::size_of::<usize>();
-                        }
-                    }
-                    for (idx, a) in args.iter().enumerate() {
-                        verbose!("argc [{}]: {}", idx, core::str::from_utf8(a).unwrap());
-                    }
-
-                    verbose!("Loading envp");
-                    let mut envs: Vec<Vec<u8>> = Vec::new();
-                    if envp.0 != 0 {
-                        verbose!("envp @ {:0x}", envp.0);
-                        let mut iter = envp;
-                        loop {
-                            let ptr: usize = locked_inner.layout.read_user_data(iter);
-                            if ptr == 0 {
-                                break;
-                            }
-                            envs.push(locked_inner.layout.get_user_cstr(ptr.into()));
-                            iter += core::mem::size_of::<usize>();
-                        }
-                    }
-                    for (idx, a) in envs.iter().enumerate() {
-                        verbose!("envp [{}]: {}", idx, core::str::from_utf8(a).unwrap());
-                    }
-                    drop(locked_inner);
-                    proc.exec(arr, app_name, args, envs)
-                },
-                Err(msg) => {
-                    error!("Failed to read file: {}", msg);
-                    1
-                }
-            }
-        } ,
-        Err(msg) =>{
-            error!("Failed to open file {}: {}", app_name, msg);
+    match sys_exec_inner(app_path, argv, envp) {
+        Ok(res) => res,
+        Err(msg) => {
+            error!("Exec failed: {}", msg);
             -1
         }
+    }
+
+    // match open(app_name.clone(), OpenMode::READ) {
+    //     Ok(file) => {
+    //         verbose!("File found {}", app_name);
+    //         let length = file.poll().size as usize;
+    //         // alloc continious pages
+    //         let page_holder = alloc_continuous(length / PAGE_SIZE + 1);
+    //         let head_addr: PhysAddr = page_holder[0].ppn.into();
+    //         let head_ptr = head_addr.0 as *mut u8;
+    //         let arr: &mut [u8] = unsafe {
+    //             from_raw_parts_mut(head_ptr, length)
+    //         };
+
+    //         match file.read(arr) {
+    //             Ok(res) => {
+    //                 verbose!("Loaded App {}, size = {}", app_name, res);
+
+    //                 let proc = current_process().unwrap();
+    //                 let locked_inner = proc.get_inner_locked();
+
+    //                 verbose!("Loading argv");
+    //                 let mut args: Vec<Vec<u8>> = Vec::new();
+
+    //                 if argv.0 != 0 {
+    //                     verbose!("argv @ {:0x}", argv.0);
+    //                     let mut iter = argv;
+    //                     loop {
+    //                         let ptr: usize = locked_inner.layout.read_user_data(iter);
+    //                         if ptr == 0 {
+    //                             break;
+    //                         }
+    //                         args.push(locked_inner.layout.get_user_cstr(ptr.into()));
+    //                         iter += core::mem::size_of::<usize>();
+    //                     }
+    //                 }
+    //                 for (idx, a) in args.iter().enumerate() {
+    //                     verbose!("argc [{}]: {}", idx, core::str::from_utf8(a).unwrap());
+    //                 }
+
+    //                 verbose!("Loading envp");
+    //                 let mut envs: Vec<Vec<u8>> = Vec::new();
+    //                 if envp.0 != 0 {
+    //                     verbose!("envp @ {:0x}", envp.0);
+    //                     let mut iter = envp;
+    //                     loop {
+    //                         let ptr: usize = locked_inner.layout.read_user_data(iter);
+    //                         if ptr == 0 {
+    //                             break;
+    //                         }
+    //                         envs.push(locked_inner.layout.get_user_cstr(ptr.into()));
+    //                         iter += core::mem::size_of::<usize>();
+    //                     }
+    //                 }
+    //                 for (idx, a) in envs.iter().enumerate() {
+    //                     verbose!("envp [{}]: {}", idx, core::str::from_utf8(a).unwrap());
+    //                 }
+    //                 drop(locked_inner);
+    //                 proc.exec(arr, app_name, args, envs)
+    //             },
+    //             Err(msg) => {
+    //                 error!("Failed to read file: {}", msg);
+    //                 1
+    //             }
+    //         }
+    //     } ,
+    //     Err(msg) =>{
+    //         error!("Failed to open file {}: {}", app_name, msg);
+    //         -1
+    //     }
+    // }
+}
+
+fn sys_exec_inner(app_path: String, argv_ptr: VirtAddr, envp_ptr: VirtAddr) -> Result<isize, &'static str> {
+    let current_proc = current_process().unwrap();
+    let locked_inner = current_proc.get_inner_locked();
+
+    let argv = load_args(&locked_inner, argv_ptr);
+    let envp = load_args(&locked_inner, envp_ptr);
+
+    drop(locked_inner);
+    do_exec(app_path, argv, envp)
+}
+
+fn load_args(locked_inner: &MutexGuard<ProcessControlBlockInner>, start_ptr: VirtAddr) -> Vec<Vec<u8>> {
+    let mut args: Vec<Vec<u8>> = Vec::new();
+    if start_ptr.0 != 0 {
+        let mut iter = start_ptr;
+        loop {
+            let ptr: usize = locked_inner.layout.read_user_data(iter);
+            if ptr == 0 {
+                break;
+            }
+            args.push(locked_inner.layout.get_user_cstr(ptr.into()));
+            iter += core::mem::size_of::<usize>();
+        }
+    }
+    args
+}
+
+fn do_exec(mut app_path: String, argv: Vec<Vec<u8>>, envp: Vec<Vec<u8>>) -> Result<isize, &'static str> {
+    let elf_file = open(app_path.clone(), OpenMode::READ)?;
+    verbose!("File found {}", app_path);
+    let length = elf_file.poll().size as usize;
+    // alloc continious pages
+    let page_holder = alloc_continuous(length / PAGE_SIZE + 1);
+    let head_addr: PhysAddr = page_holder[0].ppn.into();
+    let head_ptr = head_addr.0 as *mut u8;
+    let arr: &mut [u8] = unsafe {
+        from_raw_parts_mut(head_ptr, length)
+    };
+    elf_file.read(arr)?;
+
+    if arr.len() >= 2 && arr[0] == b'#' && arr[1] == b'!' {
+        let mut vdq_argv: VecDeque<Vec<u8>> = VecDeque::from(argv);
+        vdq_argv.pop_front();
+        vdq_argv.push_front(arr.to_vec());
+        let mut b_app_path: Vec<u8> = Vec::new();
+        let mut b_addi_arg: Vec<Vec<u8>> = Vec::new();
+        enum FSMState {
+            Name,
+            Space,
+            Args,
+            Fin
+        }
+        let mut state: FSMState = FSMState::Name;
+        for b in arr[2..].iter() {
+            match state {
+                FSMState::Name => {
+                    match *b {
+                        b' ' => {
+                            state = FSMState::Space;
+                        },
+                        b'\n' => {
+                            state = FSMState::Fin;
+                        },
+                        good => {
+                            b_app_path.push(good);
+                        }
+                    }
+                },
+                FSMState::Space => {
+                    match *b {
+                        b' ' => {
+                            state = FSMState::Space;
+                        },
+                        b'\n' => {
+                            state = FSMState::Fin;
+                        },
+                        good => {
+                            // b_app_path.push(good);
+                            b_addi_arg.push(Vec::new());
+                            b_addi_arg.last_mut().unwrap().push(good);
+                            state = FSMState::Args;
+                        }
+                    }
+                },
+                FSMState::Args => {
+                    match *b {
+                        b' ' => {
+                            state = FSMState::Space;
+                        },
+                        b'\n' => {
+                            state = FSMState::Fin;
+                        },
+                        good => {
+                            // b_app_path.push(good);
+                            b_addi_arg.last_mut().unwrap().push(good);
+                            state = FSMState::Args;
+                        }
+                    }
+                }
+                FSMState::Fin => {
+                    // HACK: No this shouldn't be right
+                    vdq_argv.push_front("-c".as_bytes().to_vec());
+                    for addi_arg in b_addi_arg {
+                        vdq_argv.push_front(addi_arg);
+                    }
+                    vdq_argv.push_front(b_app_path.clone());
+                    app_path = String::from_utf8(b_app_path).map_err(|_| "Invalid utf-8 sequence")?;
+                    break;
+                },
+            }
+        }
+        let argv = Vec::from(vdq_argv);
+        do_exec(app_path, argv, envp)
+    } else {
+        for (idx, a) in argv.iter().enumerate() {
+            verbose!("argv [{}]: {}", idx, core::str::from_utf8(a).unwrap());
+        }
+        for (idx, a) in envp.iter().enumerate() {
+            verbose!("envp [{}]: {}", idx, core::str::from_utf8(a).unwrap());
+        }
+        Ok(current_process().unwrap().exec(arr, app_path, argv, envp))
     }
 }
 

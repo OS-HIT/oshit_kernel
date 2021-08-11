@@ -12,6 +12,7 @@ pub mod kernel_stored_app_loader;
 pub use pcb::{
     ProcessContext,
     ProcessControlBlock,
+    ProcessControlBlockInner,
     ProcessStatus,
     SignalFlags,
     default_sig_handlers,

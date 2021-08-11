@@ -142,7 +142,7 @@ pub fn sys_openat(fd: i32, file_name: VirtAddr, flags: u32, _: u32) -> isize {
             return new_fd as isize;
         },
         Err(msg) => {
-            error!("sys_openat: {}", msg);
+            error!("sys_openat failed with msg \"{}\" on {}", msg, path);
             return -1;
         }
     }
@@ -279,6 +279,7 @@ pub fn sys_read(fd: usize, buf: VirtAddr, len: usize) -> isize {
         match fd_slot {
             Some(file) => {
                 let file = file.clone();
+                verbose!("Reading from file: {}", file.poll().name);
                 drop(arcpcb);
                 match file.read_user_buffer(buf) {
                     Ok(size) => size as isize,
@@ -753,7 +754,7 @@ pub fn sys_fstatat_new(fd: i32, path: VirtAddr, ptr: VirtAddr, flags:usize) -> i
     let arcpcb = process.get_inner_locked();
     let mut buf = arcpcb.layout.get_user_cstr(path);
     buf = buf[..buf.len() - 1].to_vec(); // remove \0
-    if buf.len() > 1 && buf[0] == b'.' && buf[1] == b'/' {
+    if buf.len() > 1 && buf[0] == b'/' && buf[1] == b'/' {
         buf = buf[2..].to_vec();
     }
     let mut fs_flags = OpenMode::SYS;
@@ -762,6 +763,7 @@ pub fn sys_fstatat_new(fd: i32, path: VirtAddr, ptr: VirtAddr, flags:usize) -> i
     }
 
     if let Ok(mut path) = core::str::from_utf8(&buf) {
+        verbose!("Path: {}", path);
         if path.starts_with("/") {
             if let Ok(file) = open(path.to_string(), OpenMode::SYS) {
                 arcpcb.layout.write_user_data(ptr, &(read_linux_fstat(file)));

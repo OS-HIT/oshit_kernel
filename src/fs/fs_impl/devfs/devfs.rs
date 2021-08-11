@@ -157,13 +157,16 @@ impl VirtualFileSystem for DevFS {
     }
 
     fn open(&self, abs_path: Path, mode: crate::fs::OpenMode) -> Result<alloc::sync::Arc<dyn crate::fs::File>, &'static str> {
+        verbose!("devfs caught open for {}", abs_path.to_string());
         // hard coded
         match abs_path.path.len() {
             0 => return Err("Empty path"),
             1 => {
-                if abs_path.path[0] == "tty0" {
+                if abs_path.path[0] == "tty0" || abs_path.path[0] == "tty" {
+                    verbose!("Parse success: tty");
                     return Ok(TTY0.clone());
                 } else if abs_path.path[0] == "block" {
+                    verbose!("Parse success: block");
                     return Ok(DEV_FS_BLOCK_FOLDER.clone());
                 }
             },

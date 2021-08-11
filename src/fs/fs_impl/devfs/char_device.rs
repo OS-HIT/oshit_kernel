@@ -16,6 +16,7 @@ use crate::sbi::put_byte;
 use core::cell::RefCell;
 use core::usize;
 use core::convert::{TryFrom, TryInto};
+use bitflags::*;
 
 lazy_static! {
 	pub static ref TTY0: Arc<SBITTY> = Arc::new(SBITTY::new());
@@ -60,9 +61,16 @@ impl File for SBITTY {
 
 	// TODO: implement smarter flush timing, and some how intergrate this.
     fn read(&self, buffer: &mut [u8]) -> Result<usize, &'static str> {
-		for (idx, b) in buffer.iter_mut().enumerate() {
-			*b = get_byte();
-			if *b == b'\n' {
+		for idx in 0..buffer.len() {
+            let mut b = get_byte();
+            if b == b'\r' {
+                b = b'\n';
+            }
+			buffer[idx] = b;
+            put_byte(b);
+            // verbose!("{}, {}", b, b as char);
+			if buffer[idx] == b'\n' {
+                // verbose!("Done!");
 				return Ok(idx);
 			}
 		}
@@ -71,8 +79,15 @@ impl File for SBITTY {
 
     fn read_user_buffer(&self, mut buffer: crate::memory::UserBuffer) -> Result<usize, &'static str> {
 		for idx in 0..buffer.len() {
-			buffer[idx] = get_byte();
+            let mut b = get_byte();
+            if b == b'\r' {
+                b = b'\n';
+            }
+			buffer[idx] = b;
+            put_byte(b);
+            // verbose!("{}, {}", b, b as char);
 			if buffer[idx] == b'\n' {
+                // verbose!("Done!");
 				return Ok(idx);
 			}
 		}
@@ -272,6 +287,27 @@ struct WinSize {
     x_pixel: u16,
     y_pixel: u16,
 }
+
+bitflags! {
+    pub struct TTYIFlag: u32 {
+        const  IGNBRK   = 0o0000001;
+        const  BRKINT   = 0o0000002;
+        const  IGNPAR   = 0o0000004;
+        const  PARMRK   = 0o0000010;
+        const  INPCK    = 0o0000020;
+        const  ISTRIP   = 0o0000040;
+        const  INLCR    = 0o0000100;
+        const  IGNCR    = 0o0000200;
+        const  ICRNL    = 0o0000400;
+        const  IUCLC    = 0o0001000;
+        const  IXON     = 0o0002000;
+        const  IXANY    = 0o0004000;
+        const  IXOFF    = 0o0010000;
+        const  IMAXBEL  = 0o0020000;
+        const  IUTF8    = 0o0040000;
+    }
+}
+
 impl DeviceFile for SBITTY {
     fn ioctl(&self, op: u64, argp: VirtAddr) -> Result<u64, &'static str> {
 		// TODO: Check tty's ioctl
