@@ -113,6 +113,16 @@ impl Path {
                 self.must_dir = must_dir;
                 return Ok(());
         }
+
+        pub fn merge(&mut self, rel_path: Path) -> Result<(), &'static str> {
+                if rel_path.is_abs == true {
+                        return Err("Cannot merge a abs path");
+                }
+                let Path {path: mut path, must_dir: must_dir, ..} = rel_path;
+                self.path.append(&mut path);
+                self.must_dir = must_dir;
+                return Ok(());
+        }
 }
 
 struct PathParser {
