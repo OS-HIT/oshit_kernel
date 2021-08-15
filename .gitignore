@@ -3,3 +3,4 @@ link_app.asm
 src/version.rs
 kernel.sym
 kernel.bin
+built_in_elfs

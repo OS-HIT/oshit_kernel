@@ -17,6 +17,10 @@ BOOTLOADER 		:= ../bootloader/rustsbi-$(BOARD).bin
 K210_BOOTLOADER_SIZE := 131072
 FS_IMG 			:= ../fs.img
 
+ifeq ($(BUILT_IN_PROC0), y)
+	FEATURES += built_in_proc0
+endif
+
 # KERNEL ENTRY
 ifeq ($(BOARD), qemu)
 	KERNEL_ENTRY_PA := 0x80200000

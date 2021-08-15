@@ -1,2 +1,3 @@
 linker.ld
 version.rs
+built_in_elfs

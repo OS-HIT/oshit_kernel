@@ -8,10 +8,22 @@ use crate::fs::{open, OpenMode};
 use alloc::vec::Vec;
 use alloc::string::ToString;
 
+#[cfg(feature = "built_in_proc0")]
 lazy_static! {
     /// Lazy initalized proc0. Read from the file system.  
     /// Panic if proc0 was not found.
     pub static ref PROC0: Arc<ProcessControlBlock> = {
+        info!("Loading proc0 form builtin");
+        Arc::new(ProcessControlBlock::new(crate::process::kernel_stored_app_loader::get_app("proc0").unwrap(), "/".to_string()))
+    };
+}
+
+#[cfg(not(feature = "built_in_proc0"))]
+lazy_static! {
+    /// Lazy initalized proc0. Read from the file system.  
+    /// Panic if proc0 was not found.
+    pub static ref PROC0: Arc<ProcessControlBlock> = {
+        info!("Loading proc0 form fs");
         let app_name = "/proc0";
         verbose!("Exec {}", app_name);
         match open("/proc0".to_string(), OpenMode::SYS) {
@@ -34,7 +46,6 @@ lazy_static! {
                 panic!("Failed to open file: {}", msg);
             }
         }
-        // Arc::new(ProcessControlBlock::new(crate::process::kernel_stored_app_loader::get_app("proc0").unwrap(), "/".to_string()))
     };
 }
 
