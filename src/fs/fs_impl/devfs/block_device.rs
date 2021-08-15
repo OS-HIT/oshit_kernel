@@ -257,15 +257,15 @@ impl File for CommonFileAsBlockDevice {
     }
 
     fn rename(&self, new_name: &str) -> Result<(), &'static str> {
-        self.rename(new_name)
+        self.inner.rename(new_name)
     }
 
     fn get_vfs(&self) -> Result<Arc<dyn crate::fs::VirtualFileSystem>, &'static str> {
-        self.get_vfs()
+        self.inner.get_vfs()
     }
 
     fn get_path(&self) -> Path {
-        self.get_path()
+        self.inner.get_path()
     }
 }
 
