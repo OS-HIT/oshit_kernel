@@ -860,9 +860,9 @@ impl MemLayout {
                 ))
             );
             verbose!("UserStack mapped.");
-            debug!(".text address: {}", elf.find_section_by_name(".text").unwrap().address());
-            debug!("ph_entry_size: {}", elf.header.pt2.ph_entry_size());
-            debug!("ph_count:      {}", elf.header.pt2.ph_count());
+            // debug!(".text address: {}", elf.find_section_by_name(".text").unwrap().address());
+            // debug!("ph_entry_size: {}", elf.header.pt2.ph_entry_size());
+            // debug!("ph_count:      {}", elf.header.pt2.ph_count());
             // let ph_head_addr = (elf.find_section_by_name(".text").unwrap().address() as usize ) - (elf.header.pt2.ph_entry_size() as usize) * (elf.header.pt2.ph_count() as usize);
             // let ph_head_addr = 0;
             let mut auxv: Vec<AuxHeader> = Vec::new();

@@ -402,7 +402,7 @@ pub fn sys_brk(sz: usize) -> isize {
     let original_size = locked_inner.size;
     if locked_inner.layout.alter_segment(VirtAddr::from(original_size).to_vpn_ceil(), VirtAddr::from(sz).to_vpn_ceil()).is_some() {
         locked_inner.size = sz as usize;
-        0
+        sz as isize
     } else {
         fatal!("sbrk failed! OOM!");
         -1
@@ -413,7 +413,7 @@ pub fn sys_mmap(mut start: VirtAddr, len: usize, prot: usize, _: usize, fd: usiz
     let proc = current_process().unwrap();
     let mut locked_inner = proc.get_inner_locked();
     if fd == usize::MAX {
-        if start.0 == 0 {
+        // if start.0 == 0 {
             match locked_inner.layout.get_continuous_space(len) {
                 Some(start_vpn) => {
                     start = start_vpn.into();
@@ -425,7 +425,8 @@ pub fn sys_mmap(mut start: VirtAddr, len: usize, prot: usize, _: usize, fd: usiz
                     return -1;
                 }
             }
-        }
+        // }
+
         let mut flags = SegmentFlags::empty();
         if prot & PROT_NONE == 0 {
             flags |= SegmentFlags::U;
@@ -473,7 +474,6 @@ pub fn sys_munmap(start: VirtAddr, len: usize) -> isize {
 }
 
 pub fn sys_kill(target_pid: isize, signal: usize) -> isize {
-    verbose!("Kill was called.");
     if target_pid == 0 {
         let parent = current_process().unwrap();
         let parent_inner = parent.get_inner_locked();
@@ -514,6 +514,23 @@ pub fn sys_kill(target_pid: isize, signal: usize) -> isize {
         }
     } else {
         error!("No such process with pid {}, failed to send signal", target_pid);
+        -1
+    }
+}
+
+pub fn sys_tgkill(target_tgid: isize, target_tid: isize, signal: usize) -> isize {
+    if let Some(proc) = get_proc_by_pid(target_tid as usize) {
+        if proc.tgid as isize == target_tgid {
+            match proc.recv_signal(signal) {
+                Some(_) => 0,
+                None => -1
+            }
+        } else {
+        error!("no such proc");
+        -1
+        }
+    } else {
+        error!("no such proc");
         -1
     }
 }

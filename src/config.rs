@@ -45,7 +45,7 @@ pub const SYSNAME       : &[u8] = b"OSHIT Kernel (Pre-Alpha)\0";
 /// UName constants
 pub const NODENAME      : &[u8] = b"Network currently unsupported\0";
 /// UName constants, OS version
-pub const RELEASE       : &[u8] = b"0.0.2-alpha\0";
+pub const RELEASE       : &[u8] = b"10.10.10-10-riscv64\0";
 /// UName constants
 pub const MACHINE       : &[u8] = b"UNKNOWN MACHINE\0";
 /// UName constants

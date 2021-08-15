@@ -135,14 +135,15 @@ pub fn user_trap(_cx: &mut TrapContext) -> ! {
         Trap::Exception(Exception::InstructionFault) |
         Trap::Exception(Exception::InstructionPageFault) |
         Trap::Exception(Exception::LoadFault) => {
+            let proc = current_process().unwrap();
+            let arcpcb = proc.get_inner_locked();
             error!(
-                "{:?} in application, bad addr = {:#x}, bad instruction @ {:#x}",
+                "{:?} in application {}, bad addr = {:#x}, bad instruction @ {:#x}",
                 scause.cause(),
+                proc.pid.0,
                 stval,
                 current_trap_context().sepc,
             );
-            let proc = current_process().unwrap();
-            let arcpcb = proc.get_inner_locked();
             if let Some(pte) = arcpcb.layout.pagetable.walk(VirtAddr::from(stval).into()) {
                 error!("Pagetable entry flags: {:?}", pte.flags());
             } else {
@@ -153,8 +154,9 @@ pub fn user_trap(_cx: &mut TrapContext) -> ! {
         }
         Trap::Exception(Exception::IllegalInstruction) => {
             error!(
-                "{:?} in application, bad inst = {:#x} @ {:#x}",
+                "{:?} in application {}, bad inst = {:#x} @ {:#x}",
                 scause.cause(),
+                current_process().unwrap().pid.0,
                 stval,
                 current_trap_context().sepc,
             );
