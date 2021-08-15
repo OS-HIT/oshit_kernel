@@ -220,7 +220,7 @@ fn load_args(locked_inner: &MutexGuard<ProcessControlBlockInner>, start_ptr: Vir
 
 fn do_exec(mut app_path: String, argv: Vec<Vec<u8>>, envp: Vec<Vec<u8>>) -> Result<isize, &'static str> {
     let elf_file = open(app_path.clone(), OpenMode::READ)?;
-    verbose!("File found {}", app_path);
+    debug!("File found {}", app_path);
     let length = elf_file.poll().size as usize;
     // alloc continious pages
     let page_holder = alloc_continuous(length / PAGE_SIZE + 1);
@@ -230,6 +230,25 @@ fn do_exec(mut app_path: String, argv: Vec<Vec<u8>>, envp: Vec<Vec<u8>>) -> Resu
         from_raw_parts_mut(head_ptr, length)
     };
     elf_file.read(arr)?;
+
+    // let t_arr: &[u8] = unsafe {
+    //     from_raw_parts(head_ptr, length)
+    // };
+    // let mut tmp = 0;
+    // let mut tmp_a = 0;
+    // print!("{:#010X}: ", tmp_a);
+    // for byte in t_arr {
+    //     print!("{:02X}  ", byte);
+    //     tmp += 1;
+    //     if tmp % 16 == 0 {
+    //         println!("");
+    //         tmp_a += 16;
+    //         print!("{:#010X}: ", tmp_a);
+    //         if tmp == 2048 * 5 {
+    //             break;
+    //         }
+    //     }
+    // }
 
     if arr.len() >= 2 && arr[0] == b'#' && arr[1] == b'!' {
         let mut vdq_argv: VecDeque<Vec<u8>> = VecDeque::from(argv);

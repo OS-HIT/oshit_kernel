@@ -29,6 +29,15 @@ impl BlockCache {
 
                 let mut cache = [0u8; BLOCK_SZ];
                 device.read_block(block_id, &mut cache);
+                if block_id == 6354 {
+                        debug!("content of 6354 block:");
+                        for i in 0..512 {
+                                print!("{:02X} ", cache[i]);
+                                if i % 16 == 15 {
+                                        println!("");
+                                }
+                        }
+                }
                 Self {
                         cache,
                         block_id,

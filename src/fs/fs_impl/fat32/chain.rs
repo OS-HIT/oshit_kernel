@@ -38,15 +38,43 @@ impl Chain {
                         Ok(c) => c,
                         Err(msg) => return Err(msg),
                 };
+                debug!("buffer start: {:#010X}", &buffer[0] as *const _ as usize);
+                debug!("total buffer size: {}", buffer.len());
                 let coff = offset % self.fs.cluster_size();
                 let len = buffer.len();
+                debug!("reading cluster:{}", clst);
                 let mut read = self.fs.read_cluster(clst, coff, buffer).unwrap();
+
+                // let mut addr = 0;
+                // debug!("read: {}", read);
+                // for i in addr..read {
+                //         if i % 16 == 0 {
+                //                 println!("");
+                //                 print!("{:#010X}: ", addr + i);
+                //         }
+                //         print!("{:#04X} ", buffer[i]);
+                // }
+                // println!("");
+                // addr = read;
+                
                 while read < len {
                         let buf = &mut buffer[read..];
                         idx +=1 ;
                         match self.chain.get(idx) {
                                 Some(clst) => {
+                                        debug!("reading cluster:{}", clst);
                                         read += self.fs.read_cluster(*clst, 0, buf).unwrap();
+
+                                        // debug!("read: {}", read);
+                                        // for i in addr..read {
+                                        //         if i % 16 == 0 {
+                                        //                 println!("");
+                                        //                 print!("{:#010X}: ", i);
+                                        //         }
+                                        //         print!("{:#04X} ", buffer[i]);
+                                        // }
+                                        // println!("");
+                                        // addr = read;
                                 },
                                 None => {
                                         return Ok(read);
