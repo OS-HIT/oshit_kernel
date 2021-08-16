@@ -101,7 +101,7 @@ impl Fat32FS {
                         return Err("read_cluster: Invalid Offset");
                 }
                 
-                debug!("first block of cluster{} : {}",cluster, self.get_cluster_cache(cluster, 0).unwrap());
+                // debug!("first block of cluster{} : {}",cluster, self.get_cluster_cache(cluster, 0).unwrap());
                 let mut len = buf.len();
                 let mut read = 0;
                 let mut offset = offset;
