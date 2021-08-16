@@ -13,7 +13,7 @@ pub enum SeekOp {
     END,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 #[repr(u32)]
 pub enum FileType {
     Unknown     = 0o000000,

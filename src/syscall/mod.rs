@@ -26,6 +26,7 @@ pub const SYSCALL_READV             : usize = 65;
 pub const SYSCALL_WRITEV            : usize = 66;
 pub const SYSCALL_SENDFILE          : usize = 71;
 pub const SYSCALL_PPOLL             : usize = 73;
+pub const SYSCALL_READLINKAT        : usize = 78;
 pub const SYSCALL_FSTATAT           : usize = 79;
 pub const SYSCALL_FSTAT             : usize = 80;
 pub const SYSCALL_EXIT              : usize = 93;
@@ -77,6 +78,7 @@ pub use fs_syscall::{
     sys_fstatat,
     sys_fstatat_new,
     sys_fstat, 
+    sys_readlinkat,
     sys_mkdirat,
     sys_ioctl,
     sys_sendfile,
@@ -176,6 +178,7 @@ pub fn syscall(syscall_id: usize, args: [usize; 6]) -> isize {
         SYSCALL_MMAP            => {CALL_SYSCALL!(sys_mmap, VirtAddr::from(args[0]), args[1], args[2], args[3], args[4], args[5])},
         SYSCALL_UNLINKAT        => {CALL_SYSCALL!(sys_unlink, args[0] as i32, VirtAddr::from(args[1]), args[2])},
         SYSCALL_MKDIRAT         => {CALL_SYSCALL!(sys_mkdirat, args[0], VirtAddr::from(args[1]), args[2])},
+        SYSCALL_READLINKAT      => {CALL_SYSCALL!(sys_readlinkat, args[0], VirtAddr::from(args[1]), VirtAddr::from(args[2]), args[3])},
         SYSCALL_FSTATAT         => {CALL_SYSCALL!(sys_fstatat_new, args[0] as i32, VirtAddr::from(args[1]), VirtAddr::from(args[2]), args[3])},
         SYSCALL_FSTAT           => {CALL_SYSCALL!(sys_fstat, args[0], VirtAddr::from(args[1]))},
         SYSCALL_MUNMAP          => {CALL_SYSCALL!(sys_munmap, VirtAddr::from(args[0]), args[1])},

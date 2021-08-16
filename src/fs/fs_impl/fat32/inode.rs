@@ -30,6 +30,11 @@ impl Inode {
         }
 
         #[inline]
+        pub fn is_link(&self) -> bool {
+                return self.group.entry.is_link();
+        }
+
+        #[inline]
         pub fn is_dir(&self) -> bool {
                 return self.group.entry.is_dir();
         }
