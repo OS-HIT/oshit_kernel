@@ -772,6 +772,15 @@ impl MemLayout {
     /// Also can use bare bin file for compatbility.
     // todo: no kernel panic on user's fault -- just fail it's syscall. use a Result to wrap the return value.
     pub fn new_elf(elf_data: &[u8]) -> (Self, usize, usize, usize, Vec<AuxHeader>) {
+        // for i in 0..0x1000 {
+        //     if i % 16 == 0 {
+        //         print!("\n{:>8x}: ", i);
+        //     }
+        //     if i % 4 == 0 {
+        //         print!(" ");
+        //     }
+        //     print!("{:02x}", elf_data[i]);
+        // }
         let mut layout = Self::new();
         layout.map_trampoline();
         let mut data_top = 0;

@@ -80,6 +80,7 @@ pub extern "C" fn rust_main() -> !{
 
     fs::mount_fs("/dev".to_string(), fs::DEV_FS.clone()).unwrap();
     fs::mount_fs("/".to_string(), alloc::sync::Arc::new(fs::fs_impl::Fat32W::new(fs::open("/dev/block/sda".to_string(), fs::OpenMode::SYS).unwrap()).unwrap())).unwrap();
+    fs::mount_fs("/proc".to_string(), fs::PROC_FS.clone()).unwrap();
 
     process::init();
     panic!("drop off from bottom!");

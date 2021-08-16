@@ -158,6 +158,11 @@ bitflags! {
     }
 }
 
+#[derive(Clone)]
+pub struct ImmuInfos {
+    pub exec_path: String,
+}
+
 /// The process control block
 pub struct ProcessControlBlock {
     /// Pid of the process
@@ -166,8 +171,9 @@ pub struct ProcessControlBlock {
     pub tgid:           usize,
     /// The kernel stack of the process. PCB holds it so the resource is not dropped.
     pub kernel_stack:   KernelStack,
+    pub immu_infos:     ImmuInfos,
     /// The mutable inner, protected by a Mutex
-    pub inner:              Mutex<ProcessControlBlockInner>,
+    pub inner:          Mutex<ProcessControlBlockInner>,
 }
 
 #[derive(Clone, Copy)]
@@ -341,6 +347,9 @@ impl ProcessControlBlock {
         let pcb = Self {
             pid,
             tgid,
+            immu_infos: ImmuInfos{
+                exec_path: path.clone(),
+            },
             kernel_stack,
             inner: Mutex::new(ProcessControlBlockInner {
                 context_ptr,
@@ -396,6 +405,7 @@ impl ProcessControlBlock {
         let kernel_stack_top = kernel_stack.top();
         let context_ptr = kernel_stack.save_to_top(ProcessContext::init()) as usize;
         let status = ProcessStatus::Ready;
+        let immu_infos = self.immu_infos.clone();
         let tgid = if clone_flags.contains(super::CloneFlags::THREAD) {
             self.pid.0
         } else {
@@ -404,6 +414,7 @@ impl ProcessControlBlock {
         let pcb = Arc::new(ProcessControlBlock {
             pid,
             tgid,
+            immu_infos,
             kernel_stack,
             inner: Mutex::new(ProcessControlBlockInner {
                 context_ptr,

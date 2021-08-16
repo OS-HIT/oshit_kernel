@@ -27,3 +27,7 @@ pub use vfs::{
 pub use fat32_wrapper::{
     Fat32W
 };
+
+pub use procfs::{
+    PROC_FS
+};

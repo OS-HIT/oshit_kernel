@@ -24,6 +24,7 @@ pub use fs_impl::{
     FSStatus,
 	SDA_WRAPPER,
 	DEV_FS,
+	PROC_FS
 };
 
 pub use path::{
