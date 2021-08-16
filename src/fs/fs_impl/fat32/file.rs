@@ -48,6 +48,11 @@ impl FileInner {
         }      
 
         #[inline]
+        pub fn is_link(&self) -> bool {
+                self.inode.is_link()
+        }
+
+        #[inline]
         pub fn is_dir(&self) -> bool {
                 self.inode.is_dir()
         }
@@ -380,7 +385,9 @@ impl FileInner {
         }
 
         pub fn ftype(&self) -> FileType {
-                if self.inode.is_dir() {
+                if self.inode.is_link() {
+                        FileType::Link
+                } else if self.inode.is_dir() {
                         FileType::Directory
                 } else {
                         FileType::Regular

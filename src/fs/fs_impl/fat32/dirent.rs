@@ -63,6 +63,11 @@ impl DirEntryRaw {
         }
 
         #[inline]
+        pub fn is_link(&self) -> bool {
+                return self.attr & DirEntryRaw::ATTR_SYM == DirEntryRaw::ATTR_SYM;
+        }
+
+        #[inline]
         pub fn is_dir(&self) -> bool {
                 return self.attr & DirEntryRaw::ATTR_SUBDIR == DirEntryRaw::ATTR_SUBDIR;
         }

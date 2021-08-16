@@ -38,6 +38,10 @@ fn get_file_fd(dirfd: usize) -> Result<Arc<dyn File>, &'static str> {
 }
 
 fn get_file(dirfd: usize, path: &str, mode: OpenMode) -> Result<Arc<dyn File>, &'static str> {
+    if path.len() == 0 {
+        return get_file_fd(dirfd);
+    }
+
     let path = parse_path(path).map_err(|op| to_string(op))?;
 
     if path.is_abs {
@@ -643,61 +647,6 @@ pub fn sys_fstatat(dirfd: usize, path: VirtAddr, ptr: VirtAddr, flags:usize) -> 
         }
     }
 }
-//     let proc = current_process().unwrap();
-//     let arcpcb = proc.get_inner_locked();
-//     let buf = arcpcb.layout.get_user_cstr(path);
-//     if let Ok(path) = core::str::from_utf8(&buf) {
-//         if let Some(dir) = arcpcb.files.get(fd) {
-//             if let Some(dir2) = dir.clone() {
-//                 let flags = AtFlags::from_bits();
-//                 if path.len() == 0 {
-//                     if flags.contains(AtFlags::AT_EMPTY_PATH) {
-//                         if let Some(file) = dir2.to_common_file() {
-//                             let f_stat = fs_file.poll();
-//                             let stat = FStat {
-//                                 st_dev: f_stat.dev_no,
-//                                 st_ino: f_stat.inode,
-//                                 st_mode: f_stat.mode,
-//                                 st_nlink: 1,
-//                                 st_uid: f_stat.uid,
-//                                 st_gid: f_stat.gid,
-//                                 st_rdev: 0,
-//                                 __pad: 0,
-//                                 st_size: f_stat.size as u32,
-//                                 st_blksize: f_stat.block_sz,
-//                                 __pad2: 0,
-//                                 st_blocks: f_stat.blocks,
-//                                 st_atime_sec:   f_stat.atime_sec,
-//                                 st_atime_nsec:  f_stat.atime_nsec,
-//                                 st_mtime_sec:   f_stat.mtime_sec,
-//                                 st_mtime_nsec:  f_stat.mtime_nsec,
-//                                 st_ctime_sec:   f_stat.ctime_sec,
-//                                 st_ctime_nsec:  f_stat.ctime_nsec,
-//                                 __unused: [0u8; 2],
-//                             };
-//                             arcpcb.layout.write_user_data(ptr, &stat);
-//                             return 0; 
-//                         } else {
-//                             debug!("sys_fstatat: Not common file");
-//                             return -1;
-//                         }
-//                     } else {
-//                         debug!("sys_fstatat: Empty path without AT_EMPTY_PATH");
-//                         return -1;
-//                     }
-//                 }
-//             } else {
-//                 debug!("sys_fstatat: clone failed");
-//             }
-//         } else {
-//             debug!("sys_fstatat: fd {} not in use", dirfd);
-//             return -1;
-//         }
-//     } else {
-//         debug!("sys_fstatat: invalid path string");
-//         return -1;
-//     }
-// }
 
 pub fn sys_ioctl_inner(fd: usize, request: u64, argp: VirtAddr) -> Result<u64, &'static str> {
     let proc = current_process().ok_or("No proc running")?;
@@ -871,6 +820,42 @@ pub fn sys_sendfile(out_fd: usize, in_fd: usize, offset_ptr: VirtAddr, count: us
             -1
         }
     }
+}
+
+pub fn sys_readlinkat(dirfd: usize, path: VirtAddr, buf: VirtAddr, bufsize: usize) -> isize {
+    let proc = current_process().unwrap();
+    let pbuf = proc.get_inner_locked().layout.get_user_cstr(path);
+    let path = match core::str::from_utf8(&pbuf) {
+        Ok(p) => p,
+        Err(msg) => {
+            error!("sys_readlinkat: {}", msg);
+            return -1;
+        },
+    };
+
+    debug!("sys_readlinkat: {}", path);
+
+    let file = match get_file(dirfd, path, OpenMode::READ | OpenMode::NO_FOLLOW) {
+        Ok(f) => f,
+        Err(msg) => {
+            error!("sys_readlinkat: {}", msg);
+            return -1;
+        }
+    };
+
+    if file.poll().ftype != FileType::Link {
+        error!("sys_readlinkat: file not link");
+        return -1;
+    }
+
+    let buf = proc.get_inner_locked().layout.get_user_buffer(buf, bufsize);
+    match file.read_user_buffer(buf){
+        Ok(size) => return size as isize,
+        Err(msg) => {
+            error!("sys_readlikat: {}", msg);
+            return -1;
+        }
+    };
 }
 
 // TODO: implement this.
