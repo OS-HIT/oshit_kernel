@@ -631,11 +631,15 @@ pub fn sys_mprotect(addr: VirtAddr, len: usize, prot: usize) -> isize {
     if prot & PROT_EXEC != 0 {
         flags |= PTEFlags::X;
     }
-    verbose!("m_protect flag: {:?}", flags);
     let grow_up = prot & PROT_GROWSUP != 0;
     let grow_down = prot & PROT_GROWSDOWN != 0;
+    // locked_inner.layout.print_layout();
+    verbose!("m_protect flag: {:?}", flags);
     match locked_inner.layout.modify_access(addr.into(), len, flags, grow_up, grow_down) {
-        Some(_) => 0,
+        Some(_) => {
+            // locked_inner.layout.print_layout();
+            0
+        },
         None => {
             locked_inner.recv_signal(crate::process::default_handlers::SIGSEGV);
             -1

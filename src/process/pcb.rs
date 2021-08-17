@@ -221,7 +221,9 @@ pub struct ProcessControlBlockInner {
     pub handlers: BTreeMap<usize, SigAction>,
     /// signal masks
     pub sig_mask: u64,
-    pub last_signal: Option<usize>
+    pub last_signal: Option<usize>,
+    pub dead_children_stime: u64,
+    pub dead_children_utime: u64,
 }
 
 impl ProcessControlBlockInner {
@@ -372,7 +374,9 @@ impl ProcessControlBlock {
                 pending_sig: VecDeque::new(),
                 handlers: default_sig_handlers(),
                 sig_mask: 0,
-                last_signal: None
+                last_signal: None,
+                dead_children_stime: 0,
+                dead_children_utime: 0,
             }),
         };
         let trap_context = pcb.get_inner_locked().get_trap_context();
@@ -433,7 +437,9 @@ impl ProcessControlBlock {
                 pending_sig: parent_arcpcb.pending_sig.clone(),
                 handlers: parent_arcpcb.handlers.clone(),
                 sig_mask: 0,
-                last_signal: None
+                last_signal: None,
+                dead_children_stime: 0,
+                dead_children_utime: 0,
             }),
         });
 

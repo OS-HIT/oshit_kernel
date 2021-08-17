@@ -1,5 +1,5 @@
 //! Trivial system calls.
-use crate::{process::{current_process, suspend_switch}, sbi::get_time};
+use crate::{process::{ProcessStatus, current_process, suspend_switch}, sbi::{TICKS_PER_SECOND, get_time}};
 use crate::memory::{VirtAddr};
 use crate::config::*;
 use crate::version::*;
@@ -27,8 +27,10 @@ pub fn sys_time(tms_va: VirtAddr) -> isize {
         tms_cutime : 0,
     };
     for child_proc in arcpcb.children.iter() {
-        tms.tms_cstime += get_time() - child_proc.get_inner_locked().up_since;
-        tms.tms_cutime += child_proc.get_inner_locked().utime;
+        if child_proc.get_inner_locked().status == ProcessStatus::Zombie {
+            tms.tms_cstime += get_time() - child_proc.get_inner_locked().up_since;
+            tms.tms_cutime += child_proc.get_inner_locked().utime;
+        }
     }
 
     arcpcb.layout.write_user_data(tms_va, &tms);
@@ -116,5 +118,88 @@ pub fn sys_getgid() -> isize {
     return 0;
 }
 pub fn sys_getegid() -> isize {
+    return 0;
+}
+
+
+const RUSAGE_SELF     : i32 = 0;
+const RUSAGE_CHILDREN : i32 = -1;
+const RUSAGE_BOTH     : i32 = -2;
+const RUSAGE_THREAD   : i32 = 1;
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug)]
+pub struct OldTimeVal {
+    pub tvsec: u32,
+    pub tvnsec: u32,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug)]
+pub struct RUSage {
+    pub utime: OldTimeVal,
+    pub stime: OldTimeVal,
+    pub maxrss: u32,        /* maximum resident set size */
+    pub ixrss: u32,         /* integral shared memory size */
+    pub idrss: u32,         /* integral unshared data size */
+    pub isrss: u32,         /* integral unshared stack size */
+    pub minflt: u32,        /* page reclaims (soft page faults) */
+    pub majflt: u32,        /* page faults (hard page faults) */
+    pub nswap: u32,         /* swaps */
+    pub inblock: u32,       /* block input operations */
+    pub oublock: u32,       /* block output operations */
+    pub msgsnd: u32,        /* IPC messages sent */
+    pub msgrcv: u32,        /* IPC messages received */
+    pub nsignals: u32,      /* signals received */
+    pub nvcsw: u32,         /* voluntary context switches */
+    pub nivcsw: u32,        /* involuntary context switches */
+}
+
+pub fn sys_getrusage(who: i32, rusage_ptr: VirtAddr) -> isize {
+    let process = current_process().unwrap();
+    let arcpcb = process.get_inner_locked();
+
+    let rusage = match who {
+        RUSAGE_SELF | RUSAGE_CHILDREN | RUSAGE_BOTH => {
+            let s_time = get_time() - arcpcb.up_since;
+            let u_time = arcpcb.utime;
+            
+            // for child_proc in arcpcb.children.iter() {
+            //     s_time += get_time() - child_proc.get_inner_locked().up_since;
+            //     u_time += child_proc.get_inner_locked().utime;
+            // }
+
+            RUSage {
+                utime: OldTimeVal {
+                    tvsec: (s_time / CLOCK_FREQ) as u32,
+                    tvnsec: (s_time % CLOCK_FREQ * 1000000) as u32,
+                },
+                stime: OldTimeVal{
+                    tvsec: (u_time / CLOCK_FREQ) as u32,
+                    tvnsec: (u_time % CLOCK_FREQ * 1000000) as u32,
+                },
+                maxrss:     0,
+                ixrss:      0,
+                idrss:      arcpcb.size as u32,
+                isrss:      USER_STACK_SIZE  as u32,
+                minflt:     0,
+                majflt:     0,
+                nswap:      0,
+                inblock:    0,
+                oublock:    0,
+                msgsnd:     0,
+                msgrcv:     0,
+                nsignals:   0,
+                nvcsw:      0,
+                nivcsw:     0,
+            }
+        },
+        _ => {
+            return -1;
+        }
+    };
+
+    arcpcb.layout.write_user_data(rusage_ptr, &rusage);
+
     return 0;
 }

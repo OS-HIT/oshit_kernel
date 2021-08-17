@@ -567,12 +567,7 @@ impl MemLayout {
                 };
                 self.segments.push(Arc::new(Mutex::new(head_segment)));
             }
-            // change original segment to new segment
-            for new_vpn in VPNRange::new(head_stop, new_stop) {
-                self.pagetable.modify_access(new_vpn, flags);
-            }
-            original_segment.seg_flags = flags.to_seg_flag();
-            original_segment.range = VPNRange::new(head_stop, new_stop);
+            
 
             // add split tail
             if new_stop < tail_stop {
@@ -595,6 +590,14 @@ impl MemLayout {
                 };
                 self.segments.push(Arc::new(Mutex::new(tail_segment)));
             }
+
+            // change original segment to new segment
+            for new_vpn in VPNRange::new(head_stop, new_stop) {
+                self.pagetable.modify_access(new_vpn, flags);
+            }
+            original_segment.seg_flags = flags.to_seg_flag();
+            original_segment.range = VPNRange::new(head_stop, new_stop);
+            
             Some(())
         }
     }

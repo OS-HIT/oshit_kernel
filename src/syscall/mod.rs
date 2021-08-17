@@ -33,6 +33,7 @@ pub const SYSCALL_EXIT              : usize = 93;
 pub const SYSCALL_EXIT_GROUP        : usize = 94;
 pub const SYSCALL_SET_TID_ADDRESS   : usize = 96;
 pub const SYSCALL_NANOSLEEP         : usize = 101;
+pub const SYSCALL_CLOCK_GETTIME     : usize = 113;
 pub const SYSCALL_SCHED_YIELD       : usize = 124;
 pub const SYSCALL_KILL              : usize = 129;
 pub const SYSCALL_TGKILL            : usize = 131;
@@ -41,6 +42,7 @@ pub const SYSCALL_SIGPROCMASK       : usize = 135;
 pub const SYSCALL_SIGRETURN         : usize = 139;
 pub const SYSCALL_TIMES             : usize = 153;
 pub const SYSCALL_UNAME             : usize = 160;
+pub const SYSCALL_GETRUSAGE         : usize = 165;
 pub const SYSCALL_GETTIMEOFDAY      : usize = 169;
 pub const SYSCALL_GETPID            : usize = 172;
 pub const SYSCALL_GETPPID           : usize = 173;
@@ -117,6 +119,7 @@ pub use trivial_syscall::{
     sys_geteuid,
     sys_getgid,
     sys_getegid,
+    sys_getrusage
 };
 
 use process_syscall::sys_set_tid_address;
@@ -199,7 +202,9 @@ pub fn syscall(syscall_id: usize, args: [usize; 6]) -> isize {
         SYSCALL_IOCTL           => {CALL_SYSCALL!(sys_ioctl, args[0], args[1] as u64, VirtAddr::from(args[2]))},
         SYSCALL_SENDFILE        => {CALL_SYSCALL!(sys_sendfile, args[0], args[1], VirtAddr::from(args[2]), args[3])}
         SYSCALL_PPOLL           => {CALL_SYSCALL!(sys_ppoll)},
-        SYSCALL_TGKILL          => {CALL_SYSCALL!(sys_tgkill, args[0] as isize, args[1] as isize, args[2])}
+        SYSCALL_TGKILL          => {CALL_SYSCALL!(sys_tgkill, args[0] as isize, args[1] as isize, args[2])},
+        SYSCALL_GETRUSAGE       => {CALL_SYSCALL!(sys_getrusage, args[0] as i32, VirtAddr::from(args[1]))},
+        SYSCALL_CLOCK_GETTIME   => {CALL_SYSCALL!(sys_gettimeofday, VirtAddr::from(args[1]))},
         _ => {
             CALL_SYSCALL!(sys_unknown, syscall_id, args[0], args[1], args[2], args[3], args[4], args[5])
         },

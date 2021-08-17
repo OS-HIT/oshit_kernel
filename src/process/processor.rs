@@ -6,6 +6,7 @@ use crate::trap::TrapContext;
 
 // use crate::config::*;
 use core::cell::RefCell;
+use alloc::sync::Weak;
 use lazy_static::*;
 use crate::sbi::get_time;
 use alloc::sync::Arc;
@@ -136,6 +137,14 @@ impl Processor {
             for child in arcpcb.children.iter() {
                 child.get_inner_locked().parent = Some(Arc::downgrade(&PROC0));
                 initproc_inner.children.push(child.clone());
+            }
+        }
+
+        {
+            if let Some(parent_proc) = Weak::upgrade(&arcpcb.parent.clone().unwrap()) {
+                let mut parent_locked_inner = parent_proc.get_inner_locked();
+                parent_locked_inner.dead_children_stime += get_time() - arcpcb.up_since;
+                parent_locked_inner.dead_children_utime += get_time() - arcpcb.utime;
             }
         }
         

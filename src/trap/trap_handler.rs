@@ -105,6 +105,7 @@ pub fn user_trap(_cx: &mut TrapContext) -> ! {
                     arcpcb.get_trap_context().sepc,
                     msg
                 );
+                arcpcb.layout.print_layout();
                 exit_switch(-2);
             }
         },
@@ -136,7 +137,6 @@ pub fn user_trap(_cx: &mut TrapContext) -> ! {
         Trap::Exception(Exception::InstructionPageFault) |
         Trap::Exception(Exception::LoadFault) => {
             let proc = current_process().unwrap();
-            let arcpcb = proc.get_inner_locked();
             error!(
                 "{:?} in application {}, bad addr = {:#x}, bad instruction @ {:#x}",
                 scause.cause(),
@@ -144,11 +144,13 @@ pub fn user_trap(_cx: &mut TrapContext) -> ! {
                 stval,
                 current_trap_context().sepc,
             );
+            let arcpcb = proc.get_inner_locked();
             if let Some(pte) = arcpcb.layout.pagetable.walk(VirtAddr::from(stval).into()) {
                 error!("Pagetable entry flags: {:?}", pte.flags());
             } else {
                 error!("No such pagetable entry");
             }
+            arcpcb.layout.print_layout();
             exit_switch(-2);
             // current_process().unwrap().recv_signal(crate::process::default_handlers::SIGSEGV);
         }
