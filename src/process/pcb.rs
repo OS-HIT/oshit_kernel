@@ -682,10 +682,10 @@ impl ProcessControlBlock {
             self.kernel_stack.top().0, 
             user_trap as usize
         );  
-        trap_context.regs[10] = argv.len();
-        trap_context.regs[11] = argv_base;
-        trap_context.regs[12] = envp_base;
-        trap_context.regs[13] = auxv_base;
+        // trap_context.regs[10] = argv.len();
+        // trap_context.regs[11] = argv_base;
+        // trap_context.regs[12] = envp_base;
+        // trap_context.regs[13] = auxv_base;
 
         *locked_inner.get_trap_context() = trap_context;
         return (argv_ptrs.len() - 1) as isize;

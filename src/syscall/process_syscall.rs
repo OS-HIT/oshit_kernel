@@ -113,7 +113,7 @@ pub fn sys_exec(app_path_ptr: VirtAddr, argv: VirtAddr, envp: VirtAddr) -> isize
     verbose!("Exec {}", app_path);
 
     match sys_exec_inner(app_path, argv, envp) {
-        Ok(res) => res,
+        Ok(_) => 0,
         Err(msg) => {
             error!("Exec failed: {}", msg);
             -1
@@ -305,8 +305,9 @@ fn do_exec(mut app_path: String, argv: Vec<Vec<u8>>, envp: Vec<Vec<u8>>) -> Resu
         let argv = Vec::from(vdq_argv);
         do_exec(app_path, argv, envp)
     } else {
+        info!("exec!");
         for (idx, a) in argv.iter().enumerate() {
-            verbose!("argv [{}]: {}", idx, core::str::from_utf8(a).unwrap());
+            info!("argv [{}]: {}", idx, core::str::from_utf8(a).unwrap());
         }
         for (idx, a) in envp.iter().enumerate() {
             verbose!("envp [{}]: {}", idx, core::str::from_utf8(a).unwrap());
