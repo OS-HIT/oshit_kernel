@@ -1,6 +1,6 @@
 //! Trap handler of oshit kernel
 use super::TrapContext;
-use crate::{memory::{VirtAddr}, process::{current_process, default_sig_handlers}, syscall::syscall};
+use crate::{memory::{VirtAddr, PhysAddr}, process::{current_process, default_sig_handlers}, syscall::syscall};
 use alloc::sync::Arc;
 use riscv::register::{
     stvec,      // s trap vector base address register
@@ -15,6 +15,7 @@ use riscv::register::{
 };
 use crate::sbi::{
     reset_timer_trigger,
+    get_time,
 };
 use crate::process::{suspend_switch, exit_switch};
 use crate::config::*;
@@ -61,6 +62,19 @@ pub fn kernel_trap() -> ! {
     panic!("Kernel trap not supported yet!");
 }
 
+fn puser_start() {
+    if let Some(process) = current_process() {
+        process.get_inner_locked().last_start = get_time();
+    }
+}
+
+fn puser_end() {
+    if let Some(process) = current_process() {
+        let mut lock = process.get_inner_locked();
+        lock.utime += get_time() - lock.last_start;
+    }
+}
+
 /// User trap handling function
 /// # Description
 /// After trampoline has successfully 
@@ -70,6 +84,7 @@ pub fn kernel_trap() -> ! {
 #[no_mangle]
 pub fn user_trap(_cx: &mut TrapContext) -> ! {
     set_kernel_trap_entry();
+    puser_end();
     let scause = scause::read();
     let stval = stval::read();
     match scause.cause() {
@@ -266,7 +281,7 @@ pub fn trap_return() -> ! {
         // mask itself
         arcpcb.sig_mask |= 1u64 << signal;
         arcpcb.last_signal = Some(signal);
-
+        
         drop(arcpcb);
         drop(current);
         drop(to_process);
@@ -293,6 +308,8 @@ pub fn trap_return() -> ! {
         arg0 = trap_cx_ptr;
         arg1 = user_satp;
     }
+
+    puser_start();
     
     unsafe {
         llvm_asm!("fence.i" :::: "volatile");

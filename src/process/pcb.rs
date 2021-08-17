@@ -224,6 +224,14 @@ pub struct ProcessControlBlockInner {
     pub last_signal: Option<usize>,
     pub dead_children_stime: u64,
     pub dead_children_utime: u64,
+    pub timer_real_next: u64,
+    pub timer_real_int: u64,
+    pub timer_real_start: u64,
+    pub timer_virt_next: u64,
+    pub timer_virt_int: u64,
+    pub timer_prof_next: u64,
+    pub timer_prof_int: u64,
+    pub timer_prof_now: u64,
 }
 
 impl ProcessControlBlockInner {
@@ -377,6 +385,14 @@ impl ProcessControlBlock {
                 last_signal: None,
                 dead_children_stime: 0,
                 dead_children_utime: 0,
+                timer_real_int: 0,
+                timer_real_next: 0,
+                timer_real_start: 0,
+                timer_virt_int: 0,
+                timer_virt_next: 0,
+                timer_prof_int: 0,
+                timer_prof_next: 0,
+                timer_prof_now: 0,
             }),
         };
         let trap_context = pcb.get_inner_locked().get_trap_context();
@@ -440,6 +456,14 @@ impl ProcessControlBlock {
                 last_signal: None,
                 dead_children_stime: 0,
                 dead_children_utime: 0,
+                timer_real_int: parent_arcpcb.timer_real_int,
+                timer_real_next: parent_arcpcb.timer_real_next,
+                timer_real_start: parent_arcpcb.timer_real_start,
+                timer_virt_int: parent_arcpcb.timer_virt_int,
+                timer_virt_next: parent_arcpcb.timer_virt_next,
+                timer_prof_int: parent_arcpcb.timer_prof_int,
+                timer_prof_next: parent_arcpcb.timer_prof_next,
+                timer_prof_now: parent_arcpcb.timer_prof_now,
             }),
         });
 

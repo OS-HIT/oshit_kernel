@@ -97,12 +97,12 @@ impl Processor {
     /// Switch executing process.  
     /// # Description
     /// By switching to the idle work flow, we can find what process to run next.
-    pub fn switch_proc(&self, proc_context2: *const usize) {
-        let idle_context_ptr2 = self.get_idle_context_ptr2();
-        unsafe {
-            __switch(proc_context2, idle_context_ptr2);
-        }
-    }
+    // pub fn switch_proc(&self, proc_context2: *const usize) {
+    //     let idle_context_ptr2 = self.get_idle_context_ptr2();
+    //     unsafe {
+    //         __switch(proc_context2, idle_context_ptr2);
+    //     }
+    // }
 
         
     /// suspend current process and switch.
@@ -114,7 +114,7 @@ impl Processor {
         let mut arcpcb = process.get_inner_locked();
         let context_ptr2 = &(arcpcb.context_ptr) as *const usize;
         arcpcb.status = ProcessStatus::Ready;
-        arcpcb.utime = arcpcb.utime + get_time() - arcpcb.last_start;
+        arcpcb.timer_prof_now += get_time() - arcpcb.timer_real_start;
         drop(arcpcb);
         enqueue(process);
         let idle_context_ptr2 = self.get_idle_context_ptr2();
@@ -150,7 +150,7 @@ impl Processor {
         
         arcpcb.children.clear();
         arcpcb.layout.drop_all();
-        arcpcb.utime = arcpcb.utime + get_time() - arcpcb.last_start;
+        arcpcb.timer_prof_now += get_time() - arcpcb.timer_real_start;
         drop(arcpcb);
         drop(process);
         let _unused: usize = 0;
@@ -170,7 +170,31 @@ impl Processor {
                 let mut arcpcb = process.get_inner_locked();
                 let next_context_ptr2 = &(arcpcb.context_ptr) as *const usize;
                 arcpcb.status = ProcessStatus::Running;
-                arcpcb.last_start = get_time();
+                if arcpcb.timer_real_next != 0 && arcpcb.timer_real_next < get_time() {
+                    if arcpcb.timer_real_int != 0 {
+                        arcpcb.timer_real_next += crate::config::CLOCK_FREQ / 1000 * arcpcb.timer_real_int;
+                    } else {
+                        arcpcb.timer_real_next = 0;
+                    }
+                    arcpcb.recv_signal(super::default_handlers::SIGALRM);
+                }
+                if arcpcb.timer_virt_next != 0 && arcpcb.timer_virt_next < arcpcb.utime {
+                    if arcpcb.timer_virt_int != 0 {
+                        arcpcb.timer_virt_next += crate::config::CLOCK_FREQ / 1000 * arcpcb.timer_virt_int;
+                    } else {
+                        arcpcb.timer_virt_next = 0;
+                    }
+                    arcpcb.recv_signal(super::default_handlers::SIGVTALRM);
+                }
+                if arcpcb.timer_prof_next != 0 && arcpcb.timer_prof_next < arcpcb.timer_prof_now {
+                    if arcpcb.timer_prof_int != 0 {
+                        arcpcb.timer_prof_next += crate::config::CLOCK_FREQ / 1000 * arcpcb.timer_prof_int;
+                    } else {
+                        arcpcb.timer_prof_next = 0;
+                    }
+                    arcpcb.recv_signal(super::default_handlers::SIGPROF);
+                }
+                arcpcb.timer_real_start = get_time();
                 drop(arcpcb);
                 self.inner.borrow_mut().current = Some(process);
                 unsafe {

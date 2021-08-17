@@ -4,6 +4,7 @@ use core::slice::{from_raw_parts, from_raw_parts_mut};
 use crate::process::{PROC0, ProcessControlBlockInner, remove_proc_by_pid};
 
 use crate::config::PAGE_SIZE;
+use crate::config::CLOCK_FREQ;
 use crate::process::{CloneFlags, PROCESS_MANAGER, current_path, current_process, enqueue, exit_switch, get_proc_by_pid, suspend_switch};
 
 use crate::memory::{PhysAddr, Segment, VMAFlags, VirtAddr, alloc_continuous, get_user_cstr, SegmentFlags, PTEFlags};
@@ -683,4 +684,136 @@ pub fn sys_exit_group(exit_status: i32) -> ! {
 
 pub fn sys_gettid() -> isize {
     return current_process().unwrap().pid.0 as isize;
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct timeval {
+    tv_sec: i64,
+    tv_usec: i64,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct itimerval {
+    it_interval: timeval,
+    it_value: timeval,
+}
+
+const ITIMER_REAL: i32 = 0;
+const ITIMER_VIRTUAL: i32 = 1;
+const ITIMER_PROF: i32 = 2;
+
+pub fn sys_getitimer(which: i32, old: VirtAddr) -> isize {
+    let process = current_process().unwrap();
+    let mut lock = process.get_inner_locked();
+    match which {
+        ITIMER_REAL => {
+            let now = get_time() * 1000 / CLOCK_FREQ;
+            let val = if now <= lock.timer_real_next {
+                lock.timer_real_int as i64
+            } else {
+                (now - lock.timer_real_next) as i64
+            };
+            if old.0 != 0 {
+                let tmp = itimerval {
+                    it_interval: timeval {
+                        tv_sec: (lock.timer_real_int / 1000) as i64,
+                        tv_usec: (lock.timer_real_int % 1000) as i64,
+                    },
+                    it_value: timeval {
+                        tv_sec: val / 1000,
+                        tv_usec: val % 1000,
+                    },
+                };
+                lock.layout.write_user_data(old, &tmp);
+            }
+        },
+        ITIMER_VIRTUAL => {
+            let now = lock.utime * 1000 / CLOCK_FREQ;
+            let val = if now <= lock.timer_virt_next {
+                lock.timer_virt_int as i64
+            } else {
+                (now - lock.timer_virt_next) as i64
+            };
+            if old.0 != 0 {
+                let tmp = itimerval {
+                    it_interval: timeval {
+                        tv_sec: (lock.timer_virt_int / 1000) as i64,
+                        tv_usec: (lock.timer_virt_int % 1000) as i64,
+                    },
+                    it_value: timeval {
+                        tv_sec: val / 1000,
+                        tv_usec: val % 1000,
+                    },
+                };
+                lock.layout.write_user_data(old, &tmp);
+            }
+        },
+        ITIMER_PROF => {
+            let now = lock.timer_prof_now * 1000 / CLOCK_FREQ;
+            let val = if now <= lock.timer_prof_next {
+                lock.timer_prof_int as i64
+            } else {
+                (now - lock.timer_prof_next) as i64
+            };
+            if old.0 != 0 {
+                let tmp = itimerval {
+                    it_interval: timeval {
+                        tv_sec: (lock.timer_prof_int / 1000) as i64,
+                        tv_usec: (lock.timer_prof_int % 1000) as i64,
+                    },
+                    it_value: timeval {
+                        tv_sec: val / 1000,
+                        tv_usec: val % 1000,
+                    },
+                };
+                lock.layout.write_user_data(old, &tmp);
+            }
+        },
+        _ => {
+            error!("sys_getitimer: invalid which");
+            return -1;
+        }
+    }
+    return 0;
+}
+
+pub fn sys_setitimer(which: i32, new: VirtAddr, old: VirtAddr) -> isize {
+    if old.0 != 0 {
+        if sys_getitimer(which, old) == -1 {
+            return -1;
+        }
+    }
+    let process = current_process().unwrap();
+    let mut lock = process.get_inner_locked();
+    let new: itimerval = lock.layout.read_user_data(new);
+    info!("sys_setitimer: {} {} {} {}", new.it_interval.tv_sec, new.it_interval.tv_usec, new.it_value.tv_sec, new.it_value.tv_usec);
+    if new.it_interval.tv_sec < 0 || new.it_interval.tv_usec < 0 || new.it_interval.tv_usec > 999 {
+        error!("sys_setitimer: invalid new value");
+        return -1;
+    }
+    if new.it_value.tv_sec < 0 || new.it_value.tv_usec < 0 || new.it_value.tv_usec > 999 {
+        error!("sys_setitimer: invalid new value");
+        return -1;
+    }
+    match which {
+        ITIMER_REAL => {
+            lock.timer_real_int = (new.it_interval.tv_sec * 1000 + new.it_interval.tv_usec) as u64;
+            lock.timer_real_next = (new.it_value.tv_sec * 1000 + new.it_value.tv_usec) as u64 * CLOCK_FREQ / 1000;
+        },
+        ITIMER_VIRTUAL => {
+            lock.timer_virt_int = (new.it_interval.tv_sec * 1000 + new.it_interval.tv_usec) as u64;
+            lock.timer_virt_next = (new.it_value.tv_sec * 1000 + new.it_value.tv_usec) as u64 * CLOCK_FREQ / 1000;
+        },
+        ITIMER_PROF => {
+            lock.timer_prof_int = (new.it_interval.tv_sec * 1000 + new.it_interval.tv_usec) as u64;
+            lock.timer_prof_next = (new.it_value.tv_sec * 1000 + new.it_value.tv_usec) as u64 * CLOCK_FREQ / 1000;
+        },
+        _ => {
+            error!("sys_setitimer: invalid which");
+            return -1;
+        }
+    }
+    return 0;
 }

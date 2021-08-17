@@ -33,6 +33,8 @@ pub const SYSCALL_EXIT              : usize = 93;
 pub const SYSCALL_EXIT_GROUP        : usize = 94;
 pub const SYSCALL_SET_TID_ADDRESS   : usize = 96;
 pub const SYSCALL_NANOSLEEP         : usize = 101;
+pub const SYSCALL_GETITIMER         : usize = 102;
+pub const SYSCALL_SETITIMER         : usize = 103;
 pub const SYSCALL_CLOCK_GETTIME     : usize = 113;
 pub const SYSCALL_SCHED_YIELD       : usize = 124;
 pub const SYSCALL_KILL              : usize = 129;
@@ -107,7 +109,9 @@ pub use process_syscall::{
     sys_kill,
     sys_mprotect,
     sys_gettid,
-    sys_tgkill
+    sys_tgkill,
+    sys_getitimer,
+    sys_setitimer,
 };
 pub use trivial_syscall::{
     sys_time, 
@@ -205,6 +209,8 @@ pub fn syscall(syscall_id: usize, args: [usize; 6]) -> isize {
         SYSCALL_TGKILL          => {CALL_SYSCALL!(sys_tgkill, args[0] as isize, args[1] as isize, args[2])},
         SYSCALL_GETRUSAGE       => {CALL_SYSCALL!(sys_getrusage, args[0] as i32, VirtAddr::from(args[1]))},
         SYSCALL_CLOCK_GETTIME   => {CALL_SYSCALL!(sys_gettimeofday, VirtAddr::from(args[1]))},
+        SYSCALL_GETITIMER       => {CALL_SYSCALL!(sys_getitimer, args[1] as i32, VirtAddr::from(args[2]))},
+        SYSCALL_SETITIMER       => {CALL_SYSCALL!(sys_setitimer, args[1] as i32, VirtAddr::from(args[2]), VirtAddr::from(args[3]))},
         _ => {
             CALL_SYSCALL!(sys_unknown, syscall_id, args[0], args[1], args[2], args[3], args[4], args[5])
         },
