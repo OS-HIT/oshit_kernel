@@ -2,6 +2,12 @@ mod device_file;
 mod char_device;
 mod devfs;
 mod block_device;
+mod zero_device;
+
+pub use zero_device::{
+    FZero,
+    FILE_ZERO,
+};
 
 pub use device_file::{
     DeviceFile,

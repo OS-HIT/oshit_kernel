@@ -1,6 +1,6 @@
 use crate::fs::{CommonFile, DirFile, FSFlags, FSStatus, File, VirtualFileSystem, file::FileStatus, SDA_WRAPPER};
 use crate::fs::Path;
-use super::{CharDeviceFile, DeviceFile, TTY0};
+use super::{CharDeviceFile, DeviceFile, TTY0, FILE_ZERO};
 use alloc::{string::{String, ToString}, sync::Arc, vec::Vec};
 use lazy_static::*;
 
@@ -168,6 +168,9 @@ impl VirtualFileSystem for DevFS {
                 } else if abs_path.path[0] == "block" {
                     verbose!("Parse success: block");
                     return Ok(DEV_FS_BLOCK_FOLDER.clone());
+                } else if abs_path.path[0] == "zero" {
+                    verbose!("Parse success: zero");
+                    return Ok(FILE_ZERO.clone());
                 }
             },
             2 => {
