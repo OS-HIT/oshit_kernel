@@ -89,7 +89,9 @@ pub fn sys_clone(clone_flags: CloneFlags, stack: usize, parent_tid_ptr: VirtAddr
     if clone_flags.contains(CloneFlags::CHILD_CLEARTID) {
         new_proc.get_inner_locked().layout.write_user_data(child_tid_ptr, &(0 as usize));
     }
+    // new_proc.get_inner_locked().layout.print_layout();
     enqueue(new_proc);
+    
     return new_pid as isize;
 }
 
@@ -114,7 +116,10 @@ pub fn sys_exec(app_path_ptr: VirtAddr, argv: VirtAddr, envp: VirtAddr) -> isize
     verbose!("Exec {}", app_path);
 
     match sys_exec_inner(app_path, argv, envp) {
-        Ok(_) => 0,
+        Ok(_) => {
+            // current_process().unwrap().get_inner_locked().layout.print_layout();
+            0
+        },
         Err(msg) => {
             error!("Exec failed: {}", msg);
             -1
@@ -608,7 +613,8 @@ pub fn sys_sigreturn() -> isize {
     let mut locked_inner = proc.get_inner_locked();
     if let Some(last_signal) = locked_inner.last_signal {
         // reg2 (x2) is sp
-        let old_trap_context: TrapContext = locked_inner.layout.read_user_data((locked_inner.get_trap_context().regs[2] - size_of::<TrapContext>()).into());
+        let old_trap_context: TrapContext = locked_inner.signal_trap_contexts.pop().unwrap();
+        info!("triggered sigreturn, pc going to: {:x}", old_trap_context.sepc);
         locked_inner.write_trap_context(&old_trap_context);
         locked_inner.sig_mask &= !(1u64 << last_signal);
         locked_inner.last_signal = None;

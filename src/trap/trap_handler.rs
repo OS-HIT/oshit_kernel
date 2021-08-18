@@ -1,6 +1,6 @@
 //! Trap handler of oshit kernel
 use super::TrapContext;
-use crate::{memory::{VirtAddr, PhysAddr}, process::{current_process, default_sig_handlers}, syscall::syscall};
+use crate::{memory::{VirtAddr, PhysAddr}, process::{current_process, default_sig_handlers}, syscall::syscall, trap};
 use alloc::sync::Arc;
 use riscv::register::{
     stvec,      // s trap vector base address register
@@ -219,10 +219,10 @@ pub fn trap_return() -> ! {
     let mut to_process: Option<(usize, usize)> = None;
 
     for sig in arcpcb.pending_sig.iter().enumerate() {
-        if *sig.1 == crate::process::default_handlers::SIGALRM {
-            info!("SIGALRM received");
-        }
-        if 1u64 << sig.1 & &arcpcb.sig_mask != 0 {
+        // if *sig.1 == crate::process::default_handlers::SIGALRM {
+        //     info!("SIGALRM received");
+        // }
+        if ((1u64 << sig.1) & (&arcpcb.sig_mask)) == 0 {
             to_process = Some((sig.0, *sig.1));
             break;
         }
@@ -236,24 +236,25 @@ pub fn trap_return() -> ! {
     let mut arg4 = 0;
 
     if let Some((idx, signal)) = to_process {
+        info!("Found pending signal {} for pid {}", signal, current.pid.0);
         let trap_cx_ptr = TRAP_CONTEXT;
-        let user_satp = current_satp();
+        let user_satp = arcpcb.get_satp();
         extern "C" {
             fn strampoline();
+            fn sutrampoline();
             fn __restore();
-            fn __restore_to_signal_handler();
+            fn __user_call_sigreturn();
             fn __siginfo();
         }
-        let restore_to_signal_handler_va = __restore_to_signal_handler as usize - strampoline as usize + TRAMPOLINE;
 
         arcpcb.pending_sig.remove(idx);
-        let terminate_self_va = crate::process::default_handlers::def_terminate_self as usize - strampoline as usize + TRAMPOLINE;
-        let ignore_va = crate::process::default_handlers::def_ignore as usize - strampoline as usize + TRAMPOLINE;
+        let terminate_self_va = crate::process::default_handlers::def_terminate_self as usize - sutrampoline as usize + U_TRAMPOLINE;
+        let ignore_va = crate::process::default_handlers::def_ignore as usize - sutrampoline as usize + U_TRAMPOLINE;
         let handler_va = if let Some(act) = arcpcb.handlers.get(&signal) {
             if act.flags.contains(SignalFlags::SIGINFO) {
                 act.sigaction.0
             } else if act.sighandler.0 == SIG_DFL {
-                default_sig_handlers()[&signal].sighandler.0 as usize - strampoline as usize + TRAMPOLINE
+                default_sig_handlers()[&signal].sighandler.0 as usize - sutrampoline as usize + U_TRAMPOLINE
             } else if act.sighandler.0 == SIG_IGN {
                 ignore_va
             } else if act.sighandler.0 == SIG_ERR{
@@ -264,18 +265,20 @@ pub fn trap_return() -> ! {
         } else {
             terminate_self_va
         };
-        let sig_info = SigInfo {
-            si_signo:   signal as i32,
-            si_errno:   0,
-            si_code:    32767,     // SI_NOINFO
-            si_trapno:  0,
-            si_pid:     0,
-            si_uid:     0,
-            si_status:  0,
-            si_utime:   0,
-            si_stime:   0,
-        };
-        arcpcb.layout.write_user_data(VirtAddr::from(__siginfo as usize), &sig_info);
+        // let sig_info = SigInfo {
+        //     si_signo:   signal as i32,
+        //     si_errno:   0,
+        //     si_code:    32767,     // SI_NOINFO
+        //     si_trapno:  0,
+        //     si_pid:     0,
+        //     si_uid:     0,
+        //     si_status:  0,
+        //     si_utime:   0,
+        //     si_stime:   0,
+        // };
+        // let siginfo_va = VirtAddr::from(__siginfo as usize - strampoline as usize + TRAMPOLINE);
+        // verbose!("siginfo va = {:?}", siginfo_va);
+        // arcpcb.layout.write_user_data(siginfo_va, &sig_info);
         
         if arcpcb.handlers.get(&signal).unwrap().flags.contains(SignalFlags::RESETHAND) {
             arcpcb.handlers.insert(signal, crate::process::default_sig_handlers()[&signal]);
@@ -284,18 +287,26 @@ pub fn trap_return() -> ! {
         // mask itself
         arcpcb.sig_mask |= 1u64 << signal;
         arcpcb.last_signal = Some(signal);
+
+        // copy trap context
+        let trap_context = arcpcb.get_trap_context();
+        arcpcb.signal_trap_contexts.push((*trap_context).clone());
+        
+        trap_context.regs[1] = __user_call_sigreturn as usize - sutrampoline as usize + U_TRAMPOLINE;
+        trap_context.sepc = handler_va;
+        trap_context.regs[11] = signal;
+        info!("triggered signal, pc going to: {:x}", handler_va);
         
         drop(arcpcb);
         drop(current);
         drop(to_process);
 
-        restore_vec = restore_to_signal_handler_va;
+        restore_vec = __restore as usize - strampoline as usize + TRAMPOLINE;
         arg0 = trap_cx_ptr;
         arg1 = user_satp;
-        arg2 = handler_va;
-        arg3 = signal;
-        arg4 = __siginfo as usize;
+        // arg4 = __siginfo as usize - strampoline as usize + TRAMPOLINE;
     } else {
+        verbose!("no pending signal for proc {}", current.pid.0);
         drop(arcpcb);
         drop(current);
         drop(to_process);

@@ -4,6 +4,7 @@ MODE 			:= debug
 KERNEL_ELF 		:= target/$(TARGET)/$(MODE)/oshit_kernel
 KERNEL_BIN 		:= kernel.bin
 KERNEL_SYM 		:= kernel.sym
+KERNEL_ASM		:= kernel.asm
 DISASM_TMP 		:= target/$(TARGET)/$(MODE)/asm
 OBJDUMP 		:= rust-objdump --arch-name=riscv64
 OBJCOPY 		:= rust-objcopy --binary-architecture=riscv64
@@ -40,6 +41,7 @@ env:
 
 $(KERNEL_BIN): kernel
 	$(OBJDUMP) -t $(KERNEL_ELF) | sed '1,/SYMBOL TABLE/d; s/ .* / /; /^$$/d'  | sort > $(KERNEL_SYM)
+	$(OBJDUMP) -S $(KERNEL_ELF) > $(KERNEL_ASM)
 	@$(OBJCOPY) $(KERNEL_ELF) --strip-all -O binary $@
 
 kernel:

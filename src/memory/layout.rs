@@ -839,7 +839,7 @@ impl MemLayout {
             );
             verbose!("Trapcontext mapped.");
             // map guard page
-            let guard_page_high_end = VirtAddr::from(TRAP_CONTEXT);
+            let guard_page_high_end = VirtAddr::from(U_TRAMPOLINE);
             let guard_page_low_end = guard_page_high_end - PAGE_SIZE;
             layout.add_segment(
                 Arc::new(Mutex::new(
@@ -913,6 +913,7 @@ impl MemLayout {
         extern "C"
         {
             fn strampoline();
+            fn sutrampoline();
         }
         self.pagetable.map(
             VirtAddr::from(TRAMPOLINE).into(),
@@ -920,6 +921,13 @@ impl MemLayout {
             PTEFlags::R | PTEFlags::X
         );
         verbose!("Trampoline mapped {:?} <=> {:?}, R-X-", VirtAddr::from(TRAMPOLINE), PhysAddr::from(strampoline as usize));
+        
+        self.pagetable.map(
+            VirtAddr::from(U_TRAMPOLINE).into(),
+            PhysAddr::from(sutrampoline as usize).into(),
+            PTEFlags::R | PTEFlags::X | PTEFlags::U
+        );
+        verbose!("U_Trampoline mapped {:?} <=> {:?}, R-XU", VirtAddr::from(U_TRAMPOLINE), PhysAddr::from(sutrampoline as usize));
     }
 
     /// Translate a vpn to a pte
@@ -964,9 +972,16 @@ impl MemLayout {
         let mut pages = Vec::new();
         while start < end {
             let mut vpn = start.to_vpn();
-            let ppn = self.translate(vpn).unwrap().ppn();
+            let ppn = match self.translate(vpn) {
+                Some(pte) => pte.ppn(),
+                None => {
+                    panic!("Invalid user addr: {:?}", start);
+                },
+            };
             vpn.step();
             let copy_end = min(VirtAddr::from(vpn), end);    // page end or buf end
+            // verbose!("vpn page end {:?}", VirtAddr::from(vpn));
+            // verbose!("selected end {:?}", copy_end);
             pages.push(&mut ppn.page_ptr()[
                 start.page_offset()
                 ..

@@ -17,7 +17,7 @@ use super::Pid;
 /// # Description
 /// Return the kernel stack position for pid. The positon is tied to the pid, and is located on the top of the kernel memory space.
 pub fn kernel_stack_pos(pid: usize) -> (VirtAddr, VirtAddr) {
-    let top = TRAMPOLINE - pid * (KERNEL_STACK_SIZE + PAGE_SIZE);
+    let top = U_TRAMPOLINE - pid * (KERNEL_STACK_SIZE + PAGE_SIZE);
     return ((top - KERNEL_STACK_SIZE).into(), top.into());
 }
 

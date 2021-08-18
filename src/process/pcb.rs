@@ -221,6 +221,7 @@ pub struct ProcessControlBlockInner {
     pub handlers: BTreeMap<usize, SigAction>,
     /// signal masks
     pub sig_mask: u64,
+    pub signal_trap_contexts: Vec<TrapContext>,
     pub last_signal: Option<usize>,
     pub dead_children_stime: u64,
     pub dead_children_utime: u64,
@@ -280,14 +281,15 @@ impl ProcessControlBlockInner {
         }
     }
 }
+
 pub fn default_sig_handlers() -> BTreeMap<usize, SigAction> {
-    extern "C" {fn strampoline(); }
+    extern "C" {fn strampoline(); fn sutrampoline(); }
     let mut map = BTreeMap::new();
-    let terminate_self_va   = VirtAddr::from(def_terminate_self as usize - strampoline as usize + TRAMPOLINE);
-    let ignore_va           = VirtAddr::from(def_ignore         as usize - strampoline as usize + TRAMPOLINE);
-    let dump_core_va        = VirtAddr::from(def_dump_core      as usize - strampoline as usize + TRAMPOLINE);
-    let cont_va             = VirtAddr::from(def_cont           as usize - strampoline as usize + TRAMPOLINE);
-    let stop_va             = VirtAddr::from(def_stop           as usize - strampoline as usize + TRAMPOLINE);
+    let terminate_self_va   = VirtAddr::from(def_terminate_self as usize - sutrampoline as usize + U_TRAMPOLINE);
+    let ignore_va           = VirtAddr::from(def_ignore         as usize - sutrampoline as usize + U_TRAMPOLINE);
+    let dump_core_va        = VirtAddr::from(def_dump_core      as usize - sutrampoline as usize + U_TRAMPOLINE);
+    let cont_va             = VirtAddr::from(def_cont           as usize - sutrampoline as usize + U_TRAMPOLINE);
+    let stop_va             = VirtAddr::from(def_stop           as usize - sutrampoline as usize + U_TRAMPOLINE);
     let terminate_self_va   = SigAction { sighandler: terminate_self_va, sigaction: 0.into(), mask: 0, flags: SignalFlags::empty(), restorer: 0.into()};
     let ignore_va           = SigAction { sighandler: ignore_va        , sigaction: 0.into(), mask: 0, flags: SignalFlags::empty(), restorer: 0.into()};
     let dump_core_va        = SigAction { sighandler: dump_core_va     , sigaction: 0.into(), mask: 0, flags: SignalFlags::empty(), restorer: 0.into()};
@@ -393,6 +395,7 @@ impl ProcessControlBlock {
                 timer_prof_int: 0,
                 timer_prof_next: 0,
                 timer_prof_now: 0,
+                signal_trap_contexts: Vec::new()
             }),
         };
         let trap_context = pcb.get_inner_locked().get_trap_context();
@@ -464,6 +467,7 @@ impl ProcessControlBlock {
                 timer_prof_int: parent_arcpcb.timer_prof_int,
                 timer_prof_next: parent_arcpcb.timer_prof_next,
                 timer_prof_now: parent_arcpcb.timer_prof_now,
+                signal_trap_contexts: Vec::new()
             }),
         });
 

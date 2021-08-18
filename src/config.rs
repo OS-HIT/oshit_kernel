@@ -29,6 +29,9 @@ pub static TRAMPOLINE        : usize = usize::MAX - PAGE_SIZE + 1;
 /// Position of TrapContext, which is just below the trampoline and takes up an entire page.
 pub static TRAP_CONTEXT      : usize = TRAMPOLINE - PAGE_SIZE;
 
+/// Position of UTrampoline, which is a piece of code use for context switching when we switch priviledge levels (`ecall`/`sret`)
+pub static U_TRAMPOLINE      : usize = TRAP_CONTEXT - PAGE_SIZE;
+
 /// Max pipe ring buffer size. Same as linux.
 pub const PIP_BUF_MAX       : usize = 65536;
 
