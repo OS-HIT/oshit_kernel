@@ -170,17 +170,19 @@ impl Processor {
                 let mut arcpcb = process.get_inner_locked();
                 let next_context_ptr2 = &(arcpcb.context_ptr) as *const usize;
                 arcpcb.status = ProcessStatus::Running;
-                if arcpcb.timer_real_next != 0 && arcpcb.timer_real_next < get_time() {
+                let now = get_time();
+                if arcpcb.timer_real_next != 0 && arcpcb.timer_real_next < now {
                     if arcpcb.timer_real_int != 0 {
-                        arcpcb.timer_real_next += crate::config::CLOCK_FREQ / 1000 * arcpcb.timer_real_int;
+                        arcpcb.timer_real_next += crate::config::CLOCK_FREQ / 100000 * arcpcb.timer_real_int / 10;
                     } else {
                         arcpcb.timer_real_next = 0;
                     }
+                    info!("sending SIGALRM");
                     arcpcb.recv_signal(super::default_handlers::SIGALRM);
                 }
                 if arcpcb.timer_virt_next != 0 && arcpcb.timer_virt_next < arcpcb.utime {
                     if arcpcb.timer_virt_int != 0 {
-                        arcpcb.timer_virt_next += crate::config::CLOCK_FREQ / 1000 * arcpcb.timer_virt_int;
+                        arcpcb.timer_virt_next += crate::config::CLOCK_FREQ / 100000 * arcpcb.timer_virt_int / 10;
                     } else {
                         arcpcb.timer_virt_next = 0;
                     }
@@ -188,7 +190,7 @@ impl Processor {
                 }
                 if arcpcb.timer_prof_next != 0 && arcpcb.timer_prof_next < arcpcb.timer_prof_now {
                     if arcpcb.timer_prof_int != 0 {
-                        arcpcb.timer_prof_next += crate::config::CLOCK_FREQ / 1000 * arcpcb.timer_prof_int;
+                        arcpcb.timer_prof_next += crate::config::CLOCK_FREQ / 100000 * arcpcb.timer_prof_int / 10;
                     } else {
                         arcpcb.timer_prof_next = 0;
                     }

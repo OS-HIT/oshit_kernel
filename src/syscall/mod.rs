@@ -209,8 +209,8 @@ pub fn syscall(syscall_id: usize, args: [usize; 6]) -> isize {
         SYSCALL_TGKILL          => {CALL_SYSCALL!(sys_tgkill, args[0] as isize, args[1] as isize, args[2])},
         SYSCALL_GETRUSAGE       => {CALL_SYSCALL!(sys_getrusage, args[0] as i32, VirtAddr::from(args[1]))},
         SYSCALL_CLOCK_GETTIME   => {CALL_SYSCALL!(sys_gettimeofday, VirtAddr::from(args[1]))},
-        SYSCALL_GETITIMER       => {CALL_SYSCALL!(sys_getitimer, args[1] as i32, VirtAddr::from(args[2]))},
-        SYSCALL_SETITIMER       => {CALL_SYSCALL!(sys_setitimer, args[1] as i32, VirtAddr::from(args[2]), VirtAddr::from(args[3]))},
+        SYSCALL_GETITIMER       => {CALL_SYSCALL!(sys_getitimer, args[0] as i32, VirtAddr::from(args[1]))},
+        SYSCALL_SETITIMER       => {CALL_SYSCALL!(sys_setitimer, args[0] as i32, VirtAddr::from(args[1]), VirtAddr::from(args[2]))},
         _ => {
             CALL_SYSCALL!(sys_unknown, syscall_id, args[0], args[1], args[2], args[3], args[4], args[5])
         },

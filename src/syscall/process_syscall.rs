@@ -319,7 +319,7 @@ fn do_exec(mut app_path: String, argv: Vec<Vec<u8>>, envp: Vec<Vec<u8>>) -> Resu
 
 /// Wait for a pid to end, then return it's exit status.
 pub fn sys_waitpid(pid: isize, exit_code_ptr: VirtAddr, options: isize) -> isize {
-    debug!("Waitpid called by {}!", current_process().unwrap().pid.0);
+    info!("Waitpid {} called by {}!", pid, current_process().unwrap().pid.0);
     loop {
         let proc = current_process().unwrap();
         let mut locked_inner = proc.get_inner_locked();
@@ -348,7 +348,8 @@ pub fn sys_waitpid(pid: isize, exit_code_ptr: VirtAddr, options: isize) -> isize
             return 0;
         } else {
             drop(locked_inner);
-            suspend_switch();
+            // suspend_switch();
+            crate::trap::trap_return();
         }
     }
 }
@@ -780,35 +781,41 @@ pub fn sys_getitimer(which: i32, old: VirtAddr) -> isize {
 }
 
 pub fn sys_setitimer(which: i32, new: VirtAddr, old: VirtAddr) -> isize {
+    info!("sys_setitimer: {} {:#18X} {:#18X}", which, new.0, old.0);
     if old.0 != 0 {
         if sys_getitimer(which, old) == -1 {
             return -1;
         }
     }
     let process = current_process().unwrap();
+    info!("sys_setitimer: pid {}", process.pid.0);
     let mut lock = process.get_inner_locked();
     let new: itimerval = lock.layout.read_user_data(new);
-    info!("sys_setitimer: {} {} {} {}", new.it_interval.tv_sec, new.it_interval.tv_usec, new.it_value.tv_sec, new.it_value.tv_usec);
-    if new.it_interval.tv_sec < 0 || new.it_interval.tv_usec < 0 || new.it_interval.tv_usec > 999 {
+    info!("sys_setitimer: {} {} {} {} {}", which, new.it_interval.tv_sec, new.it_interval.tv_usec, new.it_value.tv_sec, new.it_value.tv_usec);
+    if new.it_interval.tv_sec < 0 || new.it_interval.tv_usec < 0 || new.it_interval.tv_usec > 999999 {
         error!("sys_setitimer: invalid new value");
         return -1;
     }
-    if new.it_value.tv_sec < 0 || new.it_value.tv_usec < 0 || new.it_value.tv_usec > 999 {
+    if new.it_value.tv_sec < 0 || new.it_value.tv_usec < 0 || new.it_value.tv_usec > 999999 {
         error!("sys_setitimer: invalid new value");
         return -1;
     }
     match which {
         ITIMER_REAL => {
-            lock.timer_real_int = (new.it_interval.tv_sec * 1000 + new.it_interval.tv_usec) as u64;
-            lock.timer_real_next = (new.it_value.tv_sec * 1000 + new.it_value.tv_usec) as u64 * CLOCK_FREQ / 1000;
+            let now = get_time();
+            lock.timer_real_int = (new.it_interval.tv_sec * 1000000 + new.it_interval.tv_usec) as u64;
+            lock.timer_real_next = (new.it_value.tv_sec * 1000000 + new.it_value.tv_usec) as u64 * (CLOCK_FREQ / 100000) / 10 + now;
+            info!("timer_real_int = {}", lock.timer_real_int);
+            info!("timer_real_next = {}", lock.timer_real_next);
+            info!("timer_real_now = {}", now);
         },
         ITIMER_VIRTUAL => {
-            lock.timer_virt_int = (new.it_interval.tv_sec * 1000 + new.it_interval.tv_usec) as u64;
-            lock.timer_virt_next = (new.it_value.tv_sec * 1000 + new.it_value.tv_usec) as u64 * CLOCK_FREQ / 1000;
+            lock.timer_virt_int = (new.it_interval.tv_sec * 1000000 + new.it_interval.tv_usec) as u64;
+            lock.timer_virt_next = (new.it_value.tv_sec * 1000000 + new.it_value.tv_usec) as u64 * (CLOCK_FREQ / 100000) / 10;
         },
         ITIMER_PROF => {
-            lock.timer_prof_int = (new.it_interval.tv_sec * 1000 + new.it_interval.tv_usec) as u64;
-            lock.timer_prof_next = (new.it_value.tv_sec * 1000 + new.it_value.tv_usec) as u64 * CLOCK_FREQ / 1000;
+            lock.timer_prof_int = (new.it_interval.tv_sec * 1000000 + new.it_interval.tv_usec) as u64;
+            lock.timer_prof_next = (new.it_value.tv_sec * 1000000 + new.it_value.tv_usec) as u64 * (CLOCK_FREQ / 100000) / 10;
         },
         _ => {
             error!("sys_setitimer: invalid which");

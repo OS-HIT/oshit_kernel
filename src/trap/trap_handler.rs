@@ -219,6 +219,9 @@ pub fn trap_return() -> ! {
     let mut to_process: Option<(usize, usize)> = None;
 
     for sig in arcpcb.pending_sig.iter().enumerate() {
+        if *sig.1 == crate::process::default_handlers::SIGALRM {
+            info!("SIGALRM received");
+        }
         if 1u64 << sig.1 & &arcpcb.sig_mask != 0 {
             to_process = Some((sig.0, *sig.1));
             break;
