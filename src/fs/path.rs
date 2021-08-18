@@ -1,3 +1,4 @@
+//! Path parsing module using Finite State Machine
 use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
@@ -24,6 +25,7 @@ pub enum PathFormatError {
         Unknown,
 }
 
+/// Convert errors to string for printing
 pub fn to_string(error: PathFormatError) -> &'static str {
         match error {
                 PathFormatError::NotAbs => "Path should start with '/'",
@@ -39,6 +41,7 @@ pub fn to_string(error: PathFormatError) -> &'static str {
         }
 }
 
+/// Struct representing a path, no more worries for syntax errors in path
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Path {
         pub path: Vec::<String>,
@@ -55,6 +58,7 @@ impl Path {
                 };
         }
 
+        /// Create path representing root directory
         pub fn root() -> Path {
                 return Path {
                         path: Vec::<String>::new(),
@@ -63,6 +67,9 @@ impl Path {
                 }
         }
 
+        /// Get ride of ".." in path
+        /// # Note 
+        /// "." is already removed in parse_path()
         pub fn purge(&mut self) -> Result<(), PathFormatError> {
                 let mut idx = 0;
                 while idx < self.path.len() {
@@ -93,6 +100,7 @@ impl Path {
                 res
         }
 
+        /// pop the trailing file / diretory name
         pub fn pop(&mut self) -> Option<Path> {
                 if self.path.len() != 0 {
                         let vt = vec![self.path.pop().unwrap()];
@@ -108,12 +116,16 @@ impl Path {
                 }
         }
 
+        /// add a file / dretory name at the end of the path
         pub fn push(&mut self, name: String, must_dir: bool) -> Result<(),()> {
                 self.path.push(name);
                 self.must_dir = must_dir;
                 return Ok(());
         }
 
+        /// merge the path "self" with another ("rel_path")
+        /// # Note
+        /// "rel_path" must be a relative path
         pub fn merge(&mut self, rel_path: Path) -> Result<(), &'static str> {
                 if rel_path.is_abs == true {
                         return Err("Cannot merge a abs path");
@@ -125,6 +137,7 @@ impl Path {
         }
 }
 
+/// FSM of parsing path
 struct PathParser {
         state: STATE,
         buf: String,
@@ -271,6 +284,7 @@ impl PathParser {
         }
 }
 
+/// Construct a struct Path from string
 pub fn parse_path(path: &str) -> Result<Path, PathFormatError> {
         // debug!("parse_path: path {}", path);
         let mut parser = PathParser::new();

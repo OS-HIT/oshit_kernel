@@ -1,3 +1,4 @@
+//! Mount Manager
 use core::cmp::Ordering;
 
 use super::super::VirtualFileSystem;
@@ -13,12 +14,46 @@ use alloc::vec::Vec;
 use crate::fs::{File, OpenMode};
 use lazy_static::*;
 
+/// Mount Manager (Wrapper)
+/// # Description
+/// File operations like "open", "create", "delete" needs to go through
+/// Mount Manager first to get the curresponding filesystem.
+/// 
+/// We use a tree-like struct to record the mounted filesystem:
+/// 
+/// +-------+
+/// |   /   |
+/// +-------+
+///    |
+///    v
+/// +-------+-------+-------+-------+
+/// | dev/  | proc/ | Fat32 | foo/  |
+/// +-------+-------+-------+-------+
+///    |        \                |
+///    v         v               v
+/// +-------+  +-------+    +-------+
+/// | devfs |  |procfs |    | bar/  |
+/// +-------+  +-------+    +-------+
+///                              |
+///                              v
+///                         +-------+
+///                         | xxfs  |
+///                         +-------+
+/// Each cell is a MountNode, representing a directory or a fs.
+/// If a node 'A' points to a vector of nodes, means all the nodes in the 
+/// vector is the children of 'A'.
+/// If a fs is mounted at /foo/, then node fs will be the child of node foo/, 
+/// which is a child of node /.
+/// In the graph above, Fat32 is mounted at /; devfs is mounted at /dev/;
+/// procfs is mounted at /proc/; xxfs is mounted at /foo/bar/.
+/// A node can at most have one fs node.
 pub struct MountManager {
     inner: Mutex<MountManagerInner>,
 }
 unsafe impl Sync for MountManager {}
 
 impl MountManager {
+    /// Create a Mount Manager
     pub fn new() -> Self {
         Self {
             inner: Mutex::new(MountManagerInner::new())
@@ -29,10 +64,12 @@ impl MountManager {
         self.inner.lock()
     }
 
+    /// Mount a filesystem on "path"
     pub fn mount_fs(&self, path: String, vfs: Arc<dyn VirtualFileSystem>) -> Result<(), &'static str> {
         self.get_inner_locked().mount_fs(&path, vfs)
     }
 
+    /// Unmount the filesystem on "path"
     pub fn unmount_fs(&self, path: String) -> Result<(), &'static str> {
         self.get_inner_locked().unmount_fs(&path)
     }
@@ -42,30 +79,37 @@ impl MountManager {
         self.get_inner_locked().parse(&total_path)
     }
     
+    /// Open file
     pub fn open(&self, abs_path: String, mode: OpenMode) -> Result<Arc<dyn File>, &'static str> {
         self.get_inner_locked().open(abs_path, mode)
     }
 
+    /// Create diretory
     pub fn mkdir(&self, abs_path: String) -> Result<Arc<dyn File>, &'static str> {
         self.get_inner_locked().mkdir(abs_path)
     }
 
+    /// Create file
     pub fn mkfile(&self, abs_path: String) -> Result<Arc<dyn File>, &'static str> {
         self.get_inner_locked().mkfile(abs_path)
     }
 
+    /// Delete file
     pub fn remove(&self, abs_path: String) -> Result<(), &'static str> {
         self.get_inner_locked().remove(abs_path)
     }
     
+    /// Create hard link
     pub fn link(&self, to_link: Arc<dyn File>, dest: String) -> Result<(), &'static str> {
         self.get_inner_locked().link(to_link, dest)
     }
 
+    /// Create symbolic link
     pub fn sym_link(&self, to_link: Arc<dyn File>, dest: String) -> Result<(), &'static str> {
         self.get_inner_locked().sym_link(to_link, dest)
     }
 
+    /// Rename file (dummy function)
     pub fn rename(&self, to_rename: Arc<dyn File>, new_name: String) -> Result<(), &'static str> {
         self.get_inner_locked().rename(to_rename, new_name)
     }
@@ -76,6 +120,7 @@ enum MountNode {
     FileSystem(Arc<dyn VirtualFileSystem>),
 }
 
+/// Mount Manager Inner
 pub struct MountManagerInner {
     root: Vec<MountNode>,
 }
