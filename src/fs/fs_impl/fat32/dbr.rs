@@ -63,6 +63,8 @@ pub struct RAW_DBR {
         pub sign: [u8; 2],  // 0x55 0xAA
 }
 
+/// Simplified version of DBR
+/// # Simplified DBR, containing only the info needed for file operations.
 pub struct DBR {
         pub vol: u32,
         pub vol_name:  [u8; 11],
@@ -88,7 +90,7 @@ pub struct DBR {
 }
 
 impl DBR {
-
+        /// Build DBR from RAW_DBR
         pub fn from_raw(raw: RAW_DBR, start_sector: u32) -> Self {
                 let mut fat32 = [0u8; 8];
                 for i in 0..fat32.len() {
@@ -140,6 +142,7 @@ impl DBR {
                 }       
         }
 
+        /// Print DBR
         pub fn print(&self) {
                 println!("------DBR---------");
                 println!("{} Version {}", from_utf8(&self.fat32).unwrap(), self.version );

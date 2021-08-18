@@ -1,3 +1,4 @@
+//! File Allocation Table
 pub struct FAT {
         pub start: u32,
         pub end: u32,
@@ -26,6 +27,7 @@ pub enum CLUSTER {
         Eoc, // End of chain
 }
 
+/// Get status of a cluster 
 pub fn get_type(clst_num: u32) -> CLUSTER {
         let mask: u32 = 0x0FFF_FFFF;
         let tmp = clst_num & mask;

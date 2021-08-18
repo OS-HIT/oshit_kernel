@@ -1,3 +1,4 @@
+//! Wrapper of Fat32File to implement the crate::fs::file::File trait.
 use alloc::{sync::Arc, vec::Vec};
 use alloc::string::String;
 use spin::Mutex;

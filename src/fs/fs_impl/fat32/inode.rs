@@ -1,3 +1,4 @@
+//! Virtual inode implemented for Fat32
 use super::super::super::path::Path;
 use super::Fat32FS;
 use super::chain::Chain;
@@ -11,6 +12,16 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use alloc::sync::Arc;
 
+/// Virtual inode implemented for Fat32
+/// # Description
+/// There is no inode in Fat32.
+/// Files in Fat32 consist of 2 parts:
+/// File chain that contains file data;
+/// Diretory Entry that contain file meta data;
+/// For convenience, we manage these two parts in one struct.
+/// And the struct is called the "inode" of Fat32.
+/// "Inodes" act like files, and they only exists in memory.
+/// The "inode" is only identified by a absolute path in filesystem instead of a inode #.
 #[derive(Clone)]
 pub struct Inode {
         pub name: String,
@@ -20,6 +31,9 @@ pub struct Inode {
 }
 
 impl Inode {
+        /// Creates a virtual inode for root directory
+        /// # Note
+        /// Since there is no dirent refer to root directory, we need to create a virtual one.
         pub fn root(fs: Arc<Fat32FS>) -> Inode {
                 Inode {
                         chain: Chain::root(fs).unwrap(),
@@ -29,44 +43,57 @@ impl Inode {
                 }
         }
 
+        /// If the inode is a symbolic link
         #[inline]
         pub fn is_link(&self) -> bool {
                 return self.group.entry.is_link();
         }
 
+        /// If the inode is a directory
         #[inline]
         pub fn is_dir(&self) -> bool {
                 return self.group.entry.is_dir();
         }
 
+        /// If the inode is "."
         #[inline]
         pub fn is_cur(&self) -> bool {
                 return self.group.is_cur();
         }
 
+        /// If the inode is ".."
         #[inline]
         pub fn is_par(&self) -> bool {
                 return self.group.is_par();
         }
 
+        /// If the inode is a symbolic link
         #[inline]
         pub fn is_slink(&self) -> bool {
                 return self.group.entry.attr & DirEntryRaw::ATTR_SYM != 0;
         }
 
+        /// Get size of the inode
+        /// # Note
+        /// Size of a direcotry is 0
         pub fn get_size(&self) -> usize {
                 return self.group.entry.size as usize;
         }
 
+        /// Set size of the inode
+        /// # Note
+        /// A directory should not call set_size()
         pub fn set_size(&mut self, size: u32) {
                 self.group.entry.size = size;
         }
 
+        /// If the inode is "." or ".."
         #[inline]
         pub fn is_fake(&self) -> bool {
                 return self.is_cur() || self.is_par();
         }
 
+        /// Print some infomation about the inode
         pub fn print(&self) {
                 print!("name: {:16}", &self.name);
                 print!("parent: {:32}", &self.path.to_string());
@@ -74,6 +101,7 @@ impl Inode {
                 // print!("start: {}\n", &self.chain.chain[0]);
         }
 
+        /// Get all the inodes in the diretory inode "self".
         pub fn get_inodes(&self) -> Result<Vec<Inode>, &'static str> {
                 if !self.group.entry.is_dir() {
                         return Err("get_inodes: not a directory");
@@ -104,6 +132,7 @@ impl Inode {
                 }
         }
 
+        /// Find a inode in the diretory inode "self" by name.
         pub fn find_inode(&self, name: &str) -> Result<Inode, &'static str> {
                 if !self.group.entry.is_dir() {
                         return Err("get_inodes: not a directory");
@@ -134,6 +163,7 @@ impl Inode {
                 }
         }
 
+        /// Find a inode in the diretory inode "self" recursively.
         pub fn find_inode_path(&self, path: &Path) -> Result<Inode, &'static str> {
                 if !self.is_dir() {
                         return Err("find_inode_path: not a directory");
@@ -156,6 +186,7 @@ impl Inode {
                 return Ok(i);
         }
 
+        /// Get the parent inode of inode "self"
         pub fn get_parent(&self) -> Result<Inode, &'static str> {
                 let root = Inode::root(self.chain.fs.clone());
                 if self.path.path.len() == 0 {
@@ -165,6 +196,7 @@ impl Inode {
                 }
         }
         
+        /// Get the "real" inode of "." or ".." 
         pub fn realize(&mut self) -> Result<Inode, &'static str> {
                 if !self.is_cur() || !self.is_par() {
                         return Err("realize: not fake inode");
@@ -173,6 +205,7 @@ impl Inode {
                 return Ok(Inode::root(self.chain.fs.clone()).find_inode_path(&self.path).unwrap());
         }
 
+        /// Create a new inode in the directory inode "self"
         pub fn new(&mut self, name: &str, chain: Chain, attr:u8) -> Result<Inode, &'static str> {
                 if !self.is_dir() {
                         return Err("new: cannot new from none dir inode");
@@ -195,10 +228,7 @@ impl Inode {
                 return Ok(new);
         }
 
-        // pub fn new_path(&mut self, path: &str, chain: Chain, attr: u8) -> Result<Inode, &'static str> {
-                
-        // }
-
+        /// Create a new directory inode in the directory inode "self"
         pub fn new_dir(&mut self, name: &str, attr:u8) -> Result<Inode, &'static str> {
                 let attr = attr | DirEntryRaw::ATTR_SUBDIR;
                 let mut chain = Vec::new();
@@ -216,6 +246,7 @@ impl Inode {
                 return Ok(nd);
         }
 
+        /// Create a new regular file inode in the directory inode "self"
         pub fn new_file(&mut self, name: &str, attr:u8) -> Result<Inode, &'static str> {
                 let attr = attr | DirEntryRaw::ATTR_FILE;
                 let chain = Vec::new();
@@ -226,6 +257,7 @@ impl Inode {
                 };
         }
 
+        /// Delete a new inode in the directory inode "self"
         pub fn delete_inode(&mut self, name: &String) -> Result<(), &'static str> {
                 if !self.group.entry.is_dir() {
                         return Err("delete_inodes: not a directory");

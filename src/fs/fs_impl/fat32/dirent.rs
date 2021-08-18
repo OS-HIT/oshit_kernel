@@ -1,10 +1,11 @@
-
+//! Directory entry
 use core::str::from_utf8;
 use core::mem::size_of;
 use alloc::vec::Vec;
 use alloc::string::String;
 use super::chain::Chain;
 
+/// Directory Entry in raw
 #[derive(Clone, Copy)]
 #[repr(C, packed(1))]
 pub struct DirEntryRaw {
@@ -34,6 +35,7 @@ impl DirEntryRaw {
         pub const ATTR_SYM: u8 = 0x80;
         const ATTR_LFN: u8 = 0x0f;
 
+        /// Create a blank directory entry
         pub fn blank() -> DirEntryRaw {
                 DirEntryRaw {
                         name: [0u8; 8],
@@ -52,41 +54,52 @@ impl DirEntryRaw {
                 }
         }
 
+        /// If the entry is deleted
         #[inline]
         pub fn is_deleted(&self) -> bool {
                 return self.name[0] == 0xE5;
         }
 
+        /// If the entry is an extension entry for long file name implement
         #[inline]
         pub fn is_ext(&self) -> bool {
                 return self.attr & DirEntryRaw::ATTR_LFN == DirEntryRaw::ATTR_LFN;
         }
 
+        /// If the entry is a symbolic link
+        /// # Note
+        /// To implement symbolic link in Fat32, we used a reserved bit in attribute
+        /// byte to indicate whether is a symbolic link or not.
         #[inline]
         pub fn is_link(&self) -> bool {
                 return self.attr & DirEntryRaw::ATTR_SYM == DirEntryRaw::ATTR_SYM;
         }
 
+        /// If the entry is an entry for a directory
         #[inline]
         pub fn is_dir(&self) -> bool {
                 return self.attr & DirEntryRaw::ATTR_SUBDIR == DirEntryRaw::ATTR_SUBDIR;
         }
 
+        /// If the entry is an entry for a regular file
         #[inline]
         pub fn is_file(&self) -> bool {
                 return self.attr & DirEntryRaw::ATTR_FILE == DirEntryRaw::ATTR_FILE;
         }
 
+        /// If the read-only bit in attribute is set
         #[inline]
         pub fn is_read_only(&self) -> bool {
                 return self.attr & DirEntryRaw::ATTR_RDONLY == DirEntryRaw::ATTR_RDONLY;
         }
 
+        /// If the volumn bit in attribute is set
         #[inline]
         pub fn is_vol(&self) -> bool {
                 return self.attr == DirEntryRaw::ATTR_VOL;
         }
 
+        /// Get the start cluster of the file chain
         pub fn get_start(&self) -> u32 {
                 let mut start = self.start_h as u32;
                 start <<= 16;
@@ -94,11 +107,13 @@ impl DirEntryRaw {
                 return start; 
         }
 
+        /// Set the start cluster of the file chain
         pub fn set_start(&mut self, start: u32) {
                 self.start_h = (start >> 16) as u16;
                 self.start_l = (start & 0xff) as u16;
         }
 
+        /// Get short file name
         pub fn get_name(&self) -> String {
                 let mut name = String::new();
                 name += from_utf8(&self.name).unwrap().trim();
@@ -113,6 +128,7 @@ impl DirEntryRaw {
                 return name;
         }
 
+        /// Set short file name
         pub fn set_name(&mut self, name: &str) {
                 let b:Vec<u8> = name.bytes().collect();
                 for i in (0..b.len()).rev() {
@@ -178,6 +194,7 @@ impl DirEntryRaw {
                 }
         }
 
+        /// Get check sum for extension entries
         pub fn chksum(&self) -> u8 {
                 let mut sum:u8 = 0;
                 for i in 0..8 {
@@ -189,6 +206,7 @@ impl DirEntryRaw {
                 return sum;
         }
 
+        /// Print some fields in the entry
         pub fn print_raw(&self) {
                 print!("name:");
                 for i in 0..8 {
@@ -208,6 +226,7 @@ impl DirEntryRaw {
                 }
         }
         
+        /// Print entry
         pub fn print(&self) {
                 if self.is_deleted() {
                         print!("deleted: ");
@@ -251,6 +270,10 @@ impl DirEntryRaw {
         }       
 }
 
+/// Extension entry for long file name
+/// # Note
+/// More than one extension entry may be needed for a long file name,
+/// so the extension entries usually work in groups (Vec::<DirEntryRaw>).
 #[derive(Clone, Copy)]
 #[repr(C, packed(1))]
 pub struct DirEntryExtRaw {
@@ -267,10 +290,12 @@ pub struct DirEntryExtRaw {
 impl DirEntryExtRaw {
         const EXT_END: u8 = 0x40;
 
+        /// If the entry is deleted
         pub fn is_deleted(&self) -> bool{
                 return self.ext_attr == 0xE5;
         }
 
+        /// Create a group of extension entries from a given filename
         pub fn new(name: &str, chksum: u8) -> Vec<DirEntryExtRaw> {
                 let mut result = Vec::<DirEntryExtRaw>::new();
                 let mut name:Vec<u16> = name.encode_utf16().collect();
@@ -327,21 +352,25 @@ impl DirEntryExtRaw {
                 return rresult;
         }
 
+        /// If the entry the last one in a extension entry group
         #[inline]
         pub fn is_end(&self) -> bool {
                 return self.ext_attr & DirEntryExtRaw::EXT_END == DirEntryExtRaw::EXT_END;
         }
 
+        /// Get index in group of the extension entry
         #[inline]
         pub fn get_index(&self) -> u8 {
                 return self.ext_attr & !DirEntryExtRaw::EXT_END;
         }
 
+        /// If the entry is a extension entry
         #[inline]
         pub fn is_ext(&self) -> bool {
                 return self.attr == DirEntryRaw::ATTR_LFN;
         }
 
+        /// Get the part of name that the entry holds
         pub fn get_name(&self) -> Vec::<u8> {
                 let mut name = Vec::with_capacity(26);
                 for b in &self.name0 {
@@ -369,14 +398,17 @@ impl DirEntryExtRaw {
         }
 }
 
+/// Treat "buf" as an entry and tell if it is a extentsion entry
 fn is_ext(buf: &[u8; size_of::<DirEntryRaw>()]) -> bool {
         (buf[11] & DirEntryRaw::ATTR_LFN) == DirEntryRaw::ATTR_LFN
 }
 
+/// Treat "buf" as an extension and tell if it is deleted
 fn is_del(buf: &[u8; size_of::<DirEntryRaw>()]) -> bool {
         buf[0] == 0xE5
 }
 
+/// Group a entry and the group of extension entries that serve the entry.
 #[derive(Clone)]
 pub struct DirEntryGroup {
         exts: Vec<DirEntryExtRaw>,
@@ -386,6 +418,10 @@ pub struct DirEntryGroup {
 }
 
 impl DirEntryGroup {
+        /// Create virtual entry group for root directory
+        /// # Note
+        /// No entry for root directory since root is not in a directory,
+        /// so we need to fake one for convenience.
         pub fn root() -> DirEntryGroup {
                 DirEntryGroup {
                         exts: Vec::<DirEntryExtRaw>::new(),
@@ -409,6 +445,7 @@ impl DirEntryGroup {
                 }
         }
 
+        /// Create a entry group from given infos
         pub fn new(name: &str, start: u32, attr: u8) -> DirEntryGroup {
                 let mut entry = DirEntryRaw::blank();
                 entry.attr = attr;
@@ -418,17 +455,20 @@ impl DirEntryGroup {
                 return DirEntryGroup {entry, exts, offset: 0, slotsize:0 };
         }
 
+        /// Change the filename that the entries hold
         pub fn rename(&mut self, name: &str) -> Result<(), ()> {
                 self.entry.set_name(name);
                 self.exts = DirEntryExtRaw::new(name, self.entry.chksum());
                 return Ok(());
         }
 
+        /// If the entry group refer to "."
         #[inline]
         pub fn is_cur(&self) -> bool {
                 return self.entry.name[0] == '.' as u8 && self.entry.name[1] == ' ' as u8;
         }
 
+        /// If the entry group refer to ".."
         #[inline]
         pub fn is_par(&self) -> bool {
                 return self.entry.name[0] == '.' as u8 
@@ -436,6 +476,7 @@ impl DirEntryGroup {
                 && self.entry.name[2] == ' ' as u8;
         }
 
+        /// Get the filename that the entries hold
         pub fn get_name(&self) -> Result<String, &'static str> {
                 let mut name = Vec::<u8>::new();
                 if self.exts.len() > 0 {
@@ -466,11 +507,15 @@ impl DirEntryGroup {
                 }
         }
 
+        /// Get the starting cluster of the file chain
         pub fn get_start(&self) -> u32{
                 return self.entry.get_start();
         }
 }
 
+/// If a directory is empty
+/// # Description
+/// "chain" is the file chain of the directory
 pub fn empty_dir(chain: &Chain) -> bool {
         let mut offset = 0;
         loop {
@@ -487,6 +532,12 @@ pub fn empty_dir(chain: &Chain) -> bool {
         } 
 }
 
+/// Get a group from the offset in "chain"
+/// # Description
+/// "chain" is a file chain of a directory
+/// # Return
+/// On success, returns the entry group and the offset to look for next group in the chain.
+/// Returns error message otherwise.
 pub fn read_dirent_group(chain: &Chain, offset: usize) -> Result<(DirEntryGroup, usize), &'static str> {
         let mut exts = Vec::<DirEntryExtRaw>::new();
         let mut buf = [0u8; size_of::<DirEntryRaw>()];
@@ -531,6 +582,12 @@ pub fn read_dirent_group(chain: &Chain, offset: usize) -> Result<(DirEntryGroup,
         }
 }
 
+/// Write a group into "chain"
+/// # Description
+/// "chain" is a file chain of a directory
+/// write_dirent_group will try to update the entries in chain first.
+/// If update failed (for example, filename gets longer or group not exist in the chain),
+/// it wirte new entried at the end of the chain, and delete the old ones (if there are). 
 pub fn write_dirent_group (chain: &mut Chain, group: &mut DirEntryGroup) -> Result<(),()> {
         if group.slotsize == 0 {
                 let mut offset = 0;
@@ -589,6 +646,7 @@ pub fn write_dirent_group (chain: &mut Chain, group: &mut DirEntryGroup) -> Resu
         }
 }
 
+/// Mark the entries in chain as deleted
 pub fn delete_dirent_group(chain: &mut Chain, offset: usize) -> Result<(), &'static str>{
         let mut buf = [0u8; size_of::<DirEntryRaw>()];
         let mut off = offset;

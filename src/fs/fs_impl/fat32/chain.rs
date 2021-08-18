@@ -1,9 +1,11 @@
+//! File chain of Fat32
 use super::Fat32FS;
 
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use alloc::sync::Arc;
 
+/// File Chain of Fat32
 #[derive(Clone)]
 pub struct Chain {
         pub fs: Arc<Fat32FS>,
@@ -13,6 +15,7 @@ pub struct Chain {
 impl Chain {
         const MAX_LEN:usize = 1024 * 1024;
 
+        /// Get the file chain of root directory
         pub fn root(fs: Arc<Fat32FS>) -> Result<Chain, &'static str> {
                 fs.dbr.root;
                 let chain = fs.get_chain(fs.dbr.root);
@@ -20,6 +23,7 @@ impl Chain {
                 // return Err("error when reading root");
         }
         
+        /// Create a empty file chain
         pub fn new(fs: Arc<Fat32FS>, chain: Vec<u32>) -> Chain {
                 Chain {fs, chain}
         }
@@ -33,6 +37,9 @@ impl Chain {
                 }
         }
 
+        /// Fill the buffer with contents in file chain at "offset"
+        /// # Return
+        /// Number of bytes that actually read
         pub fn read(&self, offset: usize, buffer: &mut [u8]) -> Result<usize, &'static str> {
                 let (mut idx,clst) = match self.get_cluster(offset) {
                         Ok(c) => c,
@@ -56,6 +63,12 @@ impl Chain {
                 return Ok(read);
         }
 
+        /// Write the contents of the buffer into the file chain at "offset"
+        /// # Description
+        /// Chain append will be performed when necessary. 
+        /// If "offset" is bigger than the offset of the last byte in chain, space between them will be filled with 0.
+        /// # Return
+        /// Number of bytes that actually written
         pub fn write(&mut self, offset: usize, buffer: &[u8]) -> Result<usize, &'static str> {
                 let (mut idx, clst) = loop {
                         match self.get_cluster(offset) {
@@ -92,6 +105,7 @@ impl Chain {
                 return Ok(write);
         }
 
+        /// Trucate chain to the specified length
         pub fn truncate(&mut self, len: usize) -> Result<(), ()> {
                 if self.chain.len() > len {
                         self.fs.truncate_chain(self.chain[len-1]).unwrap();
@@ -100,6 +114,7 @@ impl Chain {
                 return Ok(());
         }
 
+        /// Convert the chain to string for printing
         pub fn to_string(&self) -> String {
                 if self.chain.len() == 0 {
                         return String::from("(null)");

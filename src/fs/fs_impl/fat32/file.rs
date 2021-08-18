@@ -1,3 +1,4 @@
+//! File struct of Fat32
 use alloc::string::String;
 use alloc::vec::Vec;
 use alloc::sync::Arc;
@@ -13,14 +14,21 @@ use super::dirent::write_dirent_group;
 use crate::fs::SeekOp;
 use crate::fs::file::FileType;
 
+/// File Access Mode: Read allowed
 pub const READ: usize = 1;
+/// File Access Mode: Write allowed
 pub const WRITE: usize = 2;
+/// File Access Mode: Create when missing
 pub const CREATE: usize = 4;
+/// File Access Mode: Opening directory
 pub const DIR: usize = 8;
+/// File Access Mode: Don't follow symbolic links
 pub const NO_FOLLOW: usize = 16;
+/// File Access Mode: Set file size to 0 when open
 pub const TRUNCATE: usize = 32;
 // const APPEND: usize = 4;
 
+/// File struct of Fat32
 pub struct FileInner{
         inode: Inode,
         cursor: usize,
@@ -36,6 +44,7 @@ macro_rules! has {
 }
 
 impl FileInner {
+        /// Create a file struct for "inode" with mode "mode"
         pub fn new(mut inode: Inode, mode:usize) -> FileInner {
                 if has!(mode, TRUNCATE) {
                         inode.set_size(0);
@@ -47,40 +56,51 @@ impl FileInner {
                 }
         }      
 
+        /// If the file is a symbolic link
         #[inline]
         pub fn is_link(&self) -> bool {
                 self.inode.is_link()
         }
 
+        /// If the file is a directory
         #[inline]
         pub fn is_dir(&self) -> bool {
                 self.inode.is_dir()
         }
 
+        /// Print meta data of the file
         pub fn print(&self) {
                 self.inode.print();
         }
 
+        /// Set bits in the attribute byte of the directory entry of the file
         pub fn set_attr(&mut self, attr: u8) {
                 self.inode.group.entry.attr |= attr;
         }
 
+        /// Reset bits in the attribute byte of the directory entry of the file
         pub fn reset_attr(&mut self, attr: u8) {
                 self.inode.group.entry.attr &= !attr;
         }
 
+        /// Get the attribute byte of the directory entry of the file
         pub fn get_attr(&self) -> u8 {
                 return self.inode.group.entry.attr;
         }
 
+        /// Get the path of the file in the file system
         pub fn get_path(&self) -> Path {
                 self.inode.path.clone()
         }
 
+        /// Get the file system that holds the file
         pub fn get_fs(&self) -> Arc<Fat32FS> {
                 return self.inode.chain.fs.clone();
         }
 
+        /// Set file cursor
+        /// # Note
+        /// Setting cursor for a directory file is not allowed 
         pub fn seek(&mut self, offset: isize, op: SeekOp) -> Result<(), &'static str> {
                 if self.inode.is_dir() {
                         return Err("seek: not allowed for dir");
@@ -97,6 +117,9 @@ impl FileInner {
                 return Ok(());
         }
 
+        /// Get file cursor
+        /// # Note
+        /// No cursor for a directory file
         pub fn get_cursor(&self) -> Result<usize, &'static str> {
                 if self.inode.is_dir() {
                         return Err("get_cursor: cursor not in use for dir");
@@ -104,6 +127,10 @@ impl FileInner {
                 return Ok(self.cursor);
         }
 
+        /// Fill the buffer with contents of the file. 
+        /// #Note 
+        /// Reading starts from the file cursor, and set cursor to the byte next
+        /// to the last read byte.
         pub fn read(&mut self, buffer: &mut [u8]) -> Result<usize, &'static str> {
                 let mut buffer = buffer;
                 if self.inode.is_dir() {
@@ -125,6 +152,10 @@ impl FileInner {
                 }
         }
 
+        /// Write contents of the buffer to the file
+        /// # Note 
+        /// Writing starts from the file cursor, and set cursor to the byte next
+        /// to the last written byte.
         pub fn write(&mut self, buffer: &[u8]) -> Result<usize, &'static str> {
                 if self.inode.is_dir() {
                         return Err("write: write directory is not allowed");
@@ -144,6 +175,7 @@ impl FileInner {
                 }
         }
 
+        /// Open a file from file "self". "self" must be a directory.
         pub fn open(&mut self, mut path: Path, mode:usize) -> Result<FileInner, &'static str> {
                 // let fs = self.inode.chain.fs.clone();
                 if !self.inode.is_dir() {
@@ -185,6 +217,7 @@ impl FileInner {
                 }
         }
 
+        /// Create a directory file at file "self". "self" must be a directory.
         pub fn mkdir(&mut self, mut path: Path) -> Result<FileInner, &'static str> {
                 if !self.inode.is_dir() {
                         return Err("mkdir: not from directory");
@@ -234,6 +267,7 @@ impl FileInner {
                 }
         }
 
+        /// Create a regular file at file "self". "self" must be a directory.
         pub fn mkfile(&mut self, mut path: Path) -> Result<FileInner, &'static str> {
                 if !self.inode.is_dir() {
                         return Err("mkfile: not from directory");
@@ -283,6 +317,7 @@ impl FileInner {
                 }
         }
 
+        /// Delete a regular file or empty directory file at file "self". "self" must be a directory.
         pub fn remove(&mut self, mut path: Path) -> Result<(), &'static str> {
                 if !self.inode.is_dir() {
                         return Err("remove: not from directory");
@@ -312,6 +347,7 @@ impl FileInner {
                 }
         }
 
+        /// List all files in file "self". "self" must be a directory.
         pub fn list(&self) -> Result<Vec<FileInner>, &'static str> {
                 if !self.inode.is_dir() {
                         return Err("list: not from directory");
@@ -331,6 +367,7 @@ impl FileInner {
                 return Ok(files);
         }
 
+        /// Rename the file
         pub fn rename(&mut self, new_name: &str) -> Result<(), &'static str> {
                 let parent = self.inode.get_parent().unwrap();
                 match parent.find_inode(new_name) {
@@ -342,6 +379,10 @@ impl FileInner {
                 return Ok(());
         }
 
+        /// Flush file meta data
+        /// # Note 
+        /// close() can be called for multiple times for a file. 
+        /// It does no more than flushing meta data.
         pub fn close(&mut self) {
                 if !self.inode.is_dir() {
                         if self.inode.group.get_start() == 0 && self.inode.chain.chain.len() != 0 {
@@ -355,35 +396,48 @@ impl FileInner {
                 write_dirent_group(&mut parent.chain, &mut self.inode.group).unwrap();
                 self.inode.chain.fs.sync();
         }
+
+        /// If the file is readable
         pub fn readable(&self) -> bool {
-                !self.inode.is_dir()
+                // !self.inode.is_dir()
+                has!(self.mode, READ)
         }
 
+        /// If the file is writable
         pub fn writable(&self) -> bool {
-                self.mode.get_bit(1) | self.mode.get_bit(2)
+                // self.mode.get_bit(1) | self.mode.get_bit(2)
+                has!(self.mode, WRITE)
         }
 
+        /// Get last accessed time of the file
         pub fn last_acc_time_sec(&self) -> usize {
                 self.inode.group.entry.accessed_sec as usize * 86400usize
         }
         
+        /// Get create time (sec) of the file
         pub fn create_time_sec(&self) -> usize {
                 self.inode.group.entry.created_date as usize * 86400usize
                 + self.inode.group.entry.created_sec as usize
         }
 
+        /// Get create time (nsec) of the file
         pub fn create_time_nsec(&self) -> usize {
                 self.inode.group.entry.created_minisec as usize * 1000000usize
         }
 
+        /// Get file size
+        /// # Note
+        /// File size of a directory file is 0
         pub fn size(&self) -> usize {
                 self.inode.get_size()
         }
 
+        /// Get file name
         pub fn name(&self) -> String {
                 self.inode.name.clone()
         }
 
+        /// Get file type
         pub fn ftype(&self) -> FileType {
                 if self.inode.is_link() {
                         FileType::Link
@@ -394,6 +448,7 @@ impl FileInner {
                 }
         }
 
+        /// Get file mode
         pub fn fmode(&self) -> usize {
                 self.mode
         }

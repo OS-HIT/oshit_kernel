@@ -1,3 +1,4 @@
+//! FAT32 File system implementation for oshit. 
 mod dbr;
 mod fat;
 mod chain;
@@ -27,11 +28,12 @@ use super::super::Path;
 
 use core::mem::size_of;
 
-
+/// Block Cache Manager of Fat32
 struct Fat32FSInner {
         mgr: BlockCacheManager,
 }
 
+/// Struct that manager meta data of Fat32, implements file operations also
 pub struct Fat32FS {
         inner: RefCell<Fat32FSInner>,
         dbr: DBR,
@@ -41,6 +43,7 @@ pub struct Fat32FS {
 }
 
 unsafe impl Sync for Fat32FS {}
+
 
 fn get_fat(dbr: &DBR, which: usize) -> FAT {
         let block_id = match which {
@@ -61,6 +64,7 @@ fn get_fat(dbr: &DBR, which: usize) -> FAT {
 impl Fat32FS {
         pub const name: &'static str = "Fat32FS (Powered by OSHIT)";
 
+        /// Load Fat32 from device
         pub fn openFat32(device: Arc<dyn BlockDeviceFile>) -> Fat32FS {
                 let mut mgr = BlockCacheManager::new(device);
                 let raw_dbr = mgr.get_block_cache(0).lock().get_ref::<RAW_DBR>(0).clone();
@@ -76,10 +80,12 @@ impl Fat32FS {
                 Fat32FS {inner, dbr, fat1, fat2, de_p_clst}
         }
 
+        /// Get cluster size of current Fat32
         pub fn cluster_size(&self) -> usize {
                 return self.dbr.clst_size as usize;
         }
 
+        /// Calculate which block that contains the byte located at the offset of the cluster 
         pub fn get_cluster_cache(&self, cluster: u32, offset: usize) -> Option<u32> {
                 if cluster < self.dbr.root {
                         return None;
@@ -93,6 +99,10 @@ impl Fat32FS {
                 return Some(sector);
         }
 
+        /// Fill the buf with the contents in the cluster that starts from the offset
+        /// # Return
+        /// Returns Err if cluster or offset is invalid, 
+        /// else return # of bytes that actually read. 
         pub fn read_cluster(&self, cluster: u32, offset: usize, buf: &mut [u8]) ->Result<usize, &'static str> {
                 if cluster >= self.dbr.clst_cnt {
                         return Err("read_cluster: Invalid cluster");
@@ -123,6 +133,10 @@ impl Fat32FS {
                 return Ok(buf.len());
         }
 
+        /// Write the buf into the cluster , writing starts from the offset
+        /// # Return
+        /// Returns Err if cluster or offset is invalid, 
+        /// else return # of bytes that are actually written. 
         pub fn write_cluster(&self, cluster: u32, offset: usize, buf: &[u8]) -> Result<usize, &'static str> {
                 if cluster >= self.dbr.clst_cnt {
                         return Err("write_cluster: Invalid cluster");
@@ -153,6 +167,7 @@ impl Fat32FS {
                 return Ok(buf.len());
         }
 
+        /// Reset the content of the cluster to 0
         pub fn clear_cluster(&self, cluster:u32) -> Result<(), &'static str> {
                 if cluster >= self.dbr.clst_cnt {
                         return Err("clear_cluster: Invalid cluster");
@@ -188,6 +203,7 @@ impl Fat32FS {
                 return Ok(());
         }
 
+        /// Allocate a free cluster
         pub fn alloc_cluster(&self) -> Result<u32, &'static str> {
                 let mut new = 0;
                 for i in 2..self.dbr.clst_cnt {
@@ -205,6 +221,7 @@ impl Fat32FS {
                 }
         }
 
+        /// Get the file chain starts from "start"
         pub fn get_chain(&self, start: u32) -> Vec<u32> {
                 let mut vec = Vec::new();
                 if start < 2 {
@@ -232,6 +249,7 @@ impl Fat32FS {
                 return vec
         }
 
+        /// Release the chain starts from "start"
         pub fn clear_chain(&self, start: u32) -> Result<(),()> {
                 if start == 0 {
                         return Ok(());
@@ -255,6 +273,7 @@ impl Fat32FS {
                 }
         }
 
+        /// Append a cluster to the chain ends at "end"
         pub fn append_chain(&self, end: u32) -> Result<u32, &'static str> {
                 let end = match fat::get_type(self.get_next_clst(end).unwrap()) {
                         CLUSTER::Eoc => end,
@@ -270,6 +289,7 @@ impl Fat32FS {
                 }
         }
 
+        /// Truncate a chain, make "start" the last cluster of the chain.
         pub fn truncate_chain(&self, start: u32) -> Result<(), ()> {
                 match self.clear_chain(start) {
                         Ok(()) => {
@@ -282,15 +302,18 @@ impl Fat32FS {
                 }
         }
 
+        /// Flush all the cache in Block Cache Manager
         pub fn sync(&self) {
                 self.inner.borrow_mut().mgr.flush_all();
         }
 }
 
+/// Create a virtual file of the root directory
 fn root_dir(fs: Arc<Fat32FS>) -> FileInner {
         return FileInner::new(Inode::root(fs), 0); 
 }
 
+/// Open file/directory
 pub fn open(fs: Arc<Fat32FS>, abs_path: Path, mode: usize) -> Result<FileInner, &'static str> {
         let mut root = root_dir(fs);
         if abs_path == Path::root() {
@@ -300,21 +323,25 @@ pub fn open(fs: Arc<Fat32FS>, abs_path: Path, mode: usize) -> Result<FileInner, 
         }
 }
 
+/// Create directory
 pub fn mkdir(fs: Arc<Fat32FS>, abs_path: Path) -> Result<FileInner, &'static str> {
         let mut root = root_dir(fs);
         return root.mkdir(abs_path);
 }
 
+/// Create a file
 pub fn mkfile(fs: Arc<Fat32FS>, abs_path: Path) -> Result<FileInner, &'static str> {
         let mut root = root_dir(fs);
         return root.mkfile(abs_path);
 }
 
+/// Delete a file
 pub fn remove(fs: Arc<Fat32FS>, abs_path: Path) -> Result<(), &'static str> {
         let mut root = root_dir(fs);
         return root.remove(abs_path);
 }
 
+/// Rename a file
 pub fn rename(fs: Arc<Fat32FS>, to_rename: Path, new_name: &str) -> Result<(), &'static str> {
         match open(fs, to_rename, 0){
                 Ok(mut file) => {
@@ -328,6 +355,7 @@ pub fn rename(fs: Arc<Fat32FS>, to_rename: Path, new_name: &str) -> Result<(), &
         };
 }
 
+/// Create a symbolic link for a file
 pub fn sym_link(fs: Arc<Fat32FS>, target_path: Path, link_path: Path) -> Result<(), &'static str> {
         match open(fs, link_path, file::WRITE | file::CREATE | file::NO_FOLLOW) {
                 Ok(mut file) => {
@@ -342,6 +370,7 @@ pub fn sym_link(fs: Arc<Fat32FS>, target_path: Path, link_path: Path) -> Result<
         }
 }
 
+/// Print file tree starts from "root" with "indent" count of space as initial indent
 pub fn print_file_tree(root: &Inode, indent: usize) {
         if root.is_dir() {
                 let mut indent_s = String::new();
