@@ -168,7 +168,7 @@ impl VirtualFileSystem for DevFS {
                 } else if abs_path.path[0] == "block" {
                     verbose!("Parse success: block");
                     return Ok(DEV_FS_BLOCK_FOLDER.clone());
-                } else if abs_path.path[0] == "zero" {
+                } else if abs_path.path[0] == "zero" || abs_path.path[0] == "null" {
                     verbose!("Parse success: zero");
                     return Ok(FILE_ZERO.clone());
                 }
