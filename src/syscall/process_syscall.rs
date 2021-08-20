@@ -353,8 +353,8 @@ pub fn sys_waitpid(pid: isize, exit_code_ptr: VirtAddr, options: isize) -> isize
             return 0;
         } else {
             drop(locked_inner);
-            // suspend_switch();
-            crate::trap::trap_return();
+            suspend_switch();
+            // crate::trap::trap_return();
         }
     }
 }
