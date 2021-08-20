@@ -52,7 +52,7 @@ pub fn sys_yield() -> isize {
 
 /// Process exit.
 pub fn sys_exit(code: i32) -> ! {
-    debug!("Application {} exited with code {:}", current_process().unwrap().pid.0, code);
+    info!("Application {} exited with code {:}", current_process().unwrap().pid.0, code);
     exit_switch(code);
     unreachable!("This part should be unreachable. Go check __switch.")
 }
@@ -116,7 +116,7 @@ pub fn sys_exec(app_path_ptr: VirtAddr, argv: VirtAddr, envp: VirtAddr) -> isize
     verbose!("Exec {}", app_path);
 
     match sys_exec_inner(app_path, argv, envp) {
-        Ok(_) => {
+        Ok(res) => {
             // current_process().unwrap().get_inner_locked().layout.print_layout();
             0
         },
@@ -353,8 +353,8 @@ pub fn sys_waitpid(pid: isize, exit_code_ptr: VirtAddr, options: isize) -> isize
             return 0;
         } else {
             drop(locked_inner);
-            // suspend_switch();
-            crate::trap::trap_return();
+            suspend_switch();
+            // crate::trap::trap_return();
         }
     }
 }

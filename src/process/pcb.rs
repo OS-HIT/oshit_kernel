@@ -236,6 +236,21 @@ pub struct ProcessControlBlockInner {
 }
 
 impl ProcessControlBlockInner {
+
+    pub fn print_debug_msg_inner(&self) {
+        if let Some(parent_weak) = self.parent.clone() {
+            if let Some(parent_proc) = parent_weak.upgrade() {
+                println!("Parent pid: {}", parent_proc.pid.0);
+            } else {
+                println!("Parent dead???");
+            }
+        } else {
+            println!("No Parent.");
+        }
+        println!("Current Working dir: {}", self.path);
+        self.layout.print_layout();
+    } 
+
     /// Read trap context from physical memory
     pub fn get_trap_context(&self) -> &'static mut TrapContext {
         unsafe {
@@ -333,6 +348,12 @@ pub fn default_sig_handlers() -> BTreeMap<usize, SigAction> {
 }
 
 impl ProcessControlBlock {
+    pub fn print_debug_msg(&self) {
+        println!("Exec path: {}", self.immu_infos.exec_path);
+        println!("Pid: {}", self.pid.0);
+        self.get_inner_locked().print_debug_msg_inner();
+    }
+
     /// Create a new process from ELF.
     /// # Description
     /// Create a new process from ELF. This function will construct the memory layout from elf file, set the entry point,

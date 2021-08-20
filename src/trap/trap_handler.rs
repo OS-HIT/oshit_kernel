@@ -120,8 +120,10 @@ pub fn user_trap(_cx: &mut TrapContext) -> ! {
                     arcpcb.get_trap_context().sepc,
                     msg
                 );
-                arcpcb.layout.print_layout();
-                exit_switch(-2);
+                drop(arcpcb);
+                proc.recv_signal(crate::process::default_handlers::SIGSEGV);
+                proc.print_debug_msg();
+                suspend_switch();
             }
         },
         Trap::Exception(Exception::LoadPageFault) => {
@@ -142,8 +144,11 @@ pub fn user_trap(_cx: &mut TrapContext) -> ! {
                     error!("No such pagetable entry");
                 }
                 arcpcb.layout.print_layout();
-                // arcpcb.recv_signal(crate::process::default_handlers::SIGSEGV);
-                exit_switch(-2);
+
+                drop(arcpcb);
+                proc.recv_signal(crate::process::default_handlers::SIGSEGV);
+                proc.print_debug_msg();
+                suspend_switch();
             }
         },
         // TODO: Core dump and/or terminate user program and continue
@@ -165,9 +170,10 @@ pub fn user_trap(_cx: &mut TrapContext) -> ! {
             } else {
                 error!("No such pagetable entry");
             }
-            arcpcb.layout.print_layout();
-            exit_switch(-2);
-            // current_process().unwrap().recv_signal(crate::process::default_handlers::SIGSEGV);
+            drop(arcpcb);
+            proc.recv_signal(crate::process::default_handlers::SIGSEGV);
+            proc.print_debug_msg();
+            suspend_switch();
         }
         Trap::Exception(Exception::IllegalInstruction) => {
             error!(
@@ -177,13 +183,17 @@ pub fn user_trap(_cx: &mut TrapContext) -> ! {
                 stval,
                 current_trap_context().sepc,
             );
-            exit_switch(-3);
+            current_process().unwrap().recv_signal(crate::process::default_handlers::SIGSEGV);
+            current_process().unwrap().print_debug_msg();
+            suspend_switch();
         }
         _ => {
             let cx = current_trap_context();
             error!("Unhandled trap {:?}.", scause.cause());
             error!("Bad addr @ 0x{:#X}, Bad Inst @ 0x{:#X}", stval, cx.sepc);
-            exit_switch(-1);
+            current_process().unwrap().recv_signal(crate::process::default_handlers::SIGKILL);
+            current_process().unwrap().print_debug_msg();
+            suspend_switch();
         }
     }
     trap_return();

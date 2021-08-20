@@ -1,4 +1,5 @@
 use core::panic::PanicInfo;
+use crate::memory::KERNEL_MEM_LAYOUT;
 use crate::{process::current_process, sbi::shutdown};
 
 /// The panic handler.  
@@ -10,10 +11,10 @@ pub fn panic(info: &PanicInfo) -> ! {
     } else {
         fatal!("Panic @ ?:? : {}", info.message().unwrap());
     }
-    fatal!("Memory layout: ");
+    fatal!("KERNELMemory layout: ");
     unsafe {
-        current_process().unwrap().inner.force_unlock();
+        KERNEL_MEM_LAYOUT.force_unlock();
     }
-    current_process().unwrap().get_inner_locked().layout.print_layout();
+    KERNEL_MEM_LAYOUT.lock().print_layout();
     shutdown();
 }
