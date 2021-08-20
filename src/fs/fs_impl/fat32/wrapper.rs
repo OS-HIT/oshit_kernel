@@ -6,6 +6,7 @@ use crate::fs::{CommonFile, DeviceFile, DirFile, File};
 use crate::fs::{file::FileStatus, fs_impl::cache_mgr::BLOCK_SZ};
 use crate::fs::fs_impl::fat32_wrapper::Fat32W;
 use crate::fs::fs_impl::vfs::OpenMode;
+use crate::process::ErrNo;
 
 use super::file::FileInner;
 use super::super::utils::*;
@@ -24,23 +25,23 @@ impl Drop for FAT32File {
 }
 
 impl File for FAT32File {
-    fn seek(&self, offset: isize, op: crate::fs::SeekOp) -> Result<(), &'static str> {
+    fn seek(&self, offset: isize, op: crate::fs::SeekOp) -> Result<(), ErrNo> {
         self.inner.lock().seek(offset, op)
     }
 
-    fn get_cursor(&self) -> Result<usize, &'static str> {
+    fn get_cursor(&self) -> Result<usize, ErrNo> {
         self.inner.lock().get_cursor()
     }
 
-    fn read(&self, buffer: &mut [u8]) -> Result<usize, &'static str> {
+    fn read(&self, buffer: &mut [u8]) -> Result<usize, ErrNo> {
         self.inner.lock().read(buffer)
     }
 
-    fn write(&self, buffer: &[u8]) -> Result<usize, &'static str> {
+    fn write(&self, buffer: &[u8]) -> Result<usize, ErrNo> {
         self.inner.lock().write(buffer)
     }
 
-    fn read_user_buffer(&self, mut buffer: crate::memory::UserBuffer) -> Result<usize, &'static str> {
+    fn read_user_buffer(&self, mut buffer: crate::memory::UserBuffer) -> Result<usize, ErrNo> {
         let mut temp_arr: Vec<u8> = Vec::new();
 		temp_arr.resize(buffer.len(), 0);
 		let res = self.inner.lock().read(&mut temp_arr);
@@ -48,7 +49,7 @@ impl File for FAT32File {
 		res
     }
 
-    fn write_user_buffer(&self, buffer: crate::memory::UserBuffer) -> Result<usize, &'static str> {
+    fn write_user_buffer(&self, buffer: crate::memory::UserBuffer) -> Result<usize, ErrNo> {
         let mut temp_arr = buffer.clone_bytes();
 		self.inner.lock().write(&mut temp_arr)
     }
@@ -94,11 +95,11 @@ impl File for FAT32File {
 		}
     }
 
-    fn rename(&self, new_name: &str) -> Result<(), &'static str> {
+    fn rename(&self, new_name: &str) -> Result<(), ErrNo> {
         self.inner.lock().rename(new_name)
     }
 
-    fn get_vfs(&self) -> Result<Arc<dyn crate::fs::VirtualFileSystem>, &'static str> {
+    fn get_vfs(&self) -> Result<Arc<dyn crate::fs::VirtualFileSystem>, ErrNo> {
         return Ok(Arc::new(Fat32W { inner:self.inner.lock().get_fs() }) );
     }
 
@@ -111,7 +112,7 @@ impl CommonFile for FAT32File {}
 
 impl DirFile for FAT32File {
         /// open files under dir
-        fn open(&self, path: Path, mode: OpenMode) -> Result<Arc<dyn File>, &'static str> {
+        fn open(&self, path: Path, mode: OpenMode) -> Result<Arc<dyn File>, ErrNo> {
             let mode = OpenMode2usize(mode);
             match self.inner.lock().open(path, mode) {
                 Ok(fin) => Ok( Arc::new(
@@ -124,7 +125,7 @@ impl DirFile for FAT32File {
         }
 
         /// mkdir. remember to sanitize name.
-        fn mkdir(&self, name: Path) -> Result<Arc<dyn File>, &'static str> {
+        fn mkdir(&self, name: Path) -> Result<Arc<dyn File>, ErrNo> {
             match self.inner.lock().mkdir(name) {
                 Ok(dir) => Ok( Arc::new(
                     FAT32File {
@@ -136,7 +137,7 @@ impl DirFile for FAT32File {
         }
     
         /// make file. remember to sanitize name.
-        fn mkfile(&self, name: Path) -> Result<Arc<dyn File>, &'static str> {
+        fn mkfile(&self, name: Path) -> Result<Arc<dyn File>, ErrNo> {
             match self.inner.lock().mkfile(name) {
                 Ok(file) => Ok( Arc::new(
                     FAT32File {
@@ -148,7 +149,7 @@ impl DirFile for FAT32File {
         }
     
         /// delete
-        fn remove(&self, path: Path) -> Result<(), &'static str> {
+        fn remove(&self, path: Path) -> Result<(), ErrNo> {
             self.inner.lock().remove(path)
         }
 

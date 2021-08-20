@@ -17,6 +17,7 @@ use core::cell::RefCell;
 use core::usize;
 use core::convert::{TryFrom, TryInto};
 use bitflags::*;
+use crate::process::ErrNo;
 
 lazy_static! {
 	pub static ref TTY0: Arc<SBITTY> = Arc::new(SBITTY::new());
@@ -55,12 +56,12 @@ impl Drop for SBITTY {
 }
 
 impl File for SBITTY {
-    fn seek(&self, offset: isize, op: crate::fs::SeekOp) -> Result<(), &'static str> {
-        Err("Cannot seek a Char Device.")
+    fn seek(&self, offset: isize, op: crate::fs::SeekOp) -> Result<(), ErrNo> {
+        Err(ErrNo::PermissionDenied)
     }
 
 	// TODO: implement smarter flush timing, and some how intergrate this.
-    fn read(&self, buffer: &mut [u8]) -> Result<usize, &'static str> {
+    fn read(&self, buffer: &mut [u8]) -> Result<usize, ErrNo> {
 		for idx in 0..buffer.len() {
             let mut b = get_byte();
             if b == b'\r' {
@@ -77,7 +78,7 @@ impl File for SBITTY {
 		Ok(buffer.len())
     }
 
-    fn read_user_buffer(&self, mut buffer: crate::memory::UserBuffer) -> Result<usize, &'static str> {
+    fn read_user_buffer(&self, mut buffer: crate::memory::UserBuffer) -> Result<usize, ErrNo> {
 		for idx in 0..buffer.len() {
             let mut b = get_byte();
             if b == b'\r' {
@@ -95,7 +96,7 @@ impl File for SBITTY {
     }
 
 	// TODO: implement smarter flush timing
-    fn write(&self, buffer: &[u8]) -> Result<usize, &'static str> {
+    fn write(&self, buffer: &[u8]) -> Result<usize, ErrNo> {
         let mut offset = 0;
 		while offset < buffer.len() {
 			self.flush();
@@ -109,7 +110,7 @@ impl File for SBITTY {
 		Ok(offset)
     }
 
-    fn write_user_buffer(&self, buffer: crate::memory::UserBuffer) -> Result<usize, &'static str> {
+    fn write_user_buffer(&self, buffer: crate::memory::UserBuffer) -> Result<usize, ErrNo> {
         let mut offset = 0;
 		while offset < buffer.len() {
 			self.flush();
@@ -158,11 +159,11 @@ impl File for SBITTY {
 		}
     }
 
-    fn rename(&self, new_name: &str) -> Result<(), &'static str> {
-        Err("Cannot rename tty")
+    fn rename(&self, new_name: &str) -> Result<(), ErrNo> {
+        Err(ErrNo::PermissionDenied)
     }
 
-    fn get_vfs(&self) -> Result<Arc<(dyn crate::fs::VirtualFileSystem + 'static)>, &'static str> {
+    fn get_vfs(&self) -> Result<Arc<(dyn crate::fs::VirtualFileSystem + 'static)>, ErrNo> {
         Ok(super::DEV_FS.clone())
     }
 
@@ -171,8 +172,8 @@ impl File for SBITTY {
         return Path {path, must_dir: false, is_abs: true}; 
     }
 
-    fn get_cursor(&self) -> Result<usize, &'static str> {
-        Err("Char device has no cursor!")
+    fn get_cursor(&self) -> Result<usize, ErrNo> {
+        Err(ErrNo::IllegalSeek)
     }
 }
 
@@ -309,9 +310,9 @@ bitflags! {
 }
 
 impl DeviceFile for SBITTY {
-    fn ioctl(&self, op: u64, argp: VirtAddr) -> Result<u64, &'static str> {
+    fn ioctl(&self, op: u64, argp: VirtAddr) -> Result<u64, ErrNo> {
 		// TODO: Check tty's ioctl
-        let op: IOCTLOperation = IOCTLOperation::try_from(op).map_err(|_| "Conversion error")?;
+        let op: IOCTLOperation = IOCTLOperation::try_from(op).map_err(|_| ErrNo::PermissionDenied)?;
         match op {
             IOCTLOperation::TIOCGWINSZ => {
                 let size = WinSize {
@@ -325,7 +326,7 @@ impl DeviceFile for SBITTY {
             },
             _ => {
                 error!("tty caught ioctl for op={:?}, argp={:?}", op, argp);
-                Err("Not yet implemented")
+                Err(ErrNo::NotSuchDevice)
             }
         }
     }

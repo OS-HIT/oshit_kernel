@@ -3,6 +3,7 @@ use crate::fs::Path;
 use super::{CharDeviceFile, DeviceFile, TTY0, FILE_ZERO};
 use alloc::{string::{String, ToString}, sync::Arc, vec::Vec};
 use lazy_static::*;
+use crate::process::ErrNo;
 
 lazy_static! {
 	pub static ref DEV_FS: Arc<DevFS> = Arc::new(DevFS::new());
@@ -36,28 +37,28 @@ impl Drop for DevFSBLockFolder {
 }
 
 impl File for DevFSBLockFolder {
-    fn seek(&self, offset: isize, op: crate::fs::SeekOp) -> Result<(), &'static str> {
-        Err("Cannot seek dir file")
+    fn seek(&self, offset: isize, op: crate::fs::SeekOp) -> Result<(), ErrNo> {
+        Err(ErrNo::IllegalSeek)
     }
 
-    fn get_cursor(&self) -> Result<usize, &'static str> {
-        Err("No cursor in dir file")
+    fn get_cursor(&self) -> Result<usize, ErrNo> {
+        Err(ErrNo::IllegalSeek)
     }
 
-    fn read(&self, buffer: &mut [u8]) -> Result<usize, &'static str> {
-        Err("Cannot read dir file")
+    fn read(&self, buffer: &mut [u8]) -> Result<usize, ErrNo> {
+        Err(ErrNo::PermissionDenied)
     }
 
-    fn write(&self, buffer: &[u8]) -> Result<usize, &'static str> {
-        Err("Cannot write dir file")
+    fn write(&self, buffer: &[u8]) -> Result<usize, ErrNo> {
+        Err(ErrNo::ReadonlyFileSystem)
     }
 
-    fn read_user_buffer(&self, buffer: crate::memory::UserBuffer) -> Result<usize, &'static str> {
-        Err("Cannot read dir file")
+    fn read_user_buffer(&self, buffer: crate::memory::UserBuffer) -> Result<usize, ErrNo> {
+        Err(ErrNo::PermissionDenied)
     }
 
-    fn write_user_buffer(&self, buffer: crate::memory::UserBuffer) -> Result<usize, &'static str> {
-        Err("Cannot write dir file")
+    fn write_user_buffer(&self, buffer: crate::memory::UserBuffer) -> Result<usize, ErrNo> {
+        Err(ErrNo::ReadonlyFileSystem)
     }
 
     fn to_common_file<'a>(self: Arc<Self>) -> Option<Arc<dyn CommonFile + 'a>> where Self: 'a {
@@ -95,11 +96,11 @@ impl File for DevFSBLockFolder {
         }
     }
 
-    fn rename(&self, new_name: &str) -> Result<(), &'static str> {
-        Err("cannot rename in devfs")
+    fn rename(&self, new_name: &str) -> Result<(), ErrNo> {
+        Err(ErrNo::PermissionDenied)
     }
 
-    fn get_vfs(&self) -> Result<Arc<(dyn VirtualFileSystem + 'static)>, &'static str> {
+    fn get_vfs(&self) -> Result<Arc<(dyn VirtualFileSystem + 'static)>, ErrNo> {
         Ok(DEV_FS.clone())
     }
 
@@ -114,27 +115,27 @@ impl CommonFile for DevFSBLockFolder {
 }
 
 impl DirFile for DevFSBLockFolder {
-    fn open(&self, path: Path, mode: crate::fs::OpenMode) -> Result<Arc<(dyn File + 'static)>, &'static str> {
+    fn open(&self, path: Path, mode: crate::fs::OpenMode) -> Result<Arc<(dyn File + 'static)>, ErrNo> {
         if path.path.len() != 1 {
-            return Err("invalid path");
+            return Err(ErrNo::NoSuchFileOrDirectory);
         } 
         if path.path[0] == String::from("sda") {
             return Ok(SDA_WRAPPER.clone())
         } else {
-            return Err("File not found")
+            return Err(ErrNo::NoSuchDeviceOrAddress)
         }
     }
 
-    fn mkdir(&self, name: Path) -> Result<Arc<dyn File>, &'static str> {
-        Err("Cannot mkdir in devfs")
+    fn mkdir(&self, name: Path) -> Result<Arc<dyn File>, ErrNo> {
+        Err(ErrNo::ReadonlyFileSystem)
     }
 
-    fn mkfile(&self, name: Path) -> Result<Arc<dyn File>, &'static str> {
-        Err("Cannot mkfile in devfs")
+    fn mkfile(&self, name: Path) -> Result<Arc<dyn File>, ErrNo> {
+        Err(ErrNo::ReadonlyFileSystem)
     }
 
-    fn remove(&self, path: Path) -> Result<(), &'static str> {
-        Err("Cannot remove in devfs")
+    fn remove(&self, path: Path) -> Result<(), ErrNo> {
+        Err(ErrNo::ReadonlyFileSystem)
     }
 
     fn list(&self) -> alloc::vec::Vec<Arc<dyn File>> {
@@ -156,11 +157,11 @@ impl VirtualFileSystem for DevFS {
         }
     }
 
-    fn open(&self, abs_path: Path, mode: crate::fs::OpenMode) -> Result<alloc::sync::Arc<dyn crate::fs::File>, &'static str> {
+    fn open(&self, abs_path: Path, mode: crate::fs::OpenMode) -> Result<alloc::sync::Arc<dyn crate::fs::File>, ErrNo> {
         verbose!("devfs caught open for {}", abs_path.to_string());
         // hard coded
         match abs_path.path.len() {
-            0 => return Err("Empty path"),
+            0 => return Err(ErrNo::NoSuchFileOrDirectory),
             1 => {
                 if abs_path.path[0] == "tty0" || abs_path.path[0] == "tty" {
                     verbose!("Parse success: tty");
@@ -180,30 +181,30 @@ impl VirtualFileSystem for DevFS {
             }
             _ => {},
         }
-        Err("File not found.")
+        Err(ErrNo::NoSuchFileOrDirectory)
     }
 
-    fn mkdir(&self, abs_path: Path) -> Result<alloc::sync::Arc<dyn crate::fs::File>, &'static str> {
-        Err("Cannot mkdir in devfs")
+    fn mkdir(&self, abs_path: Path) -> Result<alloc::sync::Arc<dyn crate::fs::File>, ErrNo> {
+        Err(ErrNo::ReadonlyFileSystem)
     }
 
-    fn mkfile(&self, abs_path: Path) -> Result<alloc::sync::Arc<dyn crate::fs::File>, &'static str> {
-        Err("Cannot mkfile in devfs")
+    fn mkfile(&self, abs_path: Path) -> Result<alloc::sync::Arc<dyn crate::fs::File>, ErrNo> {
+        Err(ErrNo::ReadonlyFileSystem)
     }
 
-    fn remove(&self, abs_path: Path) -> Result<(), &'static str> {
-        Err("Cannot remove in devfs")
+    fn remove(&self, abs_path: Path) -> Result<(), ErrNo> {
+        Err(ErrNo::ReadonlyFileSystem)
     }
 
-    fn link(&self, to_link: alloc::sync::Arc<dyn crate::fs::File>, dest: Path) -> Result<(), &'static str> {
-        Err("Cannot link in devfs")
+    fn link(&self, to_link: alloc::sync::Arc<dyn crate::fs::File>, dest: Path) -> Result<(), ErrNo> {
+        Err(ErrNo::ReadonlyFileSystem)
     }
 
-    fn sym_link(&self, abs_src: Path, rel_dst: Path) -> Result<(), &'static str> {
-        Err("Cannot unlink in devfs")
+    fn sym_link(&self, abs_src: Path, rel_dst: Path) -> Result<(), ErrNo> {
+        Err(ErrNo::ReadonlyFileSystem)
     }
 
-    fn rename(&self, to_rename: alloc::sync::Arc<dyn crate::fs::File>, new_name: String) -> Result<(), &'static str> {
-        Err("Cannot rename in devfs")
+    fn rename(&self, to_rename: alloc::sync::Arc<dyn crate::fs::File>, new_name: String) -> Result<(), ErrNo> {
+        Err(ErrNo::ReadonlyFileSystem)
     }
 }

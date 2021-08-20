@@ -5,7 +5,7 @@ use crate::process::{PROC0, ProcessControlBlockInner, remove_proc_by_pid};
 
 use crate::config::PAGE_SIZE;
 use crate::config::CLOCK_FREQ;
-use crate::process::{CloneFlags, PROCESS_MANAGER, current_path, current_process, enqueue, exit_switch, get_proc_by_pid, suspend_switch};
+use crate::process::{CloneFlags, PROCESS_MANAGER, current_path, current_process, enqueue, exit_switch, get_proc_by_pid, suspend_switch, ErrNo};
 
 use crate::memory::{PhysAddr, Segment, VMAFlags, VirtAddr, alloc_continuous, get_user_cstr, SegmentFlags, PTEFlags};
 
@@ -197,7 +197,7 @@ pub fn sys_exec(app_path_ptr: VirtAddr, argv: VirtAddr, envp: VirtAddr) -> isize
     // }
 }
 
-fn sys_exec_inner(app_path: String, argv_ptr: VirtAddr, envp_ptr: VirtAddr) -> Result<isize, &'static str> {
+fn sys_exec_inner(app_path: String, argv_ptr: VirtAddr, envp_ptr: VirtAddr) -> Result<isize, ErrNo> {
     let current_proc = current_process().unwrap();
     let locked_inner = current_proc.get_inner_locked();
 
@@ -224,7 +224,7 @@ fn load_args(locked_inner: &MutexGuard<ProcessControlBlockInner>, start_ptr: Vir
     args
 }
 
-fn do_exec(mut app_path: String, argv: Vec<Vec<u8>>, envp: Vec<Vec<u8>>) -> Result<isize, &'static str> {
+fn do_exec(mut app_path: String, argv: Vec<Vec<u8>>, envp: Vec<Vec<u8>>) -> Result<isize, ErrNo> {
     let elf_file = open(app_path.clone(), OpenMode::READ)?;
     verbose!("File found {}", app_path);
     let length = elf_file.poll().size as usize;
@@ -303,7 +303,7 @@ fn do_exec(mut app_path: String, argv: Vec<Vec<u8>>, envp: Vec<Vec<u8>>) -> Resu
                         vdq_argv.push_front(addi_arg);
                     }
                     vdq_argv.push_front(b_app_path.clone());
-                    app_path = String::from_utf8(b_app_path).map_err(|_| "Invalid utf-8 sequence")?;
+                    app_path = String::from_utf8(b_app_path).map_err(|_| ErrNo::NoSuchFileOrDirectory)?;
                     break;
                 },
             }

@@ -3,6 +3,7 @@ use alloc::{string::ToString, sync::Arc, vec::Vec};
 use crate::{fs::{File, FileStatus, Path, parse_path}, process::current_process};
 
 use super::VirtualFileSystem;
+use crate::process::ErrNo;
 
 use lazy_static::*;
 
@@ -14,15 +15,15 @@ impl Drop for ProcSelfExe {
 }
 
 impl File for ProcSelfExe {
-    fn seek(&self, offset: isize, op: crate::fs::SeekOp) -> Result<(), &'static str> {
-        Err("Cannot seek symbolic link")
+    fn seek(&self, offset: isize, op: crate::fs::SeekOp) -> Result<(), ErrNo> {
+        Err(ErrNo::IllegalSeek)
     }
 
-    fn get_cursor(&self) -> Result<usize, &'static str> {
-        Err("Cannot seek symbolic link")
+    fn get_cursor(&self) -> Result<usize, ErrNo> {
+        Err(ErrNo::IllegalSeek)
     }
 
-    fn read(&self, buffer: &mut [u8]) -> Result<usize, &'static str> {
+    fn read(&self, buffer: &mut [u8]) -> Result<usize, ErrNo> {
 		let mut name: Vec<u8> = current_process().unwrap().immu_infos.exec_path.as_bytes().to_vec();
 		name.push(0);
 		let min_len = core::cmp::min(buffer.len(), name.len());
@@ -30,11 +31,11 @@ impl File for ProcSelfExe {
 		Ok(min_len)
     }
 
-    fn write(&self, buffer: &[u8]) -> Result<usize, &'static str> {
-        Err("Cannot write symbolic link")
+    fn write(&self, buffer: &[u8]) -> Result<usize, ErrNo> {
+        Err(ErrNo::PermissionDenied)
     }
 
-    fn read_user_buffer(&self, mut buffer: crate::memory::UserBuffer) -> Result<usize, &'static str> {
+    fn read_user_buffer(&self, mut buffer: crate::memory::UserBuffer) -> Result<usize, ErrNo> {
 		let mut name: Vec<u8> = current_process().unwrap().immu_infos.exec_path.as_bytes().to_vec();
 		name.push(0);
 		let min_len = core::cmp::min(buffer.len(), name.len());
@@ -44,8 +45,8 @@ impl File for ProcSelfExe {
 		Ok(min_len)
     }
 
-    fn write_user_buffer(&self, buffer: crate::memory::UserBuffer) -> Result<usize, &'static str> {
-        Err("Cannot write symbolic link")
+    fn write_user_buffer(&self, buffer: crate::memory::UserBuffer) -> Result<usize, ErrNo> {
+        Err(ErrNo::PermissionDenied)
     }
 
     fn to_common_file<'a>(self: alloc::sync::Arc<Self>) -> Option<alloc::sync::Arc<dyn super::CommonFile + 'a>> where Self: 'a {
@@ -83,11 +84,11 @@ impl File for ProcSelfExe {
         }
     }
 
-    fn rename(&self, new_name: &str) -> Result<(), &'static str> {
-        Err("Cannot rename in /proc")
+    fn rename(&self, new_name: &str) -> Result<(), ErrNo> {
+		Err(ErrNo::ReadonlyFileSystem)
     }
 
-    fn get_vfs(&self) -> Result<alloc::sync::Arc<dyn super::VirtualFileSystem>, &'static str> {
+    fn get_vfs(&self) -> Result<alloc::sync::Arc<dyn super::VirtualFileSystem>, ErrNo> {
         Ok(PROC_FS.clone())
     }
 
@@ -111,34 +112,34 @@ impl VirtualFileSystem for ProcFS {
         todo!()
     }
 
-    fn open(&self, abs_path: crate::fs::Path, mode: super::OpenMode) -> Result<alloc::sync::Arc<dyn File>, &'static str> {
+    fn open(&self, abs_path: crate::fs::Path, mode: super::OpenMode) -> Result<alloc::sync::Arc<dyn File>, ErrNo> {
         if abs_path.to_string() == "/self/exe" {
 			return Ok(Arc::new(ProcSelfExe{}));
 		}
-		Err("No such file")
+		Err(ErrNo::NoSuchFileOrDirectory)
     }
 
-    fn mkdir(&self, abs_path: crate::fs::Path) -> Result<alloc::sync::Arc<dyn File>, &'static str> {
-        Err("Cannot mkdir in /proc")
+    fn mkdir(&self, abs_path: crate::fs::Path) -> Result<alloc::sync::Arc<dyn File>, ErrNo> {
+		Err(ErrNo::ReadonlyFileSystem)
     }
 
-    fn mkfile(&self, abs_path: crate::fs::Path) -> Result<alloc::sync::Arc<dyn File>, &'static str> {
-        Err("Cannot mkfile in /proc")
+    fn mkfile(&self, abs_path: crate::fs::Path) -> Result<alloc::sync::Arc<dyn File>, ErrNo> {
+		Err(ErrNo::ReadonlyFileSystem)
     }
 
-    fn remove(&self, abs_path: crate::fs::Path) -> Result<(), &'static str> {
-        Err("Cannot remove in /proc")
+    fn remove(&self, abs_path: crate::fs::Path) -> Result<(), ErrNo> {
+		Err(ErrNo::ReadonlyFileSystem)
     }
 
-    fn link(&self, to_link: alloc::sync::Arc<dyn File>, dest: crate::fs::Path) -> Result<(), &'static str> {
-        Err("Cannot link in /proc")
+    fn link(&self, to_link: alloc::sync::Arc<dyn File>, dest: crate::fs::Path) -> Result<(), ErrNo> {
+		Err(ErrNo::ReadonlyFileSystem)
     }
 
-    fn sym_link(&self, abs_src: crate::fs::Path, rel_dst: crate::fs::Path) -> Result<(), &'static str> {
-        Err("Cannot sym_link in /proc")
+    fn sym_link(&self, abs_src: crate::fs::Path, rel_dst: crate::fs::Path) -> Result<(), ErrNo> {
+		Err(ErrNo::ReadonlyFileSystem)
     }
 
-    fn rename(&self, to_rename: alloc::sync::Arc<dyn File>, new_name: alloc::string::String) -> Result<(), &'static str> {
-        Err("Cannot rename in /proc")
+    fn rename(&self, to_rename: alloc::sync::Arc<dyn File>, new_name: alloc::string::String) -> Result<(), ErrNo> {
+		Err(ErrNo::PermissionDenied)
     }
 }

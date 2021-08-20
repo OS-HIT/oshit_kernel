@@ -5,6 +5,7 @@ use spin::Mutex;
 
 use super::{CommonFile, DeviceFile, DirFile, File, file::FileStatus};
 use super::Path;
+use crate::process::ErrNo;
 
 /// Pipe ring buffer and end weak references.
 pub struct Pipe {
@@ -31,7 +32,7 @@ impl Pipe {
     }
 
     
-    pub fn read(&mut self, buffer: &mut [u8]) -> Result<usize, &'static str> {
+    pub fn read(&mut self, buffer: &mut [u8]) -> Result<usize, ErrNo> {
         let len = min(buffer.len(), self.buffer.len());
         for i in 0..len {
             buffer[i] = self.buffer.pop_front().unwrap();
@@ -39,7 +40,7 @@ impl Pipe {
         Ok(len)
     }
 
-    pub fn write(&mut self, buffer: &[u8]) -> Result<usize, &'static str> {
+    pub fn write(&mut self, buffer: &[u8]) -> Result<usize, ErrNo> {
         let len = min(buffer.len(), self.size as usize - self.buffer.len());
         for i in 0..len {
             self.buffer.push_back(buffer[i as usize]);
@@ -47,7 +48,7 @@ impl Pipe {
         Ok(len)
     }
 
-    pub fn read_user_buffer(&mut self, mut buffer: crate::memory::UserBuffer) -> Result<usize, &'static str> {
+    pub fn read_user_buffer(&mut self, mut buffer: crate::memory::UserBuffer) -> Result<usize, ErrNo> {
         let len = min(buffer.len(), self.buffer.len());
         for i in 0..len {
             buffer[i] = self.buffer.pop_front().unwrap();
@@ -55,7 +56,7 @@ impl Pipe {
         Ok(len)
     }
 
-    pub fn write_user_buffer(&mut self, buffer: crate::memory::UserBuffer) -> Result<usize, &'static str> {
+    pub fn write_user_buffer(&mut self, buffer: crate::memory::UserBuffer) -> Result<usize, ErrNo> {
         let len = min(buffer.len(), self.size as usize - self.buffer.len());
         for i in 0..len {
             self.buffer.push_back(buffer[i as usize]);
@@ -171,27 +172,27 @@ impl PipeEnd {
 }
 
 impl File for PipeEnd {
-    fn seek(&self, _: isize, _: super::SeekOp) -> Result<(), &'static str> {
-        Err("Cannot seek a pipe")
+    fn seek(&self, _: isize, _: super::SeekOp) -> Result<(), ErrNo> {
+        Err(ErrNo::IllegalSeek)
     }
 
-    fn get_cursor(&self) -> Result<usize, &'static str> {
-        Err("Pipe has no cursor")
+    fn get_cursor(&self) -> Result<usize, ErrNo> {
+        Err(ErrNo::IllegalSeek)
     }
 
-    fn read(&self, buffer: &mut [u8]) -> Result<usize, &'static str> {
+    fn read(&self, buffer: &mut [u8]) -> Result<usize, ErrNo> {
         self.pipe.lock().read(buffer)
     }
 
-    fn write(&self, buffer: &[u8]) -> Result<usize, &'static str> {
+    fn write(&self, buffer: &[u8]) -> Result<usize, ErrNo> {
         self.pipe.lock().write(buffer)
     }
 
-    fn read_user_buffer(&self, buffer: crate::memory::UserBuffer) -> Result<usize, &'static str> {
+    fn read_user_buffer(&self, buffer: crate::memory::UserBuffer) -> Result<usize, ErrNo> {
         self.pipe.lock().read_user_buffer(buffer)
     }
 
-    fn write_user_buffer(&self, buffer: crate::memory::UserBuffer) -> Result<usize, &'static str> {
+    fn write_user_buffer(&self, buffer: crate::memory::UserBuffer) -> Result<usize, ErrNo> {
         self.pipe.lock().write_user_buffer(buffer)
     }
 
@@ -211,12 +212,12 @@ impl File for PipeEnd {
         self.flags.clone()
     }
 
-    fn rename(&self, _: &str) -> Result<(), &'static str> {
-        Err("Pipe has no name")
+    fn rename(&self, _: &str) -> Result<(), ErrNo> {
+        Err(ErrNo::PermissionDenied)
     }
 
-    fn get_vfs(&self) -> Result<Arc<(dyn super::VirtualFileSystem + 'static)>, &'static str> {
-        Err("Pipe has no vfs")
+    fn get_vfs(&self) -> Result<Arc<(dyn super::VirtualFileSystem + 'static)>, ErrNo> {
+        Err(ErrNo::PermissionDenied)
     }
 
     fn get_path(&self) -> Path {

@@ -8,6 +8,9 @@ mod processor;
 mod proc0;
 pub mod default_handlers;
 pub mod kernel_stored_app_loader;
+mod error;
+
+pub use error::ErrNo;
 
 pub use pcb::{
     ProcessContext,

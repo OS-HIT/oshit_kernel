@@ -6,7 +6,7 @@ use crate::fs::parse_path;
 use crate::fs::to_string;
 use crate::fs::{self, File, OpenMode, make_pipe, mkdir, open, remove, FileType};
 use crate::memory::{VirtAddr};
-use crate::process::{current_process, suspend_switch};
+use crate::process::{current_process, suspend_switch, ErrNo};
 use alloc::string::ToString;
 use alloc::string::String;
 // use alloc::vec::Vec;
@@ -18,7 +18,7 @@ use bitflags::*;
 /// The special "file descriptor" indicating that the path is relative path to process's current working directory. 
 pub const AT_FDCWD: i32 =  -100;
 
-fn get_file_fd(dirfd: usize) -> Result<Arc<dyn File>, &'static str> {
+fn get_file_fd(dirfd: usize) -> Result<Arc<dyn File>, ErrNo> {
     let proc = current_process().unwrap();
     let arcpcb = proc.get_inner_locked();
     if dirfd == AT_FDCWD as usize {
@@ -27,22 +27,22 @@ fn get_file_fd(dirfd: usize) -> Result<Arc<dyn File>, &'static str> {
         return open(arcpcb.path.clone(), OpenMode::empty());
     } else {
         if dirfd > arcpcb.files.len() {
-            return Err("fd not in use");
+            return Err(ErrNo::BadFileDescriptor);
         } 
         if let Some(file) = &arcpcb.files[dirfd] {
             return Ok(file.clone());
         } else {
-            return Err("fd not in use");
+            return Err(ErrNo::BadFileDescriptor);
         }
     }
 }
 
-fn get_file(dirfd: usize, path: &str, mode: OpenMode) -> Result<Arc<dyn File>, &'static str> {
+fn get_file(dirfd: usize, path: &str, mode: OpenMode) -> Result<Arc<dyn File>, ErrNo> {
     if path.len() == 0 {
         return get_file_fd(dirfd);
     }
 
-    let path = parse_path(path).map_err(|op| to_string(op))?;
+    let path = parse_path(path).map_err(|_| ErrNo::NoSuchFileOrDirectory)?;
 
     if path.is_abs {
         return open(path.to_string(), mode);
@@ -53,15 +53,15 @@ fn get_file(dirfd: usize, path: &str, mode: OpenMode) -> Result<Arc<dyn File>, &
         if let Some(dir) = file.to_dir_file() {
             return dir.open(path, mode);
         } else {
-            return Err("fd not a dir");
+            return Err(ErrNo::IsADirectory);
         }
     } 
 }
 
-fn makeDirAt(dirfd: usize, path: &str) -> Result<(), &'static str> {
+fn makeDirAt(dirfd: usize, path: &str) -> Result<(), ErrNo> {
     let path = match parse_path(path) {
         Ok(path) => path,
-        Err(err) => return Err(to_string(err)),
+        Err(err) => return Err(ErrNo::NoSuchFileOrDirectory),
     };
     if path.is_abs {
         match mkdir(path.to_string()) {
@@ -69,7 +69,7 @@ fn makeDirAt(dirfd: usize, path: &str) -> Result<(), &'static str> {
             Err(msg) => return Err(msg),
         }
     } else if path.path.len() == 0 {
-        return Err("make current dir?");
+        return Err(ErrNo::FileExists);
     } else {
         match get_file_fd(dirfd) {
             Ok(file) => {
@@ -79,7 +79,7 @@ fn makeDirAt(dirfd: usize, path: &str) -> Result<(), &'static str> {
                         Err(msg) => return Err(msg),
                     }
                 } else {
-                    return Err("fd not a dir");
+                    return Err(ErrNo::NotADirectory);
                 }
             },
             Err(msg) => return Err(msg),
@@ -87,22 +87,22 @@ fn makeDirAt(dirfd: usize, path: &str) -> Result<(), &'static str> {
     } 
 }
 
-fn unlink(dirfd: usize, path: &str) -> Result<(), &'static str> {
+fn unlink(dirfd: usize, path: &str) -> Result<(), ErrNo> {
     let path = match parse_path(path) {
         Ok(path) => path,
-        Err(err) => return Err(to_string(err)),
+        Err(err) => return Err(ErrNo::NoSuchFileOrDirectory),
     };
     if path.is_abs {
         return remove(path.to_string());
     } else if path.path.len() == 0 {
-        return Err("unlink current dir?");
+        return Err(ErrNo::DeviceOrResourceBusy);
     } else {
         match get_file_fd(dirfd) {
             Ok(file) => {
                 if let Some(dir) = file.to_dir_file() {
                     return dir.remove(path);
                 } else {
-                    return Err("fd not a dir");
+                    return Err(ErrNo::NotADirectory);
                 }
             },
             Err(msg) => return Err(msg),
@@ -548,7 +548,7 @@ pub struct FStat {
 
 use crate::fs::FileStatus;
 
-fn getFStat(file: &Arc<dyn File>) -> Result<FStat, &'static str> {
+fn getFStat(file: &Arc<dyn File>) -> Result<FStat, ErrNo> {
     let f_stat = file.poll();
     return Ok(FStat {
         st_dev: f_stat.dev_no,
@@ -583,9 +583,9 @@ bitflags! {
     }
 }
 
-fn fstatat(fd: usize, path: &str, ptr: VirtAddr, flags: AtFlags) -> Result<(), &'static str> {
+fn fstatat(fd: usize, path: &str, ptr: VirtAddr, flags: AtFlags) -> Result<(), ErrNo> {
     if path.len() == 0 && !flags.contains(AtFlags::AT_EMPTY_PATH) {
-        return Err("empty path without AT_EMPTY_PATH");
+        return Err(ErrNo::NoSuchFileOrDirectory);
     }
     let mode = if flags.contains(AtFlags::AT_SYMLINK_NOFOLLOW) {
         OpenMode::NO_FOLLOW
@@ -648,10 +648,10 @@ pub fn sys_fstatat(dirfd: usize, path: VirtAddr, ptr: VirtAddr, flags:usize) -> 
     }
 }
 
-pub fn sys_ioctl_inner(fd: usize, request: u64, argp: VirtAddr) -> Result<u64, &'static str> {
-    let proc = current_process().ok_or("No proc running")?;
-    let file = proc.get_inner_locked().files.get(fd).ok_or("No such fd slot")?.clone().ok_or("No such fd")?;
-    let dev_file = file.to_device_file().ok_or("Not an device file!")?;
+pub fn sys_ioctl_inner(fd: usize, request: u64, argp: VirtAddr) -> Result<u64, ErrNo> {
+    let proc = current_process().ok_or(ErrNo::NoSuchProcess)?;
+    let file = proc.get_inner_locked().files.get(fd).ok_or(ErrNo::BadFileDescriptor)?.clone().ok_or(ErrNo::BadFileDescriptor)?;
+    let dev_file = file.to_device_file().ok_or(ErrNo::NotSuchDevice)?;
     dev_file.ioctl(request, argp)
 }
 
@@ -756,13 +756,13 @@ pub fn sys_fstatat_new(fd: i32, path: VirtAddr, ptr: VirtAddr, flags:usize) -> i
 
 pub const SEND_FILE_CHUNK_SZ: usize = 4096;
 
-fn sys_sendfile_wrapper(write_fd: usize, read_fd: usize, offset_ptr: VirtAddr, mut count: usize) -> Result<usize, &'static str> {
+fn sys_sendfile_wrapper(write_fd: usize, read_fd: usize, offset_ptr: VirtAddr, mut count: usize) -> Result<usize, ErrNo> {
     let proc = current_process().unwrap();
     let locked_inner = proc.get_inner_locked();
 
     let mut result: usize = 0;
-    let write_file = locked_inner.files.get(write_fd).ok_or("No such fd")?.clone().ok_or("No such fd")?;
-    let read_file = locked_inner.files.get(read_fd).ok_or("No such fd")?.clone().ok_or("No such fd")?;
+    let write_file = locked_inner.files.get(write_fd).ok_or(ErrNo::BadFileDescriptor)?.clone().ok_or(ErrNo::BadFileDescriptor)?;
+    let read_file = locked_inner.files.get(read_fd).ok_or(ErrNo::BadFileDescriptor)?.clone().ok_or(ErrNo::BadFileDescriptor)?;
 
     if offset_ptr.0 != 0 {
         let offset: u32 = locked_inner.layout.read_user_data(offset_ptr);

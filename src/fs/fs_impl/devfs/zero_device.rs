@@ -8,6 +8,7 @@ use alloc::sync::Arc;
 use alloc::string::String;
 use alloc::string::ToString;
 use lazy_static::*;
+use crate::process::ErrNo;
 
 use crate::memory::UserBuffer;
 
@@ -22,17 +23,17 @@ impl Drop for FZero {
 }
 
 impl File for FZero {
-        fn seek(&self, offset: isize, op: SeekOp) -> Result<(), &'static str> {
+        fn seek(&self, offset: isize, op: SeekOp) -> Result<(), ErrNo> {
                 return Ok(());
         }
 
-        fn get_cursor(&self) -> Result<usize, &'static str> {
+        fn get_cursor(&self) -> Result<usize, ErrNo> {
                 return Ok(0);
         }
 
         /// read to buffers
         /// return length read on success
-        fn read(&self, buffer: &mut [u8]) -> Result<usize, &'static str> {
+        fn read(&self, buffer: &mut [u8]) -> Result<usize, ErrNo> {
                 for i in 0..buffer.len() {
                         buffer[i] = 0;
                 }
@@ -41,13 +42,13 @@ impl File for FZero {
 
         /// write from buffers
         /// return length written on success
-        fn write(&self, buffer: &[u8]) -> Result<usize, &'static str> {
+        fn write(&self, buffer: &[u8]) -> Result<usize, ErrNo> {
                 return Ok(0);
         }
 
         /// read to buffers
         /// return length read on success
-        fn read_user_buffer(&self, mut buffer: UserBuffer) -> Result<usize, &'static str> {
+        fn read_user_buffer(&self, mut buffer: UserBuffer) -> Result<usize, ErrNo> {
                 let tmp = [0u8;512];
                 let mut left = buffer.len();
                 let mut off = 0;
@@ -66,7 +67,7 @@ impl File for FZero {
 
         /// write from buffers
         /// return length written on success
-        fn write_user_buffer(&self, buffer: UserBuffer) -> Result<usize, &'static str> {
+        fn write_user_buffer(&self, buffer: UserBuffer) -> Result<usize, ErrNo> {
                 return Ok(0);
         }
 
@@ -115,11 +116,11 @@ impl File for FZero {
 		}
         }
 
-        fn rename(&self, new_name: &str) -> Result<(), &'static str> {
-                return Err("renaming zero file is not allowed");
+        fn rename(&self, new_name: &str) -> Result<(), ErrNo> {
+                return Err(ErrNo::PermissionDenied);
         }
 
-        fn get_vfs(&self) -> Result<Arc<(dyn crate::fs::VirtualFileSystem + 'static)>, &'static str> {
+        fn get_vfs(&self) -> Result<Arc<(dyn crate::fs::VirtualFileSystem + 'static)>, ErrNo> {
                 Ok(super::DEV_FS.clone())
         }
 

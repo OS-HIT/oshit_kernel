@@ -29,6 +29,7 @@ use alloc::sync::Arc;
 use spin::{Mutex, MutexGuard};
 use riscv::register::satp;
 use core::fmt::{self, Debug, Formatter};
+use crate::process::ErrNo;
 
 lazy_static! {
     /// The kernel space memory layout.
@@ -143,9 +144,9 @@ impl Segment {
     /// let mut segment: Segment = Segment::new(0x10010000.into(), 0x10020000.into(), MapType::Identity, SegmentFlags::R);
     /// segment.map_page(pagetable, VirtPageNum::From(VirtAddr::From(0x10010000)));
     /// ```
-    pub fn map_page(&mut self, pagetable: &mut PageTable, vpn: VirtPageNum) -> Result<(), &'static str> {
+    pub fn map_page(&mut self, pagetable: &mut PageTable, vpn: VirtPageNum) -> Result<(), ErrNo> {
         if vpn < self.range.get_start() || vpn >= self.range.get_end() {
-            return Err("Trying to map a page that is not in this Segment.");
+            return Err(ErrNo::BadAddress);
         }
         let ppn: PhysPageNum;
         match self.map_type {
@@ -162,7 +163,7 @@ impl Segment {
                     // verbose!("Mapped framed page: {:?}<=>{:?}, flag {:?}", vpn, ppn, PTEFlags::from_bits(self.segFlags.bits).unwrap());
                     Ok(())
                 } else {
-                    Err("OOM!")
+                    Err(ErrNo::OutOfMemory)
                 }
                 
             },
@@ -177,11 +178,11 @@ impl Segment {
         }
     }
 
-    pub fn map_lazy_vma(&mut self, pagetable: &mut PageTable, va: VirtAddr) -> Result<(), &'static str> {
+    pub fn map_lazy_vma(&mut self, pagetable: &mut PageTable, va: VirtAddr) -> Result<(), ErrNo> {
         let vpn = va.to_vpn();
         if vpn < self.range.get_start() || vpn >= self.range.get_end() {
             error!("Trying to map a page that is not in this Segment.");
-            return Err("Trying to map a page that is not in this Segment.")
+            return Err(ErrNo::BadAddress)
         }
         
         let frame = alloc_frame().unwrap();
@@ -1054,7 +1055,7 @@ impl MemLayout {
     }
 
     /// Add a VMA segment to the layout
-    pub fn add_vma(&mut self, file: Arc<dyn File>, start: VirtAddr, flag: VMAFlags, offset: usize, length: usize) -> Result<VirtAddr, &'static str> {
+    pub fn add_vma(&mut self, file: Arc<dyn File>, start: VirtAddr, flag: VMAFlags, offset: usize, length: usize) -> Result<VirtAddr, ErrNo> {
         if start.0 == 0 {
             return self.add_vma_anywhere(file.clone(), flag, offset, length);
         }
@@ -1067,10 +1068,10 @@ impl MemLayout {
             let seg = m_seg.lock();
             if seg.range.get_start() <= start_vpn && start_vpn < seg.range.get_end() {
                 error!("Overlapped mmap segment");
-                return Err("Overlapped mmap segment");
+                return Err(ErrNo::BadAddress);
             } else if seg.range.get_start() < stop_vpn && stop_vpn < seg.range.get_end() {
                 error!("Overlapped mmap segment");
-                return Err("Overlapped mmap segment");
+                return Err(ErrNo::BadAddress);
             }
         }
         let segment = Segment::new(
@@ -1107,12 +1108,12 @@ impl MemLayout {
     }
 
     /// Add a VMA segment anywhere
-    pub fn add_vma_anywhere(&mut self, file: Arc<dyn File>, flag: VMAFlags, offset: usize, len: usize) -> Result<VirtAddr, &'static str> {
-        let start_addr: VirtAddr = self.get_continuous_space(file.poll().size as usize).ok_or("No space left")?.into();
+    pub fn add_vma_anywhere(&mut self, file: Arc<dyn File>, flag: VMAFlags, offset: usize, len: usize) -> Result<VirtAddr, ErrNo> {
+        let start_addr: VirtAddr = self.get_continuous_space(file.poll().size as usize).ok_or(ErrNo::OutOfMemory)?.into();
         self.add_vma(file, start_addr, flag, offset, len)
     }
 
-    pub fn lazy_copy_vma(&mut self, address: VirtAddr, access_flag: VMAFlags) -> Result<(), &'static str> {
+    pub fn lazy_copy_vma(&mut self, address: VirtAddr, access_flag: VMAFlags) -> Result<(), ErrNo> {
         for m_seg in self.segments.iter_mut() {
             let mut seg = m_seg.lock();
             if seg.map_type == MapType::VMA && seg.range.get_start() <= address.to_vpn() && address.to_vpn() < seg.range.get_end() {
@@ -1122,10 +1123,10 @@ impl MemLayout {
                 }
             }
         }
-        Err("No such vma segment!")
+        Err(ErrNo::BadAddress)
     }
 
-    pub fn drop_vma(&mut self, drop_start: VirtPageNum, drop_end: VirtPageNum) -> Result<(), &'static str> {
+    pub fn drop_vma(&mut self, drop_start: VirtPageNum, drop_end: VirtPageNum) -> Result<(), ErrNo> {
         verbose!("munmapping [{:?}, {:?})", drop_start, drop_end);
         
         let mut o_to_split: Option<Arc<Mutex<Segment>>> = None;
@@ -1141,11 +1142,11 @@ impl MemLayout {
                 found = true;
                 break;
             } else if start_ok || end_ok {
-                return Err("Bad Drop VMA Region.");
+                return Err(ErrNo::BadAddress);
             }
         }
         if !found {
-            return Err("No such VMA Region");
+            return Err(ErrNo::BadAddress);
         }
 
         let to_split = o_to_split.unwrap();

@@ -13,6 +13,7 @@ use alloc::sync::Arc;
 use alloc::vec::Vec;
 use crate::fs::{File, OpenMode};
 use lazy_static::*;
+use crate::process::ErrNo;
 
 /// Mount Manager (Wrapper)
 /// # Description
@@ -65,52 +66,52 @@ impl MountManager {
     }
 
     /// Mount a filesystem on "path"
-    pub fn mount_fs(&self, path: String, vfs: Arc<dyn VirtualFileSystem>) -> Result<(), &'static str> {
+    pub fn mount_fs(&self, path: String, vfs: Arc<dyn VirtualFileSystem>) -> Result<(), ErrNo> {
         self.get_inner_locked().mount_fs(&path, vfs)
     }
 
     /// Unmount the filesystem on "path"
-    pub fn unmount_fs(&self, path: String) -> Result<(), &'static str> {
+    pub fn unmount_fs(&self, path: String) -> Result<(), ErrNo> {
         self.get_inner_locked().unmount_fs(&path)
     }
 
     /// get vfs and string relative to it.
-    pub fn parse(&self, total_path: String) -> Result<(Arc<dyn VirtualFileSystem>, Path), &'static str> {
+    pub fn parse(&self, total_path: String) -> Result<(Arc<dyn VirtualFileSystem>, Path), ErrNo> {
         self.get_inner_locked().parse(&total_path)
     }
     
     /// Open file
-    pub fn open(&self, abs_path: String, mode: OpenMode) -> Result<Arc<dyn File>, &'static str> {
+    pub fn open(&self, abs_path: String, mode: OpenMode) -> Result<Arc<dyn File>, ErrNo> {
         self.get_inner_locked().open(abs_path, mode)
     }
 
     /// Create diretory
-    pub fn mkdir(&self, abs_path: String) -> Result<Arc<dyn File>, &'static str> {
+    pub fn mkdir(&self, abs_path: String) -> Result<Arc<dyn File>, ErrNo> {
         self.get_inner_locked().mkdir(abs_path)
     }
 
     /// Create file
-    pub fn mkfile(&self, abs_path: String) -> Result<Arc<dyn File>, &'static str> {
+    pub fn mkfile(&self, abs_path: String) -> Result<Arc<dyn File>, ErrNo> {
         self.get_inner_locked().mkfile(abs_path)
     }
 
     /// Delete file
-    pub fn remove(&self, abs_path: String) -> Result<(), &'static str> {
+    pub fn remove(&self, abs_path: String) -> Result<(), ErrNo> {
         self.get_inner_locked().remove(abs_path)
     }
     
     /// Create hard link
-    pub fn link(&self, to_link: Arc<dyn File>, dest: String) -> Result<(), &'static str> {
+    pub fn link(&self, to_link: Arc<dyn File>, dest: String) -> Result<(), ErrNo> {
         self.get_inner_locked().link(to_link, dest)
     }
 
     /// Create symbolic link
-    pub fn sym_link(&self, to_link: Arc<dyn File>, dest: String) -> Result<(), &'static str> {
+    pub fn sym_link(&self, to_link: Arc<dyn File>, dest: String) -> Result<(), ErrNo> {
         self.get_inner_locked().sym_link(to_link, dest)
     }
 
     /// Rename file (dummy function)
-    pub fn rename(&self, to_rename: Arc<dyn File>, new_name: String) -> Result<(), &'static str> {
+    pub fn rename(&self, to_rename: Arc<dyn File>, new_name: String) -> Result<(), ErrNo> {
         self.get_inner_locked().rename(to_rename, new_name)
     }
 }
@@ -132,11 +133,11 @@ impl MountManagerInner {
         }
     }
 
-    fn mount(queue: &mut Vec<MountNode>, mut path: Vec::<String>, vfs: Arc<dyn VirtualFileSystem>) -> Result<(), &'static str> {
+    fn mount(queue: &mut Vec<MountNode>, mut path: Vec::<String>, vfs: Arc<dyn VirtualFileSystem>) -> Result<(), ErrNo> {
         if path.len() == 0 {
             for i in 0..queue.len() {
                 if let MountNode::FileSystem(_) = queue[i] {
-                    return Err("current dir already mounted");
+                    return Err(ErrNo::DeviceOrResourceBusy);
                 }
             }
             queue.push(MountNode::FileSystem(vfs.clone()));
@@ -161,13 +162,13 @@ impl MountManagerInner {
         }
     }
 
-    pub fn mount_fs(&mut self, path: &str, vfs: Arc<dyn VirtualFileSystem>) -> Result<(), &'static str> {
+    pub fn mount_fs(&mut self, path: &str, vfs: Arc<dyn VirtualFileSystem>) -> Result<(), ErrNo> {
         let path = match parse_path(&path) {
             Ok(path) => path,
-            Err(err) => return Err(to_string(err)),
+            Err(err) => return Err(ErrNo::NoSuchFileOrDirectory),
         };
         if !path.is_abs {
-            return Err("mount_fs: absolute path required");
+            return Err(ErrNo::NoSuchFileOrDirectory);
         }
         let Path {path:mut path, ..} = path;
         path.reverse();
@@ -202,13 +203,13 @@ impl MountManagerInner {
         }
     }
 
-    pub fn unmount_fs(&mut self, path: &str) -> Result<(), &'static str> {
+    pub fn unmount_fs(&mut self, path: &str) -> Result<(), ErrNo> {
         let path = match parse_path(&path) {
             Ok(path) => path,
-            Err(err) => return Err(to_string(err)),
+            Err(err) => return Err(ErrNo::NoSuchFileOrDirectory),
         };
         if !path.is_abs {
-            return Err("unmount_fs: absolute path required");
+            return Err(ErrNo::NoSuchFileOrDirectory);
         }
         let Path {path:mut path, ..} = path;
         path.reverse();
@@ -218,7 +219,7 @@ impl MountManagerInner {
             }
             return Ok(());
         }
-        return Err("unmount_fs: path not mounted");
+        return Err(ErrNo::NoSuchFileOrDirectory);
     }
 
     fn find_path(queue: &Vec<MountNode>, path:&mut Vec<String>) -> Option<Arc<dyn VirtualFileSystem>> {
@@ -247,14 +248,14 @@ impl MountManagerInner {
     }
 
     /// get vfs and string relative to it.
-    pub fn parse(&self, total_path: &str) -> Result<(Arc<dyn VirtualFileSystem>, Path), &'static str> {
+    pub fn parse(&self, total_path: &str) -> Result<(Arc<dyn VirtualFileSystem>, Path), ErrNo> {
         verbose!("Parsing path: {}", total_path);
         let path = match parse_path(&total_path) {
             Ok(path) => path,
-            Err(err) => return Err(to_string(err)),
+            Err(err) => return Err(ErrNo::NoSuchFileOrDirectory),
         };
         if !path.is_abs {
-            return Err("parse: absolute path required");
+            return Err(ErrNo::NoSuchFileOrDirectory);
         }
         let Path {mut path, must_dir, ..} = path;
         path.reverse();
@@ -263,7 +264,7 @@ impl MountManagerInner {
             let path = Path { path, must_dir, is_abs: true};
             return Ok((vfs, path));
         }
-        return Err("parse: fs not found");
+        return Err(ErrNo::NoSuchFileOrDirectory);
     }
 
     fn find_fs(queue: &Vec<MountNode>, vfs: &Arc<dyn VirtualFileSystem>, path:&mut Vec<String>) -> Result<(),()> {
@@ -286,7 +287,7 @@ impl MountManagerInner {
         return Err(());
     }
 
-    pub fn mounted_at(&self, vfs: Arc<dyn VirtualFileSystem>) -> Result<String, &'static str> {
+    pub fn mounted_at(&self, vfs: Arc<dyn VirtualFileSystem>) -> Result<String, ErrNo> {
         let mut path = Vec::new();
         if let Ok(()) = MountManagerInner::find_fs(&self.root, &vfs, &mut path) {
             let path = Path {
@@ -296,42 +297,42 @@ impl MountManagerInner {
             };
             return Ok(path.to_string());
         };
-        return Err("mounted_at: VFS not found");
+        return Err(ErrNo::NoSuchFileOrDirectory);
     }
     
-    pub fn open(&self, abs_path: String, mode: OpenMode) -> Result<Arc<dyn File>, &'static str> {
+    pub fn open(&self, abs_path: String, mode: OpenMode) -> Result<Arc<dyn File>, ErrNo> {
         let (vfs, rel_path) = self.parse(&abs_path)?;
         verbose!("open: parsing res: path {}, relative path {}", abs_path, rel_path.to_string());
         return vfs.open(rel_path, mode);
     }
 
-    pub fn mkdir(&self, abs_path: String) -> Result<Arc<dyn File>, &'static str> {
+    pub fn mkdir(&self, abs_path: String) -> Result<Arc<dyn File>, ErrNo> {
         let (vfs, rel_path) = self.parse(&abs_path)?;
         return vfs.mkdir(rel_path);
     }
 
-    pub fn mkfile(&self, abs_path: String) -> Result<Arc<dyn File>, &'static str> {
+    pub fn mkfile(&self, abs_path: String) -> Result<Arc<dyn File>, ErrNo> {
         let (vfs, rel_path) = self.parse(&abs_path)?;
         return vfs.mkfile(rel_path);
     }
 
-    pub fn remove(&self, abs_path: String) -> Result<(), &'static str> {
+    pub fn remove(&self, abs_path: String) -> Result<(), ErrNo> {
         let (vfs, rel_path) = self.parse(&abs_path)?;
         return vfs.remove(rel_path);
     }
     
-    pub fn link(&self, to_link: Arc<dyn File>, dest: String) -> Result<(), &'static str> {
+    pub fn link(&self, to_link: Arc<dyn File>, dest: String) -> Result<(), ErrNo> {
         let src_vfs = to_link.get_vfs()?;
         let src_path = to_link.get_path();
         let (dst_vfs, dst_path) = self.parse(&dest)?;
         if Arc::ptr_eq(&src_vfs, &dst_vfs) {
-            return Err("Cannot create hard link accross file systems!");
+            return Err(ErrNo::CrossdeviceLink);
         } else {
             return src_vfs.link(to_link, dst_path);
         }
     }
 
-    pub fn sym_link(&self, to_link: Arc<dyn File>, dest: String) -> Result<(), &'static str> {
+    pub fn sym_link(&self, to_link: Arc<dyn File>, dest: String) -> Result<(), ErrNo> {
         let src_vfs = to_link.get_vfs()?;
         let src_rel_path = to_link.get_path();
         let mut path = Vec::new();
@@ -347,12 +348,12 @@ impl MountManagerInner {
                 return dst_vfs.sym_link(src_abs_path, dst_path);
             },
             Err(()) => {
-                return Err("sym_link: fs not found");
+                return Err(ErrNo::NoSuchFileOrDirectory);
             },
         };
     }
 
-    pub fn rename(&self, to_rename: Arc<dyn File>, new_name: String) -> Result<(), &'static str> {
+    pub fn rename(&self, to_rename: Arc<dyn File>, new_name: String) -> Result<(), ErrNo> {
         let vfs = to_rename.get_vfs()?;
         return vfs.rename(to_rename, new_name);
     }
@@ -362,43 +363,43 @@ lazy_static! {
     static ref MOUNT_MANAGER: MountManager = MountManager::new();
 }
 
-pub fn mount_fs(path: String, vfs: Arc<dyn VirtualFileSystem>) -> Result<(), &'static str> {
+pub fn mount_fs(path: String, vfs: Arc<dyn VirtualFileSystem>) -> Result<(), ErrNo> {
     MOUNT_MANAGER.mount_fs(path, vfs)
 }
 
-pub fn unmount_fs(path: String) -> Result<(), &'static str> {
+pub fn unmount_fs(path: String) -> Result<(), ErrNo> {
     MOUNT_MANAGER.get_inner_locked().unmount_fs(&path)
 }
 
 /// get vfs and string relative to it.
-pub fn parse(total_path: String) -> Result<(Arc<dyn VirtualFileSystem>, Path), &'static str> {
+pub fn parse(total_path: String) -> Result<(Arc<dyn VirtualFileSystem>, Path), ErrNo> {
     MOUNT_MANAGER.parse(total_path)
 }
 
-pub fn open(abs_path: String, mode: OpenMode) -> Result<Arc<dyn File>, &'static str> {
+pub fn open(abs_path: String, mode: OpenMode) -> Result<Arc<dyn File>, ErrNo> {
     MOUNT_MANAGER.open(abs_path, mode)
 }
 
-pub fn mkdir(abs_path: String) -> Result<Arc<dyn File>, &'static str> {
+pub fn mkdir(abs_path: String) -> Result<Arc<dyn File>, ErrNo> {
     MOUNT_MANAGER.mkdir(abs_path)
 }
 
-pub fn mkfile(abs_path: String) -> Result<Arc<dyn File>, &'static str> {
+pub fn mkfile(abs_path: String) -> Result<Arc<dyn File>, ErrNo> {
     MOUNT_MANAGER.mkfile(abs_path)
 }
 
-pub fn remove(abs_path: String) -> Result<(), &'static str> {
+pub fn remove(abs_path: String) -> Result<(), ErrNo> {
     MOUNT_MANAGER.remove(abs_path)
 }
 
-pub fn link(to_link: Arc<dyn File>, dest: String) -> Result<(), &'static str> {
+pub fn link(to_link: Arc<dyn File>, dest: String) -> Result<(), ErrNo> {
     MOUNT_MANAGER.link(to_link, dest)
 }
 
-pub fn sym_link(to_link: Arc<dyn File>, dest: String) -> Result<(), &'static str> {
+pub fn sym_link(to_link: Arc<dyn File>, dest: String) -> Result<(), ErrNo> {
     MOUNT_MANAGER.sym_link(to_link, dest)
 }
 
-pub fn rename(to_rename: Arc<dyn File>, new_name: String) -> Result<(), &'static str> {
+pub fn rename(to_rename: Arc<dyn File>, new_name: String) -> Result<(), ErrNo> {
     MOUNT_MANAGER.rename(to_rename, new_name)
 }

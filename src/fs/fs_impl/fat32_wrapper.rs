@@ -14,6 +14,7 @@ use super::utils::*;
 
 use crate::fs::File;
 use crate::fs::Path;
+use crate::process::ErrNo;
 
 pub struct Fat32W {
         pub inner: Arc<Fat32FS>,
@@ -56,7 +57,7 @@ impl VirtualFileSystem for Fat32W {
         /// create inode (read from disc etc), used for open files.  
         /// we first create it's inode, then opens it.
         /// todo: maybe a specific Path struct?
-        fn open(&self, abs_path: Path, mode: OpenMode) -> Result<Arc<dyn File>, &'static str> {
+        fn open(&self, abs_path: Path, mode: OpenMode) -> Result<Arc<dyn File>, ErrNo> {
                 verbose!("Fat32 opening: {:?}", abs_path);
                 let mode = OpenMode2usize(mode);
                 match fat32::open(self.inner.clone(), abs_path, mode){
@@ -69,7 +70,7 @@ impl VirtualFileSystem for Fat32W {
                 };
         }
 
-        fn mkdir(&self, abs_path: Path) -> Result<Arc<dyn File>, &'static str> {
+        fn mkdir(&self, abs_path: Path) -> Result<Arc<dyn File>, ErrNo> {
                 match fat32::mkdir(self.inner.clone(), abs_path) {
                         Ok(file) => return Ok(Arc::new(
                                 FAT32File {
@@ -80,7 +81,7 @@ impl VirtualFileSystem for Fat32W {
                 }
         }
 
-        fn mkfile(&self, abs_path: Path) -> Result<Arc<dyn File>, &'static str> {
+        fn mkfile(&self, abs_path: Path) -> Result<Arc<dyn File>, ErrNo> {
                 match fat32::mkfile(self.inner.clone(), abs_path) {
                         Ok(file) => return Ok(Arc::new(
                                 FAT32File {
@@ -91,19 +92,19 @@ impl VirtualFileSystem for Fat32W {
                 }
         }
 
-        fn remove(&self, abs_path: Path) -> Result<(), &'static str> {
+        fn remove(&self, abs_path: Path) -> Result<(), ErrNo> {
                 return fat32::remove(self.inner.clone(), abs_path);
         }
         
-        fn link(&self, to_link: Arc<dyn File>, dest: Path) -> Result<(), &'static str> {
-                return Err("Not supported by fat32");
+        fn link(&self, to_link: Arc<dyn File>, dest: Path) -> Result<(), ErrNo> {
+                return Err(ErrNo::CrossdeviceLink);
         }
 
-        fn sym_link(&self, abs_src: Path, rel_dst: Path) -> Result<(), &'static str> {
+        fn sym_link(&self, abs_src: Path, rel_dst: Path) -> Result<(), ErrNo> {
                 return fat32::sym_link(self.inner.clone(), rel_dst, abs_src);
         }
 
-        fn rename(&self, to_rename: Arc<dyn File>, new_name: String) -> Result<(), &'static str> {
-                return Err("???????");
+        fn rename(&self, to_rename: Arc<dyn File>, new_name: String) -> Result<(), ErrNo> {
+                return Err(ErrNo::PermissionDenied);
         }
 }

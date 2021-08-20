@@ -7,6 +7,7 @@ use alloc::string::String;
 use super::{CharDeviceFile, DeviceFile, device_file::BlockDeviceFile};
 use crate::drivers::BLOCK_DEVICE;
 use lazy_static::*;
+use crate::process::ErrNo;
 
 lazy_static! {
 	pub static ref SDA_WRAPPER: Arc<SDAWrapper> = Arc::new(SDAWrapper::new());
@@ -41,9 +42,9 @@ impl BlockDeviceFile for SDAWrapper {
 }
 
 impl DeviceFile for SDAWrapper {
-    fn ioctl(&self, op: u64, argp: VirtAddr) -> Result<u64, &'static str> {
+    fn ioctl(&self, op: u64, argp: VirtAddr) -> Result<u64, ErrNo> {
         warning!("IOCTL logged for /block/sda: op={}", op);
-        Err("not implemented")
+        Err(ErrNo::PermissionDenied)
     }
 
     fn to_char_dev<'a>(self: Arc<Self>) -> Option<Arc<dyn CharDeviceFile + 'a>> where Self: 'a  {
@@ -56,7 +57,7 @@ impl DeviceFile for SDAWrapper {
 }
 
 impl File for SDAWrapper {
-    fn seek(&self, offset: isize, op: crate::fs::SeekOp) -> Result<(), &'static str> {
+    fn seek(&self, offset: isize, op: crate::fs::SeekOp) -> Result<(), ErrNo> {
         match op {
 			crate::fs::SeekOp::CUR => {
 				if offset % (self.blk_sz as isize) == 0 {
@@ -67,7 +68,7 @@ impl File for SDAWrapper {
                     }
 					Ok(())
 				} else {
-					Err("Seek not aligned.")
+					Err(ErrNo::IllegalSeek)
 				}
 			},
             crate::fs::SeekOp::SET => {
@@ -75,18 +76,19 @@ impl File for SDAWrapper {
 					self.cursor.store(offset as usize, Ordering::Relaxed);
 					Ok(())
 				} else {
-					Err("Seek not aligned.")
+					Err(ErrNo::IllegalSeek)
 				}
 			},
-            crate::fs::SeekOp::END => Err("Cannot seek to end of Block device"),
+            crate::fs::SeekOp::END =>
+                Err(ErrNo::IllegalSeek)
 		}
     }
 
-    fn get_cursor(&self) -> Result<usize, &'static str> {
+    fn get_cursor(&self) -> Result<usize, ErrNo> {
         Ok(self.cursor.load(Ordering::Relaxed))
     }
 
-    fn read(&self, buffer: &mut [u8]) -> Result<usize, &'static str> {
+    fn read(&self, buffer: &mut [u8]) -> Result<usize, ErrNo> {
         let mut offset = 0;
 		while buffer.len() - offset > self.blk_sz as usize{
 			let mut rd_buf = Vec::<u8>::new();
@@ -98,7 +100,7 @@ impl File for SDAWrapper {
 		Ok(offset)
     }
 
-    fn write(&self, buffer: &[u8]) -> Result<usize, &'static str> {
+    fn write(&self, buffer: &[u8]) -> Result<usize, ErrNo> {
         let mut offset = 0;
 		while buffer.len() - offset > self.blk_sz as usize{
 			self.write_block(offset / self.blk_sz as usize, &buffer[offset..(offset+self.blk_sz as usize)]);
@@ -107,7 +109,7 @@ impl File for SDAWrapper {
 		Ok(offset)
     }
 
-    fn read_user_buffer(&self, mut buffer: crate::memory::UserBuffer) -> Result<usize, &'static str> {
+    fn read_user_buffer(&self, mut buffer: crate::memory::UserBuffer) -> Result<usize, ErrNo> {
 		let mut offset = 0;
 		while buffer.len() - offset > self.blk_sz as usize{
 			let mut rd_buf = Vec::<u8>::new();
@@ -123,7 +125,7 @@ impl File for SDAWrapper {
 		Ok(offset)
     }
 
-    fn write_user_buffer(&self, buffer: crate::memory::UserBuffer) -> Result<usize, &'static str> {
+    fn write_user_buffer(&self, buffer: crate::memory::UserBuffer) -> Result<usize, ErrNo> {
 		let mut offset = 0;
 		while buffer.len() - offset > self.blk_sz as usize{
 			let mut wr_buf = Vec::new();
@@ -171,11 +173,11 @@ impl File for SDAWrapper {
         }
     }
 
-    fn rename(&self, new_name: &str) -> Result<(), &'static str> {
-        Err("Cannot rename block device")
+    fn rename(&self, new_name: &str) -> Result<(), ErrNo> {
+        Err(ErrNo::PermissionDenied)
     }
 
-    fn get_vfs(&self) -> Result<alloc::sync::Arc<dyn crate::fs::VirtualFileSystem>, &'static str> {
+    fn get_vfs(&self) -> Result<alloc::sync::Arc<dyn crate::fs::VirtualFileSystem>, ErrNo> {
         Ok(super::DEV_FS.clone())
     }
 
@@ -216,27 +218,27 @@ impl Drop for CommonFileAsBlockDevice {
 }
 
 impl File for CommonFileAsBlockDevice {
-    fn seek(&self, offset: isize, op: crate::fs::SeekOp) -> Result<(), &'static str> {
+    fn seek(&self, offset: isize, op: crate::fs::SeekOp) -> Result<(), ErrNo> {
         self.inner.seek(offset, op)
     }
 
-    fn get_cursor(&self) -> Result<usize, &'static str> {
+    fn get_cursor(&self) -> Result<usize, ErrNo> {
         self.inner.get_cursor()
     }
 
-    fn read(&self, buffer: &mut [u8]) -> Result<usize, &'static str> {
+    fn read(&self, buffer: &mut [u8]) -> Result<usize, ErrNo> {
         self.inner.read(buffer)
     }
 
-    fn write(&self, buffer: &[u8]) -> Result<usize, &'static str> {
+    fn write(&self, buffer: &[u8]) -> Result<usize, ErrNo> {
         self.inner.write(buffer)
     }
 
-    fn read_user_buffer(&self, buffer: crate::memory::UserBuffer) -> Result<usize, &'static str> {
+    fn read_user_buffer(&self, buffer: crate::memory::UserBuffer) -> Result<usize, ErrNo> {
         self.inner.read_user_buffer(buffer)
     }
 
-    fn write_user_buffer(&self, buffer: crate::memory::UserBuffer) -> Result<usize, &'static str> {
+    fn write_user_buffer(&self, buffer: crate::memory::UserBuffer) -> Result<usize, ErrNo> {
         self.inner.write_user_buffer(buffer)
     }
 
@@ -256,11 +258,11 @@ impl File for CommonFileAsBlockDevice {
         self.inner.poll()
     }
 
-    fn rename(&self, new_name: &str) -> Result<(), &'static str> {
+    fn rename(&self, new_name: &str) -> Result<(), ErrNo> {
         self.inner.rename(new_name)
     }
 
-    fn get_vfs(&self) -> Result<Arc<dyn crate::fs::VirtualFileSystem>, &'static str> {
+    fn get_vfs(&self) -> Result<Arc<dyn crate::fs::VirtualFileSystem>, ErrNo> {
         self.inner.get_vfs()
     }
 
@@ -270,8 +272,8 @@ impl File for CommonFileAsBlockDevice {
 }
 
 impl DeviceFile for CommonFileAsBlockDevice {
-    fn ioctl(&self, op: u64, argp: VirtAddr) -> Result<u64, &'static str> {
-        Err("mimiced block device")
+    fn ioctl(&self, op: u64, argp: VirtAddr) -> Result<u64, ErrNo> {
+        Err(ErrNo::PermissionDenied)
     }
 
     fn to_char_dev<'a>(self: Arc<Self>) -> Option<Arc<dyn CharDeviceFile + 'a>> where Self: 'a  {

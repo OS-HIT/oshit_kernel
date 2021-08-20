@@ -3,6 +3,7 @@ use alloc::{boxed::Box, sync::Arc};
 use crate::{fs::CommonFile, memory::{UserBuffer, VirtAddr}};
 
 use super::super::super::File;
+use crate::process::ErrNo;
 
 pub trait SafeToPass : Copy+Clone+Send+Sync {
     
@@ -11,7 +12,7 @@ pub trait SafeToPass : Copy+Clone+Send+Sync {
 pub trait DeviceFile : File {
     /// Good old IOCTL, device spcific commands.
     /// WARNING: need to extract custom struct from VirtAddr, DON'T HOLD PCB_INNER'S LOCK!!!!!
-    fn ioctl(&self, op: u64, argp: VirtAddr) -> Result<u64, &'static str>;
+    fn ioctl(&self, op: u64, argp: VirtAddr) -> Result<u64, ErrNo>;
 
     fn to_char_dev<'a>(self: Arc<Self>) -> Option<Arc<dyn CharDeviceFile + 'a>> where Self: 'a ;
 
