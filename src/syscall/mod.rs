@@ -131,22 +131,34 @@ use process_syscall::sys_set_tid_address;
 macro_rules! CALL_SYSCALL {
     ( $syscall_name: expr ) => {
         {
-            debug!("/========== SYSCALL {} CALLED BY {} ==========\\", stringify!($syscall_name), $crate::process::current_process().unwrap().pid.0);
+            let pid = crate::process::current_process().unwrap().pid.0;
+            // let do_print = pid == 1;
+            let do_print=true;
+            if do_print {
+                debug!("/========== SYSCALL {} CALLED BY {} ==========\\", stringify!($syscall_name), pid);
+            }
             let ret = $syscall_name();
-            debug!("\\= SYSCALL {} CALLED BY {} RESULT {:<10} =/", stringify!($syscall_name), $crate::process::current_process().unwrap().pid.0, ret);
-            print_kernel_stack();
+            if do_print {
+                debug!("\\= SYSCALL {} CALLED BY {} RESULT {:<10} =/", stringify!($syscall_name), $crate::process::current_process().unwrap().pid.0, ret);
+            }
             ret
         }
     };
     ( $syscall_name: expr, $($y:expr),+ ) => {
         {
-            debug!("/========== SYSCALL {} CALLED BY {} ==========\\", stringify!($syscall_name), $crate::process::current_process().unwrap().pid.0);
+            let pid = crate::process::current_process().unwrap().pid.0;
+            // let do_print = pid == 1;
+            let do_print=true;
+            if do_print {
+                debug!("/========== SYSCALL {} CALLED BY {} ==========\\", stringify!($syscall_name), pid);
+            }
             $(
                 verbose!("{:>25} = {:?}", stringify!{$y}, $y);
             )+
             let ret: isize = $syscall_name($($y),+);
-            debug!("\\= SYSCALL {} CALLED BY {} RESULT {:<10} =/", stringify!($syscall_name), $crate::process::current_process().unwrap().pid.0, ret);
-            print_kernel_stack();
+            if do_print {
+                debug!("\\= SYSCALL {} CALLED BY {} RESULT {:<10} =/", stringify!($syscall_name), $crate::process::current_process().unwrap().pid.0, ret);
+            }
             ret
         }
     };
