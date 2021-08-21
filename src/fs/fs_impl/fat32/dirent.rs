@@ -608,13 +608,13 @@ pub fn write_dirent_group (chain: &mut Chain, group: &mut DirEntryGroup) -> Resu
                 for ext in &group.exts {
                         unsafe {
                                 // let buf = core::slice::from_raw_parts((ext as *const DirEntryExtRaw) as *const u8, size_of::<DirEntryExtRaw>());
-                                let buf = &*(ext as *const _ as *const [u8; size_of::<DirEntryExtRaw>()]);
+                                let buf = &*(ext as *const _ as *const [u8; size_of::<DirEntryExtRaw>()]).clone();
                                 chain.write(offset, buf).unwrap();
                         } 
                         offset += size_of::<DirEntryExtRaw>();
                 }
                 unsafe {
-                        let buf = &*((&group.entry as *const _) as *const [u8; size_of::<DirEntryRaw>()]);
+                        let buf = &*((&group.entry as *const _) as *const [u8; size_of::<DirEntryRaw>()]).clone();
                         chain.write(offset, buf).unwrap();
                 }
                 group.slotsize = group.exts.len() + 1 + slotsize;
@@ -632,16 +632,16 @@ pub fn write_dirent_group (chain: &mut Chain, group: &mut DirEntryGroup) -> Resu
                         }
                 }
         } else {
-                let mut offset = group.offset + (group.slotsize - group.exts.len() - 1) * size_of::<DirEntryExtRaw>();
+                let mut offset = group.offset + (group.slotsize - group.exts.len() - 1) * size_of::<DirEntryExtRaw>().clone();
                 for ext in &group.exts {
                         unsafe {
-                                let buf = &*((ext as *const _) as *const [u8; size_of::<DirEntryExtRaw>()]);
+                                let buf = &*((ext as *const _) as *const [u8; size_of::<DirEntryExtRaw>()]).clone();
                                 chain.write(offset, buf).unwrap();
                         } 
                         offset += size_of::<DirEntryExtRaw>();
                 }
                 unsafe {
-                        let buf = &*((&group.entry as *const _) as *const [u8; size_of::<DirEntryRaw>()]);
+                        let buf = &*((&group.entry as *const _) as *const [u8; size_of::<DirEntryRaw>()]).clone();
                         chain.write(offset, buf).unwrap();
                 }
                 return Ok(());        

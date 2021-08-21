@@ -247,7 +247,7 @@ impl Fat32FS {
                         if let Some(nxt_clst) = self.get_next_clst(cluster) {
                                 t = fat::get_type(nxt_clst);
                         } else {
-                                panic!("Reached end of clustor, but priv node is not EoC");
+                                panic!("Reached end of clustor, but priv node is not EoC, cluster={}", cluster);
                         }
                 }
                 return vec
