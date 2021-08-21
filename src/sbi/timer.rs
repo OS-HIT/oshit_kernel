@@ -3,7 +3,7 @@ use crate::config::CLOCK_FREQ;
 use riscv::register::time;
 
 // trigger per 1ms
-pub const TICKS_PER_SECOND  : u64 = 100;
+pub const TICKS_PER_SECOND  : u64 = 10;
 pub const MILLI_PER_SECOND  : u64 = 1000;
 
 /// Get times elaped since boot, in cycles.

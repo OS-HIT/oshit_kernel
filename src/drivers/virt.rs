@@ -1,6 +1,7 @@
 //! QEMU virtio driver wrapper
 use virtio_drivers::{VirtIOBlk, VirtIOHeader};
 use crate::memory::{FrameTracker, PageTable, PhysAddr, PhysPageNum, VirtAddr, alloc_continuous, alloc_frame, free_frame, kernel_satp};
+use crate::sbi::get_time_ms;
 use crate::utils::StepByOne;
 use super::BlockDevice;
 use spin::Mutex;
@@ -21,6 +22,18 @@ const ZEROS: [u8;512] = [0u8; 512];
 impl BlockDevice for VirtIOBlock {
     fn read_block(&self, block_id: usize, buf: &mut [u8]) {
         self.0.lock().read_block(block_id, buf).expect("Error when reading VirtIOBlk");
+        
+        unsafe { asm!("fence.i"); }
+        for i in 0..512 {
+            let b = buf[i];
+            unsafe { 
+                asm!(
+                    "add x0, x0, {0}",
+                    in(reg) b
+                );
+            }
+        }
+        unsafe { asm!("fence.i"); }
     }
     fn write_block(&self, block_id: usize, buf: &[u8]) {
         self.0.lock().write_block(block_id, buf).expect("Error when writing VirtIOBlk");

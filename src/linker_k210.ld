@@ -15,6 +15,10 @@ SECTIONS
         *(.text.trampoline);
         *(.text.trampoline_rust);
         . = ALIGN(4K);
+        sutrampoline = .;
+        *(.text.u_trampoline);
+        *(.text.u_trampoline_rust);
+        . = ALIGN(4K);
         *(.text .text.*)
     }
 

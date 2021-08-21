@@ -122,7 +122,7 @@ pub fn user_trap(_cx: &mut TrapContext) -> ! {
                 );
                 drop(arcpcb);
                 proc.recv_signal(crate::process::default_handlers::SIGSEGV);
-                proc.print_debug_msg();
+                // proc.print_debug_msg();
                 suspend_switch();
             }
         },
@@ -147,7 +147,7 @@ pub fn user_trap(_cx: &mut TrapContext) -> ! {
 
                 drop(arcpcb);
                 proc.recv_signal(crate::process::default_handlers::SIGSEGV);
-                proc.print_debug_msg();
+                // proc.print_debug_msg();
                 suspend_switch();
             }
         },
@@ -172,7 +172,7 @@ pub fn user_trap(_cx: &mut TrapContext) -> ! {
             }
             drop(arcpcb);
             proc.recv_signal(crate::process::default_handlers::SIGSEGV);
-            proc.print_debug_msg();
+            // proc.print_debug_msg();
             suspend_switch();
         }
         Trap::Exception(Exception::IllegalInstruction) => {
@@ -183,8 +183,8 @@ pub fn user_trap(_cx: &mut TrapContext) -> ! {
                 stval,
                 current_trap_context().sepc,
             );
-            current_process().unwrap().recv_signal(crate::process::default_handlers::SIGSEGV);
-            current_process().unwrap().print_debug_msg();
+            current_process().unwrap().recv_signal(crate::process::default_handlers::SIGKILL);
+            // current_process().unwrap().print_debug_msg();
             suspend_switch();
         }
         _ => {
@@ -192,7 +192,7 @@ pub fn user_trap(_cx: &mut TrapContext) -> ! {
             error!("Unhandled trap {:?}.", scause.cause());
             error!("Bad addr @ 0x{:#X}, Bad Inst @ 0x{:#X}", stval, cx.sepc);
             current_process().unwrap().recv_signal(crate::process::default_handlers::SIGKILL);
-            current_process().unwrap().print_debug_msg();
+            // current_process().unwrap().print_debug_msg();
             suspend_switch();
         }
     }
