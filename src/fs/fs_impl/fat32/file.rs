@@ -90,7 +90,12 @@ impl FileInner {
 
         /// Get the path of the file in the file system
         pub fn get_path(&self) -> Path {
-                self.inode.path.clone()
+                let mut p  = self.inode.path.clone();
+                if (self.inode.name.len() > 0) {
+                        p.path.push(self.inode.name.clone());
+                        p.must_dir = self.inode.is_dir();
+                }
+                return p;
         }
 
         /// Get the file system that holds the file
@@ -370,6 +375,9 @@ impl FileInner {
         /// close() can be called for multiple times for a file. 
         /// It does no more than flushing meta data.
         pub fn close(&mut self) {
+                if self.inode.name.len() == 0 {
+                        return ;
+                }
                 if !self.inode.is_dir() {
                         if self.inode.group.get_start() == 0 && self.inode.chain.chain.len() != 0 {
                                 self.inode.group.entry.set_start(self.inode.chain.chain[0]);

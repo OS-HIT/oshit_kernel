@@ -294,10 +294,10 @@ pub fn read_cluster(cluster: u32, offset: u32, buf: &mut [u8]) ->Result<u32,&str
 
 pub fn write_cluster(cluster: u32, offset: u32, buf: &[u8]) -> Result<u32, &str> {
         if cluster >= DBR_INST.clst_cnt {
-                return Err("read_cluster: Invalid cluster");
+                return Err("write_cluster: Invalid cluster");
         }
         if offset >= DBR_INST.clst_size {
-                return Err("read_cluster: Invalid Offset");
+                return Err("write_cluster: Invalid Offset");
         }
 
         let mut len = buf.len();
