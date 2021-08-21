@@ -1,6 +1,5 @@
 //! Wrapper of Fat32File to implement the crate::fs::file::File trait.
 use alloc::{sync::Arc, vec::Vec};
-use alloc::string::String;
 use spin::Mutex;
 use crate::fs::{CommonFile, DeviceFile, DirFile, File};
 use crate::fs::{file::FileStatus, fs_impl::cache_mgr::BLOCK_SZ};
@@ -120,7 +119,7 @@ impl DirFile for FAT32File {
                         inner: Mutex::new(fin),
                     }
                 )),
-                Err(msg) => Err(msg),
+                Err(errno) => Err(errno),
             }
         }
 

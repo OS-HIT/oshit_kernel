@@ -64,6 +64,10 @@ fn makeDirAt(dirfd: usize, path: &str) -> Result<(), ErrNo> {
         Err(err) => return Err(ErrNo::NoSuchFileOrDirectory),
     };
     if path.is_abs {
+        // if path.path.len() > 0 {
+        //     debug!("path[0]:{}", path.path[0]);
+        //     debug!("path:{}", path.to_string());
+        // }
         match mkdir(path.to_string()) {
             Ok(_) => return Ok(()),
             Err(msg) => return Err(msg),
@@ -507,16 +511,16 @@ pub fn sys_mkdirat(dirfd: usize, path: VirtAddr, _: usize) -> isize {
     let path = match core::str::from_utf8(&buf) {
         Ok(p) => p,
         Err(_) => {
-            error!("sys_openat: invalid path string");
-            return -1;
+            error!("sys_openat: {}: invalid path string", ErrNo::InvalidArgument as isize);
+            return -(ErrNo::InvalidArgument as isize);
         },
     };
-
+    debug!("mkdir: {}", path);
     match makeDirAt(dirfd as usize, path) {
         Ok(()) => return 0,
         Err(msg) => {
-            error!("sys_mkdirat: {}", msg);
-            return -1;
+            error!("sys_mkdirat: {}: {}", msg as isize, msg);
+            return -(msg as isize);
         },
     }
 }
@@ -550,10 +554,17 @@ use crate::fs::FileStatus;
 
 fn getFStat(file: &Arc<dyn File>) -> Result<FStat, ErrNo> {
     let f_stat = file.poll();
+    let mut linux_mode: u32 = 0;
+    linux_mode |= f_stat.ftype as u32;
+    linux_mode |= f_stat.mode;
+    linux_mode |= if f_stat.readable  {0o444} else {0};
+    linux_mode |= if f_stat.writeable {0o222} else {0};
+    linux_mode |= 0o111;
+
     return Ok(FStat {
         st_dev: f_stat.dev_no,
         st_ino: f_stat.inode,
-        st_mode: f_stat.mode,
+        st_mode: linux_mode,
         st_nlink: 1,
         st_uid: f_stat.uid,
         st_gid: f_stat.gid,
@@ -606,7 +617,28 @@ fn fstatat(fd: usize, path: &str, ptr: VirtAddr, flags: AtFlags) -> Result<(), E
                 Err(msg) => return Err(msg),
             }
         },
-        Err(msg) => return Err(msg),
+        Err(ErrNo::IsADirectory) => {
+            match get_file(fd, path, mode | OpenMode::DIR) {
+                Ok(file) => {
+                    match getFStat(&file) {
+                        Ok(stat) => {
+                            verbose!("Stat: {:?}", stat);
+                            current_process().unwrap()
+                                .get_inner_locked()
+                                .layout.write_user_data(ptr, &stat);
+                            return Ok(());
+                        },
+                        Err(msg) => return Err(msg),
+                    }
+                },
+                Err(errno) => {
+                    return Err(errno);
+                },
+            }
+        },
+        Err(errno) => {
+            return Err(errno);
+        }
     }
 }
 

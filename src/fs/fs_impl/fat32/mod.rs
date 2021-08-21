@@ -19,12 +19,12 @@ use core::cell::RefCell;
 use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use spin::Mutex;
 use super::cache_mgr::BlockCacheManager;
 use super::cache_mgr::BLOCK_SZ;
 
 use super::BlockDeviceFile;
 use super::super::Path;
+use crate::process::ErrNo;
 
 use core::mem::size_of;
 
@@ -314,7 +314,7 @@ fn root_dir(fs: Arc<Fat32FS>) -> FileInner {
 }
 
 /// Open file/directory
-pub fn open(fs: Arc<Fat32FS>, abs_path: Path, mode: usize) -> Result<FileInner, &'static str> {
+pub fn open(fs: Arc<Fat32FS>, abs_path: Path, mode: usize) -> Result<FileInner, ErrNo> {
         let mut root = root_dir(fs);
         if abs_path == Path::root() {
                 return Ok(root);
@@ -324,39 +324,39 @@ pub fn open(fs: Arc<Fat32FS>, abs_path: Path, mode: usize) -> Result<FileInner, 
 }
 
 /// Create directory
-pub fn mkdir(fs: Arc<Fat32FS>, abs_path: Path) -> Result<FileInner, &'static str> {
+pub fn mkdir(fs: Arc<Fat32FS>, abs_path: Path) -> Result<FileInner, ErrNo> {
         let mut root = root_dir(fs);
         return root.mkdir(abs_path);
 }
 
 /// Create a file
-pub fn mkfile(fs: Arc<Fat32FS>, abs_path: Path) -> Result<FileInner, &'static str> {
+pub fn mkfile(fs: Arc<Fat32FS>, abs_path: Path) -> Result<FileInner, ErrNo> {
         let mut root = root_dir(fs);
         return root.mkfile(abs_path);
 }
 
 /// Delete a file
-pub fn remove(fs: Arc<Fat32FS>, abs_path: Path) -> Result<(), &'static str> {
+pub fn remove(fs: Arc<Fat32FS>, abs_path: Path) -> Result<(), ErrNo> {
         let mut root = root_dir(fs);
         return root.remove(abs_path);
 }
 
 /// Rename a file
-pub fn rename(fs: Arc<Fat32FS>, to_rename: Path, new_name: &str) -> Result<(), &'static str> {
+pub fn rename(fs: Arc<Fat32FS>, to_rename: Path, new_name: &str) -> Result<(), ErrNo> {
         match open(fs, to_rename, 0){
                 Ok(mut file) => {
                         file.rename(new_name).unwrap();
                         file.close();
                         return Ok(());
                 },
-                Err(_) => {
-                        return Err("rename: file not found");
+                Err(errno) => {
+                        return Err(errno);
                 }
         };
 }
 
 /// Create a symbolic link for a file
-pub fn sym_link(fs: Arc<Fat32FS>, target_path: Path, link_path: Path) -> Result<(), &'static str> {
+pub fn sym_link(fs: Arc<Fat32FS>, target_path: Path, link_path: Path) -> Result<(), ErrNo> {
         match open(fs, link_path, file::WRITE | file::CREATE | file::NO_FOLLOW) {
                 Ok(mut file) => {
                         file.set_attr(DirEntryRaw::ATTR_SYM);
@@ -364,8 +364,8 @@ pub fn sym_link(fs: Arc<Fat32FS>, target_path: Path, link_path: Path) -> Result<
                         file.close();
                         return Ok(());
                 },
-                Err(msg) => {
-                        return Err(msg);
+                Err(errno) => {
+                        return Err(errno);
                 }
         }
 }

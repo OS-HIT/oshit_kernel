@@ -2,7 +2,6 @@
 use alloc::string::String;
 use alloc::vec::Vec;
 use alloc::sync::Arc;
-use bit_field::BitField;
 
 use super::Fat32FS;
 use super::inode::Inode;
@@ -13,6 +12,7 @@ use super::dirent::write_dirent_group;
 // use super::super::super::file::SeekOp;
 use crate::fs::SeekOp;
 use crate::fs::file::FileType;
+use crate::process::ErrNo;
 
 /// File Access Mode: Read allowed
 pub const READ: usize = 1;
@@ -101,9 +101,9 @@ impl FileInner {
         /// Set file cursor
         /// # Note
         /// Setting cursor for a directory file is not allowed 
-        pub fn seek(&mut self, offset: isize, op: SeekOp) -> Result<(), &'static str> {
+        pub fn seek(&mut self, offset: isize, op: SeekOp) -> Result<(), ErrNo> {
                 if self.inode.is_dir() {
-                        return Err("seek: not allowed for dir");
+                        return Err(ErrNo::IllegalSeek);
                 }
                 let new_cur = match op {
                         SeekOp::CUR => self.cursor as isize + offset,
@@ -111,7 +111,7 @@ impl FileInner {
                         SeekOp::SET => offset,
                 };
                 if new_cur < 0 && new_cur > self.inode.get_size() as isize {
-                        return Err("seek: invalid offset");
+                        return Err(ErrNo::InvalidArgument);
                 }
                 self.cursor = new_cur as usize;
                 return Ok(());
@@ -120,9 +120,9 @@ impl FileInner {
         /// Get file cursor
         /// # Note
         /// No cursor for a directory file
-        pub fn get_cursor(&self) -> Result<usize, &'static str> {
+        pub fn get_cursor(&self) -> Result<usize, ErrNo> {
                 if self.inode.is_dir() {
-                        return Err("get_cursor: cursor not in use for dir");
+                        return Err(ErrNo::IllegalSeek);
                 }
                 return Ok(self.cursor);
         }
@@ -131,13 +131,13 @@ impl FileInner {
         /// #Note 
         /// Reading starts from the file cursor, and set cursor to the byte next
         /// to the last read byte.
-        pub fn read(&mut self, buffer: &mut [u8]) -> Result<usize, &'static str> {
+        pub fn read(&mut self, buffer: &mut [u8]) -> Result<usize, ErrNo> {
                 let mut buffer = buffer;
                 if self.inode.is_dir() {
-                        return Err("read: read directory is not allowed");
+                        return Err(ErrNo::IsADirectory);
                 }
                 if !has!(self.mode, READ) {
-                        return Err("read: file not opened in read mode");
+                        return Err(ErrNo::BadFileDescriptor);
                 }
                 let left = self.inode.get_size() - self.cursor;
                 if left < buffer.len() {
@@ -148,7 +148,7 @@ impl FileInner {
                                 self.cursor += r;
                                 Ok(r)
                         },
-                        Err(_) => return Err("read: end of file"),
+                        Err(errno) => return Err(errno),
                 }
         }
 
@@ -156,12 +156,12 @@ impl FileInner {
         /// # Note 
         /// Writing starts from the file cursor, and set cursor to the byte next
         /// to the last written byte.
-        pub fn write(&mut self, buffer: &[u8]) -> Result<usize, &'static str> {
+        pub fn write(&mut self, buffer: &[u8]) -> Result<usize, ErrNo> {
                 if self.inode.is_dir() {
-                        return Err("write: write directory is not allowed");
+                        return Err(ErrNo::IsADirectory);
                 }
                 if !has!(self.mode, WRITE) {
-                        return Err("write: file not opened in write mode");
+                        return Err(ErrNo::BadFileDescriptor);
                 }
                 match self.inode.chain.write(self.cursor, buffer) {
                         Ok(w) => {
@@ -171,37 +171,37 @@ impl FileInner {
                                 }
                                 return Ok(w);
                         },
-                        Err(msg) => return Err(msg),
+                        Err(errno) => return Err(errno),
                 }
         }
 
         /// Open a file from file "self". "self" must be a directory.
-        pub fn open(&mut self, mut path: Path, mode:usize) -> Result<FileInner, &'static str> {
+        pub fn open(&mut self, mut path: Path, mode:usize) -> Result<FileInner, ErrNo> {
                 // let fs = self.inode.chain.fs.clone();
                 if !self.inode.is_dir() {
-                        return Err("open: not from directory");
+                        return Err(ErrNo::NotADirectory);
                 }
                 if self.inode.is_fake() {
-                        return Err("open: from fake inode");
+                        return Err(ErrNo::Fat32FakeInode);
                 }
                 if path.is_abs && self.inode.name.len() != 0 {
-                        return Err("open: using abs path from non-root directory");
+                        return Err(ErrNo::InvalidArgument);
                 }
                 if !path.is_abs && self.inode.name.len() == 0{
-                        return Err("open: abs path required");
+                        return Err(ErrNo::InvalidArgument);
                 }
                 let dir_flag = mode & DIR != 0;
                 if path.path.len() == 0 {
-                        return Err("open: empty path");
+                        return Err(ErrNo::InvalidArgument);
                 }
                 if path.must_dir && !dir_flag {
-                        return Err("open: arg conflict detected, dir or not?");
+                        return Err(ErrNo::IsADirectory);
                 }
                 let name = path.path.pop().unwrap();
                 if path.path.len() == 0 {
                         match open_d(&mut self.inode, &name, mode, dir_flag, mode & NO_FOLLOW != 0) {
                                 Ok(f) => return Ok(f),
-                                Err(msg) => return Err(msg),
+                                Err(errno) => return Err(errno),
                         };
                 } else {
                         path.must_dir = true;
@@ -212,53 +212,48 @@ impl FileInner {
                                                 Err(msg) => return Err(msg),
                                         };
                                 }
-                                Err(_) => return Err("open: parent not found"),
+                                Err(_) => return Err(ErrNo::NoSuchFileOrDirectory),
                         };
                 }
         }
 
         /// Create a directory file at file "self". "self" must be a directory.
-        pub fn mkdir(&mut self, mut path: Path) -> Result<FileInner, &'static str> {
+        pub fn mkdir(&mut self, mut path: Path) -> Result<FileInner, ErrNo> {
                 if !self.inode.is_dir() {
-                        return Err("mkdir: not from directory");
+                        return Err(ErrNo::NotADirectory);
                 }
                 if self.inode.is_fake() {
-                        return Err("mkdir: fake inode");
+                        return Err(ErrNo::Fat32FakeInode);
                 }
                 if path.is_abs && self.inode.name.len() != 0 {
-                        return Err("mkdir: using abs path from non-root inode");
+                        return Err(ErrNo::InvalidArgument);
                 }
                 if !path.is_abs && self.inode.name.len() == 0{
-                        return Err("mkdir: abs path required");
+                        return Err(ErrNo::InvalidArgument);
                 }
                 if path.path.len() == 0 {
-                        return Err("mkdir: empty path");
+                        return Err(ErrNo::FileExists);
                 }
                 let name = path.path.pop().unwrap();
                 if path.path.len() > 0 {
                         path.must_dir = true;
-                        let mut parent = match self.inode.find_inode_path(&path){
-                                Ok(inode) => inode,
-                                Err(_) => return Err("mkdir: parent not found"),
-                        };
+                        let mut parent = self.inode.find_inode_path(&path)?;
                         match parent.find_inode(&name) {
-                                Ok(_) => return Err("mkdir: file/dir of the same name already exist"),
+                                Ok(_) => return Err(ErrNo::FileExists),
                                 Err(_) => {},
                         }
-                        let inode = match parent.new_dir(&name, 0) {
-                                Ok(n) => n,
-                                Err(msg) => return Err(msg),
-                        };
+                        let inode = parent.new_dir(&name, 0)?;
                         return Ok(FileInner{
                                 inode,
                                 cursor: 0,
                                 mode: 0,
                         });
                 } else {
-                        let inode = match self.inode.new_dir(&name, 0) {
-                                Ok(n) => n,
-                                Err(msg) => return Err(msg),
-                        };
+                        match self.inode.find_inode(&name) {
+                                Ok(_) => return Err(ErrNo::FileExists),
+                                Err(_) => {},
+                        }
+                        let inode = self.inode.new_dir(&name, 0)?;
                         return Ok(FileInner{
                                 inode,
                                 cursor: 0,
@@ -268,47 +263,38 @@ impl FileInner {
         }
 
         /// Create a regular file at file "self". "self" must be a directory.
-        pub fn mkfile(&mut self, mut path: Path) -> Result<FileInner, &'static str> {
+        pub fn mkfile(&mut self, mut path: Path) -> Result<FileInner, ErrNo> {
                 if !self.inode.is_dir() {
-                        return Err("mkfile: not from directory");
+                        return Err(ErrNo::NotADirectory);
                 }
                 if self.inode.is_fake() {
-                        return Err("mkfile: fake inode");
+                        return Err(ErrNo::Fat32FakeInode);
                 }
                 if path.is_abs && self.inode.name.len() != 0 {
-                        return Err("mkfile: using abs path from non-root inode");
+                        return Err(ErrNo::InvalidArgument);
                 }
                 if !path.is_abs && self.inode.name.len() == 0{
-                        return Err("open: abs path required");
+                        return Err(ErrNo::InvalidArgument);
                 }
                 if path.path.len() == 0 {
-                        return Err("mkfile: empty path");
+                        return Err(ErrNo::InvalidArgument);
                 }
                 let name = path.path.pop().unwrap();
                 if path.path.len() > 0 {
                         path.must_dir = true;
-                        let mut parent = match self.inode.find_inode_path(&path){
-                                Ok(inode) => inode,
-                                Err(_) => return Err("open: parent not found"),
-                        };
+                        let mut parent = self.inode.find_inode_path(&path)?;
                         match parent.find_inode(&name) {
-                                Ok(_) => return Err("mkdir: file/dir of the same name already exist"),
+                                Ok(_) => return Err(ErrNo::FileExists),
                                 Err(_) => {},
                         }
-                        let inode = match parent.new_dir(&name, 0) {
-                                Ok(n) => n,
-                                Err(msg) => return Err(msg),
-                        };
+                        let inode = parent.new_dir(&name, 0)?;
                         return Ok(FileInner{
                                 inode,
                                 cursor: 0,
                                 mode: 0,
                         });
                 } else {
-                        let inode = match self.inode.new_file(&name, 0) {
-                                Ok(n) => n,
-                                Err(msg) => return Err(msg),
-                        };
+                        let inode = self.inode.new_file(&name, 0)?;
                         return Ok(FileInner{
                                 inode,
                                 cursor: 0,
@@ -318,28 +304,28 @@ impl FileInner {
         }
 
         /// Delete a regular file or empty directory file at file "self". "self" must be a directory.
-        pub fn remove(&mut self, mut path: Path) -> Result<(), &'static str> {
+        pub fn remove(&mut self, mut path: Path) -> Result<(), ErrNo> {
                 if !self.inode.is_dir() {
-                        return Err("remove: not from directory");
+                        return Err(ErrNo::NotADirectory);
                 }
                 if self.inode.is_fake() {
-                        return Err("remove: fake inode");
+                        return Err(ErrNo::Fat32FakeInode);
                 }
                 if path.is_abs && self.inode.name.len() != 0 {
-                        return Err("remove: using abs path from non-root inode");
+                        return Err(ErrNo::InvalidArgument);
                 }
                 if !path.is_abs && self.inode.name.len() == 0{
-                        return Err("remove: abs path required");
+                        return Err(ErrNo::InvalidArgument);
                 }
                 if path.path.len() == 0 {
-                        return Err("remove: empty path");
+                        return Err(ErrNo::InvalidArgument);
                 }
                 let name = path.path.pop().unwrap();
                 if path.path.len() > 0 {
                         path.must_dir = true;
                         let mut parent = match self.inode.find_inode_path(&path){
                                 Ok(inode) => inode,
-                                Err(_) => return Err("open: parent not found"),
+                                Err(_) => return Err(ErrNo::NoSuchFileOrDirectory),
                         };
                         return parent.delete_inode(&name);
                 } else {
@@ -368,10 +354,10 @@ impl FileInner {
         }
 
         /// Rename the file
-        pub fn rename(&mut self, new_name: &str) -> Result<(), &'static str> {
+        pub fn rename(&mut self, new_name: &str) -> Result<(), ErrNo> {
                 let parent = self.inode.get_parent().unwrap();
                 match parent.find_inode(new_name) {
-                        Ok(_) => return Err("rename: file/dir of the same name exists"),
+                        Ok(_) => return Err(ErrNo::FileExists),
                         Err(_) => {},
                 }
                 self.inode.group.rename(new_name).unwrap();
@@ -454,29 +440,29 @@ impl FileInner {
         }
 }
 
-fn open_d(parent: &mut Inode, name: &str, mode:usize, dir_flag: bool, no_follow: bool) -> Result<FileInner, &'static str> {
+fn open_d(parent: &mut Inode, name: &str, mode:usize, dir_flag: bool, no_follow: bool) -> Result<FileInner, ErrNo> {
         match parent.find_inode(&name) {
                 Ok(mut inode) => {
                         if inode.is_slink() && !no_follow {
                                 let size = inode.get_size();
                                 if size > 512 {
-                                        return Err("open: link path too long");
+                                        return Err(ErrNo::FileNameTooLong);
                                 }
                                 let mut buf = [0u8; 512];
                                 inode.chain.read(0, &mut buf).unwrap();
                                 let path = match parse_path(&core::str::from_utf8(&buf).unwrap()) {
                                         Ok(path) => path,
-                                        Err(err) => return Err(to_string(err)),
+                                        Err(err) => return Err(ErrNo::InvalidArgument),
                                 };
                                 let root = Inode::root(parent.chain.fs.clone());
                                 let mut root = FileInner::new(root, 0);
                                 return root.open(path, mode);
                         }
                         if dir_flag && !inode.is_dir() {
-                                return Err("open_d: not a directory");
+                                return Err(ErrNo::NotADirectory);
                         }
                         if !dir_flag && inode.is_dir() {
-                                return Err("open_d: is a directory");
+                                return Err(ErrNo::IsADirectory);
                         }
                         if inode.is_fake() {
                                 inode = inode.realize().unwrap();
@@ -490,8 +476,8 @@ fn open_d(parent: &mut Inode, name: &str, mode:usize, dir_flag: bool, no_follow:
                                                 Ok(inode) => {
                                                         return Ok(FileInner::new(inode, mode));
                                                 },
-                                                Err(_) => {
-                                                        return Err("open_d: create dir failed");
+                                                Err(errno) => {
+                                                        return Err(errno);
                                                 }
                                         }
                                 } else {
@@ -499,13 +485,13 @@ fn open_d(parent: &mut Inode, name: &str, mode:usize, dir_flag: bool, no_follow:
                                                 Ok(inode) => {
                                                         return Ok(FileInner::new(inode, mode));
                                                 },
-                                                Err(_) => {
-                                                        return Err("open:create file failed");
+                                                Err(errno) => {
+                                                        return Err(errno);
                                                 }
                                         }
                                 }
                         } else {
-                                return Err("open: file not found;");
+                                return Err(ErrNo::NoSuchFileOrDirectory);
                         }
                 }
         }

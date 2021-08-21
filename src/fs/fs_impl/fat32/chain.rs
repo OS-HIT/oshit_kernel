@@ -5,6 +5,8 @@ use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use alloc::sync::Arc;
 
+use crate::process::ErrNo;
+
 /// File Chain of Fat32
 #[derive(Clone)]
 pub struct Chain {
@@ -28,10 +30,10 @@ impl Chain {
                 Chain {fs, chain}
         }
 
-        fn get_cluster(&self, offset: usize) -> Result<(usize,u32), &'static str> {
+        fn get_cluster(&self, offset: usize) -> Result<(usize,u32), ErrNo> {
                 let n = offset / self.fs.cluster_size();
                 if n >= self.chain.len() {
-                        return Err("Chain::get_cluster: invalid offset\n");
+                        return Err(ErrNo::Fat32InvalidOffset);
                 } else {
                         return Ok((n,self.chain[n]));
                 }
@@ -40,11 +42,8 @@ impl Chain {
         /// Fill the buffer with contents in file chain at "offset"
         /// # Return
         /// Number of bytes that actually read
-        pub fn read(&self, offset: usize, buffer: &mut [u8]) -> Result<usize, &'static str> {
-                let (mut idx,clst) = match self.get_cluster(offset) {
-                        Ok(c) => c,
-                        Err(msg) => return Err(msg),
-                };
+        pub fn read(&self, offset: usize, buffer: &mut [u8]) -> Result<usize, ErrNo> {
+                let (mut idx,clst) = self.get_cluster(offset)?;
                 let coff = offset % self.fs.cluster_size();
                 let len = buffer.len();
                 let mut read = self.fs.read_cluster(clst, coff, buffer).unwrap();
@@ -69,7 +68,7 @@ impl Chain {
         /// If "offset" is bigger than the offset of the last byte in chain, space between them will be filled with 0.
         /// # Return
         /// Number of bytes that actually written
-        pub fn write(&mut self, offset: usize, buffer: &[u8]) -> Result<usize, &'static str> {
+        pub fn write(&mut self, offset: usize, buffer: &[u8]) -> Result<usize, ErrNo> {
                 let (mut idx, clst) = loop {
                         match self.get_cluster(offset) {
                                 Ok(c) => break c,
@@ -82,7 +81,7 @@ impl Chain {
                                                 };
                                                 self.chain.push(new);
                                         } else {
-                                                return Err("Chain::write: invalid offset\n");
+                                                return Err(ErrNo::InvalidArgument);
                                         }
                                 },
                         }

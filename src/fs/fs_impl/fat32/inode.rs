@@ -8,6 +8,9 @@ use super::dirent::read_dirent_group;
 use super::dirent::write_dirent_group;
 use super::dirent::empty_dir;
 use super::dirent::delete_dirent_group;
+
+use crate::process::ErrNo;
+
 use alloc::string::String;
 use alloc::vec::Vec;
 use alloc::sync::Arc;
@@ -133,9 +136,9 @@ impl Inode {
         }
 
         /// Find a inode in the diretory inode "self" by name.
-        pub fn find_inode(&self, name: &str) -> Result<Inode, &'static str> {
+        pub fn find_inode(&self, name: &str) -> Result<Inode, ErrNo> {
                 if !self.group.entry.is_dir() {
-                        return Err("get_inodes: not a directory");
+                        return Err(ErrNo::NotADirectory);
                 }
                 let mut offset = 0;
                 loop {
@@ -157,19 +160,19 @@ impl Inode {
                                         }
                                         offset = next;
                                 },
-                                Err(_) => return Err("find_inode: inode not found"),
+                                Err(_) => return Err(ErrNo::NoSuchFileOrDirectory),
                         }
 
                 }
         }
 
         /// Find a inode in the diretory inode "self" recursively.
-        pub fn find_inode_path(&self, path: &Path) -> Result<Inode, &'static str> {
+        pub fn find_inode_path(&self, path: &Path) -> Result<Inode, ErrNo> {
                 if !self.is_dir() {
-                        return Err("find_inode_path: not a directory");
+                        return Err(ErrNo::NotADirectory);
                 }
                 if path.path.len() == 0 {
-                        return Err("find_inode_path: empty path");
+                        return Err(ErrNo::InvalidArgument);
                 }
                 let mut cur = self;
                 let mut i: Inode = self.clone();
@@ -181,13 +184,13 @@ impl Inode {
                         cur = &i;
                 }
                 if path.must_dir && !cur.is_dir() {
-                        return Err("find_inode_path: target not directory");
+                        return Err(ErrNo::NotADirectory);
                 }
                 return Ok(i);
         }
 
         /// Get the parent inode of inode "self"
-        pub fn get_parent(&self) -> Result<Inode, &'static str> {
+        pub fn get_parent(&self) -> Result<Inode, ErrNo> {
                 let root = Inode::root(self.chain.fs.clone());
                 if self.path.path.len() == 0 {
                         return Ok(root);
@@ -206,12 +209,12 @@ impl Inode {
         }
 
         /// Create a new inode in the directory inode "self"
-        pub fn new(&mut self, name: &str, chain: Chain, attr:u8) -> Result<Inode, &'static str> {
+        pub fn new(&mut self, name: &str, chain: Chain, attr:u8) -> Result<Inode, ErrNo> {
                 if !self.is_dir() {
-                        return Err("new: cannot new from none dir inode");
+                        return Err(ErrNo::NotADirectory);
                 }
                 if self.is_fake() {
-                        return Err("new: cannont new from fake inode");
+                        return Err(ErrNo::Fat32FakeInode);
                 }
                 let start = if chain.chain.len() == 0 {
                         0u32
@@ -229,16 +232,16 @@ impl Inode {
         }
 
         /// Create a new directory inode in the directory inode "self"
-        pub fn new_dir(&mut self, name: &str, attr:u8) -> Result<Inode, &'static str> {
+        pub fn new_dir(&mut self, name: &str, attr:u8) -> Result<Inode, ErrNo> {
                 let attr = attr | DirEntryRaw::ATTR_SUBDIR;
                 let mut chain = Vec::new();
                 chain.push(self.chain.fs.alloc_cluster().unwrap());
                 let chain = Chain::new(self.chain.fs.clone(), chain);
                 let mut nd = match self.new(name, chain.clone(), attr) {
                         Ok(inode) => inode,
-                        Err(msg) => {
+                        Err(errno) => {
                                 self.chain.fs.clear_chain(chain.chain[0]).unwrap();
-                                return Err(msg)
+                                return Err(errno)
                         },
                 };
                 nd.new(".", chain, DirEntryRaw::ATTR_SUBDIR).unwrap();
@@ -247,20 +250,17 @@ impl Inode {
         }
 
         /// Create a new regular file inode in the directory inode "self"
-        pub fn new_file(&mut self, name: &str, attr:u8) -> Result<Inode, &'static str> {
+        pub fn new_file(&mut self, name: &str, attr:u8) -> Result<Inode, ErrNo> {
                 let attr = attr | DirEntryRaw::ATTR_FILE;
                 let chain = Vec::new();
                 let chain = Chain::new(self.chain.fs.clone(), chain);
-                match self.new(name, chain, attr){
-                        Ok(inode) => return Ok(inode),
-                        Err(_) => return Err("new_file: create failed"),
-                };
+                return self.new(name, chain, attr);
         }
 
         /// Delete a new inode in the directory inode "self"
-        pub fn delete_inode(&mut self, name: &String) -> Result<(), &'static str> {
+        pub fn delete_inode(&mut self, name: &String) -> Result<(), ErrNo> {
                 if !self.group.entry.is_dir() {
-                        return Err("delete_inodes: not a directory");
+                        return Err(ErrNo::NotADirectory);
                 }
                 let mut offset = 0;
                 loop {
@@ -272,7 +272,7 @@ impl Inode {
                                                         let chain = self.chain.fs.get_chain(group.get_start());
                                                         let chain = Chain::new(self.chain.fs.clone(), chain);
                                                         if !empty_dir(&chain) {
-                                                                return Err("delete_inode: dir not empty");
+                                                                return Err(ErrNo::DirectoryNotEmpty);
                                                         }
                                                 } 
                                                 self.chain.fs.clear_chain(group.get_start()).unwrap();
@@ -281,7 +281,7 @@ impl Inode {
                                         }
                                         offset = next;
                                 },
-                                Err(_) => return Err("delete_inode: inode not found"),
+                                Err(_) => return Err(ErrNo::NoSuchFileOrDirectory),
                         }
 
                 }

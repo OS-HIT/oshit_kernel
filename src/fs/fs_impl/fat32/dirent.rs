@@ -5,6 +5,8 @@ use alloc::vec::Vec;
 use alloc::string::String;
 use super::chain::Chain;
 
+use crate::process::ErrNo;
+
 /// Directory Entry in raw
 #[derive(Clone, Copy)]
 #[repr(C, packed(1))]
@@ -116,6 +118,16 @@ impl DirEntryRaw {
         /// Get short file name
         pub fn get_name(&self) -> String {
                 let mut name = String::new();
+                debug!("name: {:x} {:x} {:x} {:x} {:x} {:x} {:x} {:x}", 
+                        self.name[0],
+                        self.name[1],
+                        self.name[2],
+                        self.name[3],
+                        self.name[4],
+                        self.name[5],
+                        self.name[6],
+                        self.name[7]
+                );
                 name += from_utf8(&self.name).unwrap().trim();
                 // println!("{}: {}", name.len(), name);
                 let mut ext = String::new();
@@ -538,7 +550,7 @@ pub fn empty_dir(chain: &Chain) -> bool {
 /// # Return
 /// On success, returns the entry group and the offset to look for next group in the chain.
 /// Returns error message otherwise.
-pub fn read_dirent_group(chain: &Chain, offset: usize) -> Result<(DirEntryGroup, usize), &'static str> {
+pub fn read_dirent_group(chain: &Chain, offset: usize) -> Result<(DirEntryGroup, usize), ErrNo> {
         let mut exts = Vec::<DirEntryExtRaw>::new();
         let mut buf = [0u8; size_of::<DirEntryRaw>()];
         let mut off = offset;
@@ -547,11 +559,11 @@ pub fn read_dirent_group(chain: &Chain, offset: usize) -> Result<(DirEntryGroup,
                 match chain.read(off, &mut buf) {
                         Ok(rlen) => {
                                 if rlen != size_of::<DirEntryRaw>() {
-                                        return Err("read_dirent_group: short read");
+                                        return Err(ErrNo::Fat32EntryShortRead);
                                 } 
                         },
-                        Err(msg) => {
-                                return Err(msg);
+                        Err(errno) => {
+                                return Err(errno);
                         }
                 }
                 slotsize += 1;
@@ -569,7 +581,7 @@ pub fn read_dirent_group(chain: &Chain, offset: usize) -> Result<(DirEntryGroup,
         }
         
         if buf[0] == 0 {
-                return Err("read_dirent_group: Invalid(Empty) DirEntry");
+                return Err(ErrNo::Fat32NoMoreEntry);
         }
         unsafe {
                 let entry = *((&buf as *const _) as *const DirEntryRaw).clone();
@@ -647,22 +659,22 @@ pub fn write_dirent_group (chain: &mut Chain, group: &mut DirEntryGroup) -> Resu
 }
 
 /// Mark the entries in chain as deleted
-pub fn delete_dirent_group(chain: &mut Chain, offset: usize) -> Result<(), &'static str>{
+pub fn delete_dirent_group(chain: &mut Chain, offset: usize) -> Result<(), ErrNo>{
         let mut buf = [0u8; size_of::<DirEntryRaw>()];
         let mut off = offset;
         loop {
                 match chain.read(off, &mut buf) {
                         Ok(rlen) => {
                                 if rlen != size_of::<DirEntryRaw>() {
-                                        return Err("delete_dirent_group: short read");
+                                        return Err(ErrNo::Fat32EntryShortRead);
                                 } 
                         },
-                        Err(msg) => {
-                                return Err(msg);
+                        Err(errno) => {
+                                return Err(errno);
                         }
                 }
                 if buf[0] == 0 {
-                        return Err("read_dirent_group: Invalid(Empty) DirEntry");
+                        return Err(ErrNo::NoSuchFileOrDirectory);
                 }        
                 if is_del(&buf) {
                         off += size_of::<DirEntryExtRaw>();

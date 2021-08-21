@@ -1,7 +1,6 @@
 //! In-Memory Cache for Block Device
 
 use alloc::sync::Arc;
-use spin::Mutex;
 
 use super::BLOCK_SZ;
 
