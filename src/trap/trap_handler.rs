@@ -305,7 +305,7 @@ pub fn trap_return() -> ! {
         trap_context.regs[1] = __user_call_sigreturn as usize - sutrampoline as usize + U_TRAMPOLINE;
         trap_context.sepc = handler_va;
         trap_context.regs[11] = signal;
-        info!("triggered signal, pc going to: {:x}", handler_va);
+        info!("triggered signal for {}, pc going to: {:x}", current.pid.0, handler_va);
         
         drop(arcpcb);
         drop(current);

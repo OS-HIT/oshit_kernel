@@ -177,7 +177,7 @@ impl Processor {
                     } else {
                         arcpcb.timer_real_next = 0;
                     }
-                    info!("sending SIGALRM");
+                    info!("sending SIGALRM to proc {}", process.pid.0);
                     arcpcb.recv_signal(super::default_handlers::SIGALRM);
                 }
                 if arcpcb.timer_virt_next != 0 && arcpcb.timer_virt_next < arcpcb.utime {

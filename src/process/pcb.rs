@@ -784,6 +784,7 @@ impl ProcessControlBlock {
     }
 
     pub fn recv_signal(&self, signal: usize) -> Option<()> {
+        info!("process {} received signal {}, pending handle", self.pid.0, signal);
         let mut locked_inner = self.get_inner_locked();
         locked_inner.recv_signal(signal)
     }
