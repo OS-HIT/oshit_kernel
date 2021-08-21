@@ -33,7 +33,7 @@ impl Chain {
         fn get_cluster(&self, offset: usize) -> Result<(usize,u32), ErrNo> {
                 let n = offset / self.fs.cluster_size();
                 if n >= self.chain.len() {
-                        error!("chain.len(): {} offset: {}", self.chain.len(), offset);
+                        // error!("chain.len(): {} offset: {}", self.chain.len(), offset);
                         return Err(ErrNo::Fat32InvalidOffset);
                 } else {
                         return Ok((n,self.chain[n]));

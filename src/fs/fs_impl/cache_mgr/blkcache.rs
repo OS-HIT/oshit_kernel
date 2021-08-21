@@ -25,15 +25,14 @@ impl BlockCache {
                 block_id: usize,
                 device: Arc<dyn BlockDeviceFile>,
         ) -> Self {
-
-                let mut cache = [0u8; BLOCK_SZ];
-                device.read_block(block_id, &mut cache);
-                Self {
-                        cache,
+                let mut to_ret = Self {
+                        cache: [0b10101010u8; BLOCK_SZ],
                         block_id,
                         modified: false,
                         device: device.clone(),
-                }
+                };
+                device.read_block(block_id, &mut to_ret.cache);
+                to_ret
         }
 
         /// Get the memory address that points to the content from cache at the specified offset
