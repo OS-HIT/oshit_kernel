@@ -1,15 +1,6 @@
 //! QEMU virtio driver wrapper
 use virtio_drivers::{VirtIOBlk, VirtIOHeader};
-use crate::memory::{
-    PhysAddr,
-    VirtAddr,
-    alloc_frame,
-    free_frame,
-    PhysPageNum,
-    FrameTracker,
-    PageTable,
-    kernel_satp,
-};
+use crate::memory::{FrameTracker, PageTable, PhysAddr, PhysPageNum, VirtAddr, alloc_continuous, alloc_frame, free_frame, kernel_satp};
 use crate::utils::StepByOne;
 use super::BlockDevice;
 use spin::Mutex;
@@ -53,18 +44,23 @@ impl VirtIOBlock {
 
 #[no_mangle]
 pub extern "C" fn virtio_dma_alloc(pages: usize) -> PhysAddr {
-    let mut ppn_base = PhysPageNum(0);
-    for i in 0..pages {
-        let frame = alloc_frame().unwrap();
-        if i == 0 { ppn_base = frame.ppn; }
-        assert_eq!(frame.ppn.0, ppn_base.0 + i);
-        QUEUE_FRAMES.lock().push(frame);
-    }
-    ppn_base.into()
+    // let mut ppn_base = PhysPageNum(0);
+    // for i in 0..pages {
+    //     let frame = alloc_frame().unwrap();
+    //     if i == 0 { ppn_base = frame.ppn; }
+    //     assert_eq!(frame.ppn.0, ppn_base.0 + i);
+    //     QUEUE_FRAMES.lock().push(frame);
+    // }
+    // ppn_base.into()
+    let mut allocated = alloc_continuous(pages);
+    let init_ppn = allocated[0].ppn;
+    QUEUE_FRAMES.lock().append(&mut allocated);
+    init_ppn.into()
 }
 
 #[no_mangle]
 pub extern "C" fn virtio_dma_dealloc(pa: PhysAddr, pages: usize) -> i32 {
+    // not dropping queue??? mulit drop???
     let mut ppn_base: PhysPageNum = pa.into();
     for _ in 0..pages {
         free_frame(ppn_base);

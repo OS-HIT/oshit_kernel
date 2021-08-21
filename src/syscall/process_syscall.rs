@@ -328,6 +328,12 @@ pub fn sys_waitpid(pid: isize, exit_code_ptr: VirtAddr, options: isize) -> isize
     loop {
         let proc = current_process().unwrap();
         let mut locked_inner = proc.get_inner_locked();
+
+        if !locked_inner.pending_sig.is_empty() {
+            info!("Self received signal, failing waitpid");
+            return -1;
+        }
+
         let mut corpse: Option<usize> = None;
         for (idx, child) in locked_inner.children.iter().enumerate() {
             if pid == -1 || pid as usize == child.get_pid() {
@@ -614,7 +620,7 @@ pub fn sys_sigreturn() -> isize {
     if let Some(last_signal) = locked_inner.last_signal {
         // reg2 (x2) is sp
         let old_trap_context: TrapContext = locked_inner.signal_trap_contexts.pop().unwrap();
-        info!("triggered sigreturn, pc going to: {:x}", old_trap_context.sepc);
+        info!("triggered for {}, pc going to: {:x}", proc.pid.0, old_trap_context.sepc);
         locked_inner.write_trap_context(&old_trap_context);
         locked_inner.sig_mask &= !(1u64 << last_signal);
         locked_inner.last_signal = None;

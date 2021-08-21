@@ -288,20 +288,20 @@ impl DeviceFile for CommonFileAsBlockDevice {
 impl BlockDeviceFile for CommonFileAsBlockDevice {
     fn read_block(&self, block_id: usize, buf: &mut [u8]) {
         assert_eq!(buf.len(), self.blk_sz, "Buffer size != blk_sz!");
-        self.seek((self.blk_sz * block_id) as isize, SeekOp::SET);
-        self.read(buf);
+        self.seek((self.blk_sz * block_id) as isize, SeekOp::SET).unwrap();
+        self.read(buf).unwrap();
     }
 
     fn write_block(&self, block_id: usize, buf: &[u8]) {
         assert_eq!(buf.len(), self.blk_sz, "Buffer size != blk_sz!");
-        self.seek((self.blk_sz * block_id) as isize, SeekOp::SET);
-        self.write(buf);
+        self.seek((self.blk_sz * block_id) as isize, SeekOp::SET).unwrap();
+        self.write(buf).unwrap();
     }
 
     fn clear_block(&self, block_id: usize) {
-        self.seek((self.blk_sz * block_id) as isize, SeekOp::SET);
+        self.seek((self.blk_sz * block_id) as isize, SeekOp::SET).unwrap();
         let mut v: Vec<u8> = Vec::new();
         v.resize(self.blk_sz, 0);
-        self.write(&v);
+        self.write(&v).unwrap();
     }
 }

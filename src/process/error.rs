@@ -32,7 +32,7 @@ EnumWithTryFrom!{
 		NoSuchDeviceOrAddress                       = 6  ,
 		ArgumentListTooLong                         = 7  ,
 		ExecFormatError                             = 8  ,
-		BadFileDescriptor                               = 9  ,
+		BadFileDescriptor                           = 9  ,
 		NoChildProcesses                            = 10 ,
 		TryAgain                                    = 11 ,
 		OutOfMemory                                 = 12 ,
@@ -42,7 +42,7 @@ EnumWithTryFrom!{
 		DeviceOrResourceBusy                        = 16 ,
 		FileExists                                  = 17 ,
 		CrossdeviceLink                             = 18 ,
-		NotSuchDevice                                = 19 ,
+		NotSuchDevice                               = 19 ,
 		NotADirectory                               = 20 ,
 		IsADirectory                                = 21 ,
 		InvalidArgument                             = 22 ,
@@ -153,11 +153,10 @@ EnumWithTryFrom!{
 		KeyWasRejectedByService                     = 129,
 		OwnerDied                                   = 130,
 		StateNotRecoverable                         = 131,
-
-		Fat32FakeInode					= 1000,
-		Fat32InvalidOffset				= 1001,
-		Fat32EntryShortRead				= 1002,
-		Fat32NoMoreEntry				= 1003,
+		Fat32FakeInode								= 1000,
+		Fat32InvalidOffset							= 1001,
+		Fat32EntryShortRead							= 1002,
+		Fat32NoMoreEntry							= 1003,
 	}
 }
 
