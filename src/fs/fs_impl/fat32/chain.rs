@@ -97,7 +97,17 @@ impl Chain {
                                         write += self.fs.write_cluster(*clst, 0, buf).unwrap();
                                 },
                                 None => {
-                                        return Ok(write);
+                                        if self.chain.len() < Chain::MAX_LEN {
+                                                let new = if self.chain.len() == 0 {
+                                                        self.fs.alloc_cluster().unwrap()
+                                                } else {
+                                                        self.fs.append_chain(*self.chain.last().unwrap()).unwrap()
+                                                };
+                                                self.chain.push(new);
+                                                write += self.fs.write_cluster(new, 0, buf).unwrap();
+                                        } else {
+                                                return Ok(write);
+                                        }
                                 }
                         }
                 }
