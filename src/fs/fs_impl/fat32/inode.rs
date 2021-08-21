@@ -100,7 +100,8 @@ impl Inode {
         pub fn print(&self) {
                 print!("name: {:16}", &self.name);
                 print!("parent: {:32}", &self.path.to_string());
-                println!("chain: {}", &self.chain.to_string());
+                // println!("");
+                println!("chain: {}", &self.chain.to_string(5));
                 // print!("start: {}\n", &self.chain.chain[0]);
         }
 
@@ -145,6 +146,7 @@ impl Inode {
                         match read_dirent_group(&self.chain, offset) {
                                 Ok((group, next)) => {
                                         let iname = group.get_name().unwrap();
+                                        debug!("find_inode: {} vs {}", name, iname);
                                         if name.eq(&iname) {
                                                 let c = Chain::new(self.chain.fs.clone(), self.chain.fs.get_chain(group.get_start()));
                                                 let mut p = self.path.clone();

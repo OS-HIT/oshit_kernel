@@ -33,6 +33,7 @@ impl Chain {
         fn get_cluster(&self, offset: usize) -> Result<(usize,u32), ErrNo> {
                 let n = offset / self.fs.cluster_size();
                 if n >= self.chain.len() {
+                        error!("chain.len(): {} offset: {}", self.chain.len(), offset);
                         return Err(ErrNo::Fat32InvalidOffset);
                 } else {
                         return Ok((n,self.chain[n]));
@@ -69,6 +70,7 @@ impl Chain {
         /// # Return
         /// Number of bytes that actually written
         pub fn write(&mut self, offset: usize, buffer: &[u8]) -> Result<usize, ErrNo> {
+                // error!("who is calling the write?");
                 let (mut idx, clst) = loop {
                         match self.get_cluster(offset) {
                                 Ok(c) => break c,
@@ -124,13 +126,20 @@ impl Chain {
         }
 
         /// Convert the chain to string for printing
-        pub fn to_string(&self) -> String {
+        pub fn to_string(&self, max: isize) -> String {
                 if self.chain.len() == 0 {
                         return String::from("(null)");
                 } else {
                         let mut s = String::new();
-                        for c in &self.chain {
-                                s += &c.to_string();
+                        let max = if max == -1 {
+                                self.chain.len()
+                        } else if max as usize > self.chain.len() {
+                                self.chain.len()
+                        } else {
+                                max as usize
+                        };
+                        for i in 0..max {
+                                s += &self.chain[i].to_string();
                                 s.push('-');
                         }
                         s.push('|');

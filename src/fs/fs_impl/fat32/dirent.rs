@@ -118,16 +118,6 @@ impl DirEntryRaw {
         /// Get short file name
         pub fn get_name(&self) -> String {
                 let mut name = String::new();
-                debug!("name: {:x} {:x} {:x} {:x} {:x} {:x} {:x} {:x}", 
-                        self.name[0],
-                        self.name[1],
-                        self.name[2],
-                        self.name[3],
-                        self.name[4],
-                        self.name[5],
-                        self.name[6],
-                        self.name[7]
-                );
                 name += from_utf8(&self.name).unwrap().trim();
                 // println!("{}: {}", name.len(), name);
                 let mut ext = String::new();
